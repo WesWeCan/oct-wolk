@@ -1,0 +1,25 @@
+.lyric-analyzer {
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    height: 100vh;
+    gap: 20px;
+}
+
+
+.analyzer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+
+.lyrics {
+    background-color: #f0f0f0;
+    padding: 20px;
+}
+
+.words {
+    background-color: #f0f0f0;
+    padding: 20px;
+}

@@ -1,0 +1,69 @@
+.song-bank {
+
+    display: flex;
+    flex-direction: column;
+    
+    height: 100vh;
+    width: 100%;
+    box-sizing: border-box;
+
+    padding: 20px;
+    
+
+
+}
+
+
+.song-list {
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    max-width: 100%;
+}
+
+@media (min-width: 900px) {
+    .song-list {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+
+.song-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 10px;
+    border: 1px solid #000;
+    border-radius: 5px;
+    overflow: hidden;
+
+    .song-item-image {
+        width: 100%;
+        background-color: #ccc;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        aspect-ratio: 1/1;
+    }
+
+    .song-item-content {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 20px;
+    }
+}
+
+.song-item.new {
+    border: 1px dashed #000;
+    color: #000;
+    background-color: #ffebeb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    cursor: pointer;
+}

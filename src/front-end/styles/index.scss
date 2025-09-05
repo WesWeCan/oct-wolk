@@ -1,6 +1,25 @@
+@use 'splash-screen';
+@use 'song-bank';
+@use 'lyric-analyzer';
+@use 'tip-tap-lyric-analyzer';
+
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+}
+
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #fff;
+    color: #000;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
 }
 

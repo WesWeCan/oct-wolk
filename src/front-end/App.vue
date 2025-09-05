@@ -40,7 +40,7 @@ const getLuckyNumber = async () => {
 
 <template>
 
-    
+ 
     <RouterView></RouterView>
 
 </template>
