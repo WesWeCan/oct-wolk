@@ -64,10 +64,10 @@ const hoverWord = (word: string | null) => {
 
         <div class="analyzer">
             <div class="lyrics">
-                <TipTapLyricAnalyzer v-model:song="song" @hover-word="hoverWord"/>
+                <TipTapLyricAnalyzer v-model:song="song" :hovered-word="hoveredWord" @hover-word="hoverWord"/>
             </div>
             <div class="words">
-                <WordBank v-model:song="song" :hovered-word="hoveredWord" />
+                <WordBank v-model:song="song" :hovered-word="hoveredWord" @hover-word="hoverWord" />
             </div>
             
         </div>

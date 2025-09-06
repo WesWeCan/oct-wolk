@@ -13,6 +13,7 @@ const song = defineModel<Song>('song')
 const props = defineProps<{
     hoveredWord: string | null
 }>()
+const emit = defineEmits<{ (e: 'hoverWord', value: string | null): void }>()
 
 const { hoveredWord: sharedHoveredWord, setHoveredWord } = useHoveredWord()
 const { addWord, removeWordEverywhere, addGroup, removeGroup, renameGroup, addWordToGroup, toggleCollapsed } = useWordBank(song)
@@ -49,6 +50,11 @@ const onAddRootGroup = () => {
 // Drag a word chip into a group
 const onDropWordToGroup = (groupPath: number[], word: string) => {
     addWordToGroup(groupPath, word)
+}
+
+const onHoverWord = (w: string | null) => {
+    setHoveredWord(w)
+    emit('hoverWord', w)
 }
 
 // Group tree helpers
@@ -89,10 +95,12 @@ const getGroupNameByPath = (path: Path): string | null => {
                     :key="group._uid || (group._uid = group.name + '-' + idx + '-' + Date.now())"
                     :group="group"
                     :path="[idx]"
+                    :hovered-word="(props.hoveredWord || sharedHoveredWord)"
                     @drop-word="onDropWordToGroup"
                     @remove-group="onRemoveGroup"
                     @rename-group="onRenameGroup"
                     @toggle-collapsed="toggleCollapsed"
+                    @hover-word="onHoverWord"
                 />
             </div>
 
@@ -104,7 +112,7 @@ const getGroupNameByPath = (path: Path): string | null => {
 
                 <draggable v-model="wordList" item-key="value" :group="{ name: 'words', pull: 'clone', put: false }" :clone="(w:string)=>w" class="wb-words" tag="div">
                     <template #item="{ element }">
-                        <div class="wb-chip" :class="{ hovered: (props.hoveredWord || sharedHoveredWord) === element }" @mouseenter="setHoveredWord(element)" @mouseleave="setHoveredWord(null)">
+                        <div class="wb-chip" :class="{ hovered: (props.hoveredWord || sharedHoveredWord) === element }" @mouseenter="() => { setHoveredWord(element); emit('hoverWord', element) }" @mouseleave="() => { setHoveredWord(null); emit('hoverWord', null) }">
                             <span>{{ element }}</span>
                             <button class="rm" @click.stop="confirmRemoveFromEverywhere(element)">×</button>
                         </div>

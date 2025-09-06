@@ -3,12 +3,13 @@ import { ref } from 'vue'
 import draggable from 'vuedraggable'
 import type { WordGroup } from '@/types/song_types'
 
-const props = defineProps<{ group: WordGroup; path: number[] }>()
+const props = defineProps<{ group: WordGroup; path: number[]; hoveredWord?: string | null }>()
 const emit = defineEmits<{
     (e: 'drop-word', path: number[], word: string): void
     (e: 'remove-group', path: number[]): void
     (e: 'rename-group', path: number[]): void
     (e: 'toggle-collapsed', path: number[]): void
+    (e: 'hover-word', value: string | null): void
 }>()
 
 const onWordAdded = (evt: any) => {
@@ -46,6 +47,19 @@ const onToggle = () => emit('toggle-collapsed', props.path)
         </div>
 
         <div v-show="!props.group.collapsed" class="body">
+
+            <draggable v-model="(props as any).group.words" :group="{ name: 'words', put: true }" item-key="(w:string)=>w" class="words" @add="onWordAdded">
+                <template #item="{ element, index }">
+                    <div class="wb-chip small" :class="{ hovered: props.hoveredWord === element }" @mouseenter="emit('hover-word', element)" @mouseleave="emit('hover-word', null)">
+                        <span>{{ element }}</span>
+                        <button class="rm" @click.stop="(props as any).group.words.splice(index, 1)">×</button>
+                    </div>
+                </template>
+                <template #footer>
+                    <div class="drop-hint">Drag words here</div>
+                </template>
+            </draggable>
+
             <draggable v-model="(props as any).group.groups" :group="{ name: 'groups', put: ['groups'], pull: true }" item-key="(g:any)=>g._uid || g.name" tag="div" class="children">
                 <template #item="{ element, index }">
                     <WordBankGroupNode :group="element" :path="[...props.path, index]" @drop-word="(p,w)=>emit('drop-word', p, w)" @remove-group="(p)=>emit('remove-group', p)" @rename-group="(p)=>emit('rename-group', p)" @toggle-collapsed="(p)=>emit('toggle-collapsed', p)" />
@@ -57,18 +71,11 @@ const onToggle = () => emit('toggle-collapsed', props.path)
                     <div style="display:none">{{ element }}</div>
                 </template>
                 <template #footer>
-                    <div class="child-hint">Add subgroup (drop word here)</div>
+                    <div class="child-hint">Add subgroup to "{{ props.group.name }}" (drop word here)</div>
                 </template>
             </draggable>
 
-            <draggable v-model="(props as any).group.words" :group="{ name: 'words', put: true }" item-key="(w:string)=>w" class="words" @add="onWordAdded">
-                <template #item="{ element }">
-                    <div class="wb-chip small"><span>{{ element }}</span></div>
-                </template>
-                <template #footer>
-                    <div class="drop-hint">Drag words here</div>
-                </template>
-            </draggable>
+            
         </div>
     </div>
 </template>

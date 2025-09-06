@@ -4,6 +4,7 @@ import { Decoration, DecorationSet } from 'prosemirror-view'
 
 type WordInteractionOptions = {
   onHover?: (word: string | null) => void
+  onDoubleClickWord?: (word: string) => void
 }
 
 const wordInteractionKey = new PluginKey('wordInteraction')
@@ -108,6 +109,19 @@ export default Extension.create<WordInteractionOptions>({
   addOptions() {
     return {
       onHover: undefined,
+      onDoubleClickWord: undefined,
+    }
+  },
+
+  addCommands() {
+    return {
+      setWordInteractionHover:
+        (word: string | null) => ({ state, dispatch }) => {
+          if (!dispatch) return false
+          const tr = state.tr.setMeta(wordInteractionKey, { type: 'setHover', word })
+          dispatch(tr)
+          return true
+        },
     }
   },
 
@@ -200,6 +214,17 @@ export default Extension.create<WordInteractionOptions>({
               if (!info) return false
               const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, info.from, info.to))
               view.dispatch(tr)
+              return true
+            },
+            dblclick: (view, event) => {
+              const e = event as MouseEvent
+              const pos = view.posAtCoords({ left: e.clientX, top: e.clientY })
+              if (!pos) return false
+              const info = getWordAtPosDirectional(view.state.doc, pos.pos, 'right')
+              if (!info) return false
+              const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, info.from, info.to))
+              view.dispatch(tr)
+              if (options.onDoubleClickWord) options.onDoubleClickWord(info.word)
               return true
             },
             mouseup: (view, _event) => {
