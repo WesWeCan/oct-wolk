@@ -1,4 +1,5 @@
 export interface Song {
+        id: string
         title: string
         subtitle: string
         audioSrc: string
@@ -7,6 +8,8 @@ export interface Song {
         wordBank: string[]
         paragraphs: string[]
         wordGroups: WordGroup[]
+        createdAt: number
+        updatedAt: number
 }
 
 

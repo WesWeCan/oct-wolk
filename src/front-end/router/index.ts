@@ -18,7 +18,7 @@ const routes = [
         component: SongBank,
     },
     {
-        path: '/lyric-analyzer',
+        path: '/lyric-analyzer/:songId?',
         name: 'LyricAnalyzer',
         component: LyricAnalyzer,
     },

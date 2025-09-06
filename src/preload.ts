@@ -12,7 +12,12 @@ declare global {
             openExternal: (url: string) => void;
             openStorageFolder: () => void;
             // Event methods
-            
+            songs: {
+                create: (initial?: any) => Promise<any>;
+                save: (song: any) => Promise<any>;
+                load: (songId: string) => Promise<any>;
+                list: () => Promise<any[]>;
+            };
         };
     }
 }
@@ -23,6 +28,12 @@ ipcRenderer.send('renderer-ready');
 contextBridge.exposeInMainWorld('electronAPI', {
     getRandomNumber: () => ipcRenderer.invoke('getRandomNumber'),
     openStorageFolder: () => ipcRenderer.invoke('open-storage-folder'),
+    songs: {
+        create: (initial?: any) => ipcRenderer.invoke('songs:create', initial),
+        save: (song: any) => ipcRenderer.invoke('songs:save', song),
+        load: (songId: string) => ipcRenderer.invoke('songs:load', songId),
+        list: () => ipcRenderer.invoke('songs:list'),
+    },
 
     // Event methods
     on(channel: string, callback: (...args: any[]) => void) {
