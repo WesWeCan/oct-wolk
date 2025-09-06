@@ -4,6 +4,7 @@ import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import TipTapLyricAnalyzer from '../components/TipTapLyricAnalyzer.vue';
 import { Song } from '@/types/song_types';
+import WordBank from '../components/WordBank.vue';
 
 
 const song = ref<Song>({
@@ -24,9 +25,19 @@ onMounted(() => {
     document.title = 'Lyric Analyzer - Words On Live Kanvas - Open Culture Tech';
 });
 
+
+
+
+const hoveredWord = ref<string | null>(null);
+
+
 const hoverWord = (word: string | null) => {
-    if (!word) return
+    if (!word) {
+        hoveredWord.value = null;
+        return;
+    }
     console.log('hoverWord', word);
+    hoveredWord.value = word;
 }
 
 </script>
@@ -55,7 +66,10 @@ const hoverWord = (word: string | null) => {
             <div class="lyrics">
                 <TipTapLyricAnalyzer v-model:song="song" @hover-word="hoverWord"/>
             </div>
-            <div class="words">{{ song.wordBank.join(', ') }} | {{ song.paragraphs.join(', ') }}</div>
+            <div class="words">
+                <WordBank v-model:song="song" :hovered-word="hoveredWord" />
+            </div>
+            
         </div>
 
 
