@@ -3,6 +3,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 import * as StorageTypes from '@/types/storage_types';
+import type { TimelineDocument, SceneDocumentBase } from '@/types/timeline_types';
 
 declare global {
     interface Window {
@@ -20,6 +21,16 @@ declare global {
                 uploadCover: (songId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<any>;
                 uploadAudio: (songId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<any>;
             };
+            timeline: {
+                createOrLoad: (songId: string) => Promise<TimelineDocument>;
+                save: (songId: string, timeline: TimelineDocument) => Promise<TimelineDocument>;
+                listScenes: (songId: string) => Promise<string[]>;
+                saveScene: (songId: string, scene: SceneDocumentBase) => Promise<SceneDocumentBase>;
+                loadScene: (songId: string, sceneId: string) => Promise<SceneDocumentBase | null>;
+            },
+            fonts: {
+                list: () => Promise<{ familyGuess: string; filePath: string; fileName: string; }[]>;
+            }
         };
     }
 }
@@ -37,6 +48,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         list: () => ipcRenderer.invoke('songs:list'),
         uploadCover: (songId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('songs:uploadCover', songId, fileData, originalFileName),
         uploadAudio: (songId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('songs:uploadAudio', songId, fileData, originalFileName),
+    },
+    timeline: {
+        createOrLoad: (songId: string) => ipcRenderer.invoke('timeline:createOrLoad', songId),
+        save: (songId: string, timeline: TimelineDocument) => ipcRenderer.invoke('timeline:save', songId, timeline),
+        listScenes: (songId: string) => ipcRenderer.invoke('timeline:listScenes', songId),
+        saveScene: (songId: string, scene: SceneDocumentBase) => ipcRenderer.invoke('timeline:saveScene', songId, scene),
+        loadScene: (songId: string, sceneId: string) => ipcRenderer.invoke('timeline:loadScene', songId, sceneId),
+    },
+    fonts: {
+        list: () => ipcRenderer.invoke('fonts:list'),
     },
 
     // Event methods
