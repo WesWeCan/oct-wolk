@@ -5,6 +5,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import TipTapLyricAnalyzer from '../components/TipTapLyricAnalyzer.vue';
 import { Song } from '@/types/song_types';
 import WordBank from '../components/WordBank.vue';
+import SongData from '../components/SongData.vue';
 import { SongService } from '@/front-end/services/SongService';
 
 
@@ -127,16 +128,7 @@ onBeforeUnmount(() => {
             <button @click="redo" :disabled="!song">Redo</button>
         </div>
 
-        <div class="song-data" v-if="song">
-            <div class="form-group">
-                <label for="song-title">Song Title</label>
-                <input type="text" id="song-title" v-model="song!.title" :disabled="!song">
-            </div>
-            <div class="form-group">
-                <label for="song-subtitle">Song Subtitle</label>
-                <input type="text" id="song-subtitle" v-model="song!.subtitle" :disabled="!song">
-            </div>
-        </div>
+        <SongData v-if="song" v-model:song="song!" />
 
 
         <div class="analyzer" v-if="song">

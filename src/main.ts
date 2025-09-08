@@ -1,7 +1,7 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, systemPreferences, protocol, net } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
-import { initStorage } from './back-end/internal-processes/internal-storage';
+import { getInternalStoragePath, initStorage } from './back-end/internal-processes/internal-storage';
 import { registerInternalProcesses } from './back-end/internal-processes/internal-processes';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -35,10 +35,55 @@ const createWindow = () => {
 
 };
 
+const askPermissions = async () => {
+  systemPreferences.askForMediaAccess('microphone').then(result => {
+    console.log('askForMediaAccess', result);
+  });
+
+  systemPreferences.askForMediaAccess('camera').then(result => {
+    console.log('askForMediaAccess', result);
+  });
+
+  
+}
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'wolk',
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      bypassCSP: true,
+      stream: true,
+    }
+  }
+]) 
+
+const setProtocols = async () => {
+
+  protocol.handle('wolk', async (request) => {
+    const fileName = decodeURIComponent(request.url.slice('wolk://'.length));
+      // Map wolk://songs/... to the internal docStorage songs folder
+      const songsRoot = path.join(getInternalStoragePath(), 'docStorage', 'songs');
+      const fullPath = path.join(songsRoot, fileName);
+    return net.fetch('file://' + encodeURI(fullPath));
+  })
+
+}
+
+
+
+
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+
+  askPermissions();
+  setProtocols();
 
   await initStorage();
   await registerInternalProcesses();

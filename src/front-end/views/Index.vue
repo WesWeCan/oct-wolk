@@ -35,6 +35,7 @@ onMounted(() => {
     <span>Developed by:</span>
     <span>Context Undefined</span>
     <span>Cablai & RBJAN</span>
+    <span>VJ BIKKEL</span>
 
     <span>Part of the Open Culture Tech 2.0 project by Thunderboom Records</span>
    </footer>

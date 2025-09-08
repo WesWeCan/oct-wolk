@@ -94,4 +94,78 @@ export const saveSong = (song: Song): Song => {
     return toSave;
 };
 
+const getSongAssetPath = (songId: string, baseName: 'cover' | 'audio', originalFileName: string): string => {
+    const ext = (path.extname(originalFileName) || '').toLowerCase();
+    const fileName = `${baseName}${ext}`;
+    return path.join(getSongDir(songId), fileName);
+};
+
+const deleteIfExists = (filePath: string) => {
+    try {
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+    } catch {
+        // ignore
+    }
+};
+
+export const saveSongCover = (songId: string, fileData: ArrayBuffer, originalFileName: string): Song => {
+    const dir = getSongDir(songId);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const existing = loadSong(songId);
+    if (!existing) {
+        throw new Error('Song not found');
+    }
+
+    // remove previous cover if extension differs
+    if (existing.imageSrc) {
+        try {
+            const prevFile = existing.imageSrc.replace(`wolk://${songId}/`, '');
+            if (prevFile) deleteIfExists(path.join(dir, prevFile));
+        } catch {}
+    }
+
+    const targetPath = getSongAssetPath(songId, 'cover', originalFileName);
+    const buffer = Buffer.from(fileData);
+    fs.writeFileSync(targetPath, buffer);
+
+    const updated: Song = saveSong({
+        ...existing,
+        imageSrc: `wolk://${songId}/${path.basename(targetPath)}`,
+    } as Song);
+
+    return updated;
+};
+
+export const saveSongAudio = (songId: string, fileData: ArrayBuffer, originalFileName: string): Song => {
+    const dir = getSongDir(songId);
+    fs.mkdirSync(dir, { recursive: true });
+
+    const existing = loadSong(songId);
+    if (!existing) {
+        throw new Error('Song not found');
+    }
+
+    // remove previous audio if extension differs
+    if (existing.audioSrc) {
+        try {
+            const prevFile = existing.audioSrc.replace(`wolk://${songId}/`, '');
+            if (prevFile) deleteIfExists(path.join(dir, prevFile));
+        } catch {}
+    }
+
+    const targetPath = getSongAssetPath(songId, 'audio', originalFileName);
+    const buffer = Buffer.from(fileData);
+    fs.writeFileSync(targetPath, buffer);
+
+    const updated: Song = saveSong({
+        ...existing,
+        audioSrc: `wolk://${songId}/${path.basename(targetPath)}`,
+    } as Song);
+
+    return updated;
+};
+
 

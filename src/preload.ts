@@ -17,6 +17,8 @@ declare global {
                 save: (song: any) => Promise<any>;
                 load: (songId: string) => Promise<any>;
                 list: () => Promise<any[]>;
+                uploadCover: (songId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<any>;
+                uploadAudio: (songId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<any>;
             };
         };
     }
@@ -33,6 +35,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         save: (song: any) => ipcRenderer.invoke('songs:save', song),
         load: (songId: string) => ipcRenderer.invoke('songs:load', songId),
         list: () => ipcRenderer.invoke('songs:list'),
+        uploadCover: (songId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('songs:uploadCover', songId, fileData, originalFileName),
+        uploadAudio: (songId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('songs:uploadAudio', songId, fileData, originalFileName),
     },
 
     // Event methods

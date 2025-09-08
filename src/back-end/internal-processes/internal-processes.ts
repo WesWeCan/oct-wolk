@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 
 import { getInternalStoragePath } from './internal-storage';
-import { createSong, loadSong, saveSong, listSongs } from './song-storage';
+import { createSong, loadSong, saveSong, listSongs, saveSongCover, saveSongAudio } from './song-storage';
 
 
 
@@ -32,6 +32,14 @@ export const registerInternalProcesses = async () => {
     });
     ipcMain.handle('songs:list', () => {
         return listSongs();
+    });
+
+    // Uploads
+    ipcMain.handle('songs:uploadCover', (_event, songId: string, fileData: ArrayBuffer, originalFileName: string) => {
+        return saveSongCover(songId, fileData, originalFileName);
+    });
+    ipcMain.handle('songs:uploadAudio', (_event, songId: string, fileData: ArrayBuffer, originalFileName: string) => {
+        return saveSongAudio(songId, fileData, originalFileName);
     });
 
 }
