@@ -12,6 +12,7 @@ export interface RenderFrameMessage {
     frame: number;
     dt: number;
     beat?: number; // 0..1 energy/envelope to drive pulsing
+    globalAlpha?: number; // 0..1 project-wide opacity
 }
 
 export interface RenderDisposeMessage {
@@ -23,6 +24,7 @@ export interface RenderConfigureMessage {
     seed: string;
     words: string[];
     sceneType: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord';
+    fontFamilyChain?: string;
 }
 
 type WorkerMessage = RenderInitMessage | RenderFrameMessage | RenderDisposeMessage | RenderConfigureMessage;
@@ -34,6 +36,7 @@ let sceneType: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' = 'wo
 let words: string[] = [];
 let canvasWidth = 0;
 let canvasHeight = 0;
+let fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
 
 // Scene dispatch
 import { WordCloudScene } from './scenes/WordCloudScene';
@@ -111,7 +114,12 @@ const handleFrame = (msg: RenderFrameMessage) => {
     }
     const beat = typeof msg.beat === 'number' ? Math.max(0, Math.min(1, msg.beat)) : 0;
     if (sceneInstance) {
+        const prevAlpha = ctx2d.globalAlpha;
+        if (typeof msg.globalAlpha === 'number') {
+            ctx2d.globalAlpha = Math.min(1, Math.max(0, msg.globalAlpha));
+        }
         sceneInstance.render(frame, beat);
+        ctx2d.globalAlpha = prevAlpha;
     } else {
         ctx2d.fillStyle = '#0ff';
         ctx2d.font = '24px sans-serif';
@@ -139,6 +147,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
             configured = true;
             words = Array.isArray(msg.words) ? msg.words.slice(0, 500) : [];
             sceneType = msg.sceneType;
+            fontFamilyChain = String(msg.fontFamilyChain || 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif');
             // Seed RNG
             let seedInt = 1;
             try {
@@ -150,11 +159,11 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
             if (ctx2d) {
                 if (sceneType === 'wordcloud') {
                     const sc = new WordCloudScene(ctx2d, String(msg.seed || 'seed'));
-                    sc.configure({ seed: String(msg.seed || 'seed'), words, width: canvasWidth, height: canvasHeight });
+                    sc.configure({ seed: String(msg.seed || 'seed'), words, width: canvasWidth, height: canvasHeight, fontFamilyChain });
                     sceneInstance = sc as SceneInstance;
                 } else if (sceneType === 'singleWord') {
                     const sc = new SingleWordScene(ctx2d, String(msg.seed || 'seed'));
-                    sc.configure({ seed: String(msg.seed || 'seed'), words, width: canvasWidth, height: canvasHeight });
+                    sc.configure({ seed: String(msg.seed || 'seed'), words, width: canvasWidth, height: canvasHeight, fontFamilyChain });
                     sceneInstance = sc as SceneInstance;
                 }
             }

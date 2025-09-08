@@ -2,6 +2,7 @@
 import { onMounted, ref, watch, computed, onUnmounted } from 'vue';
 
 interface ScrubEvent { timeSec: number; frame: number; }
+interface Kf { frame: number; value: number; interpolation?: 'step' | 'linear'; }
 
 const props = defineProps<{
     waveform: number[];
@@ -10,8 +11,12 @@ const props = defineProps<{
     durationSec?: number;
     beats?: number[];
     spectrum?: number[];
+    keyframes?: Kf[];
+    kfValueMin?: number;
+    kfValueMax?: number;
+    selectedKfIndex?: number | null;
 }>();
-const emit = defineEmits<{ (e: 'scrub', payload: ScrubEvent): void }>();
+const emit = defineEmits<{ (e: 'scrub', payload: ScrubEvent): void; (e: 'kfAdd', payload: { frame: number; value: number }): void; (e: 'kfUpdate', payload: { index: number; frame: number; value: number }): void; (e: 'kfSelect', payload: { index: number | null }): void; (e: 'kfDelete', payload: { index: number }): void }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 
@@ -57,6 +62,11 @@ const draw = () => {
     ctx.fillStyle = '#181818';
     ctx.fillRect(0,0,w,h);
 
+    // Keyframe lane layout (top)
+    const kfLaneH = 80;
+    const wfTop = kfLaneH;
+    const wfHeight = Math.max(1, h - kfLaneH);
+
     // Minor time grid
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
     ctx.lineWidth = 1;
@@ -68,6 +78,42 @@ const draw = () => {
         ctx.moveTo(gx, 0);
         ctx.lineTo(gx, h);
         ctx.stroke();
+    }
+
+    // Keyframe grid and points
+    {
+        // Lane background
+        ctx.fillStyle = '#202020';
+        ctx.fillRect(0, 0, w, kfLaneH);
+        // Draw keyframes
+        const kfMin = Number.isFinite(props.kfValueMin) ? Number(props.kfValueMin) : 0;
+        const kfMax = Number.isFinite(props.kfValueMax) ? Number(props.kfValueMax) : 1;
+        const norm01 = (v: number) => Math.min(1, Math.max(0, (v - kfMin) / Math.max(1e-9, (kfMax - kfMin))));
+        const keyframes = Array.isArray(props.keyframes) ? props.keyframes : [];
+        const toXY = (kf: Kf) => {
+            const tSec = kf.frame / Math.max(1, props.fps);
+            const x = timeToX(tSec, w);
+            const y = Math.round((1 - norm01(kf.value)) * (kfLaneH - 10)) + 5;
+            return { x, y };
+        };
+        if (keyframes.length) {
+            ctx.strokeStyle = 'rgba(0, 230, 118, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let i = 0; i < keyframes.length; i++) {
+                const p = toXY(keyframes[i]);
+                if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+            for (let i = 0; i < keyframes.length; i++) {
+                const p = toXY(keyframes[i]);
+                const selected = (i === (props.selectedKfIndex ?? -1));
+                ctx.fillStyle = selected ? '#ff3b30' : '#00e676';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, selected ? 5 : 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
     }
 
     // waveform (subset for current view)
@@ -86,8 +132,8 @@ const draw = () => {
             const max = data[idx] ?? 0;
             const min = (data[idx + 1] ?? -max);
             const x = i * stepX;
-            const yMax = h * (0.5 - max * 0.4);
-            const yMin = h * (0.5 - min * 0.4);
+            const yMax = wfTop + wfHeight * (0.5 - max * 0.4);
+            const yMin = wfTop + wfHeight * (0.5 - min * 0.4);
             ctx.moveTo(x, yMax);
             ctx.lineTo(x, yMin);
         }
@@ -101,9 +147,9 @@ const draw = () => {
         const maxVal = props.spectrum.reduce((a, b) => Math.max(a, b), 1e-6);
         for (let i = 0; i < bars; i++) {
             const v = props.spectrum[i] / maxVal; // 0..1
-            const bh = Math.max(1, Math.floor(v * (h * 0.25)));
+            const bh = Math.max(1, Math.floor(v * (wfHeight * 0.25)));
             const x = i * barW;
-            const y = h - bh;
+            const y = wfTop + wfHeight - bh;
             ctx.fillStyle = 'rgba(255,255,255,0.25)';
             ctx.fillRect(x, y, Math.max(1, barW - 1), bh);
         }
@@ -146,6 +192,8 @@ const requestDraw = () => {
 let isPointerDown = false;
 let isPanning = false;
 let isScrubbing = false;
+let isEditingKf = false;
+let draggingKfIndex: number | null = null;
 let startX = 0;
 let startViewStart = 0;
 
@@ -156,13 +204,46 @@ const onPointerDown = (e: PointerEvent) => {
     isPointerDown = true;
     startX = e.clientX;
     startViewStart = viewStartSec.value;
+    const rect = canvas.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    const localY = e.clientY - rect.top;
+    const kfLaneH = 80;
+    if (localY <= kfLaneH && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        isEditingKf = true;
+        isPanning = false;
+        isScrubbing = false;
+        const kfMin = Number.isFinite(props.kfValueMin) ? Number(props.kfValueMin) : 0;
+        const kfMax = Number.isFinite(props.kfValueMax) ? Number(props.kfValueMax) : 1;
+        const keyframes = Array.isArray(props.keyframes) ? props.keyframes : [];
+        const fps = Math.max(1, props.fps);
+        const frameAtX = Math.floor(xToTime(localX, canvas.clientWidth) * fps);
+        const radius = 8;
+        let hit: number | null = null;
+        for (let i = 0; i < keyframes.length; i++) {
+            const k = keyframes[i];
+            const x = timeToX(k.frame / fps, canvas.clientWidth);
+            const vNorm = Math.min(1, Math.max(0, (k.value - kfMin) / Math.max(1e-9, (kfMax - kfMin))));
+            const y = Math.round((1 - vNorm) * (kfLaneH - 10)) + 5;
+            const dx = Math.abs(x - localX);
+            const dy = Math.abs(y - localY);
+            if (dx * dx + dy * dy <= radius * radius) { hit = i; break; }
+        }
+        if (hit != null) {
+            draggingKfIndex = hit;
+            emit('kfSelect', { index: hit });
+        } else {
+            const vNorm = 1 - Math.min(1, Math.max(0, (localY - 5) / (kfLaneH - 10)));
+            const value = kfMin + vNorm * (kfMax - kfMin);
+            emit('kfAdd', { frame: Math.max(0, frameAtX), value });
+        }
+        return;
+    }
     // Hold Space/Ctrl/Meta or non-left button to pan; otherwise scrub
+    isEditingKf = false;
     isPanning = e.button !== 0 || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
     isScrubbing = !isPanning;
     if (isScrubbing) {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const t = xToTime(x, canvas.clientWidth);
+        const t = xToTime(localX, canvas.clientWidth);
         const clamped = Math.max(0, Math.min(duration.value, t));
         emit('scrub', { timeSec: clamped, frame: Math.floor(clamped * props.fps) });
     }
@@ -172,7 +253,22 @@ const onPointerMove = (e: PointerEvent) => {
     if (!isPointerDown) return;
     const canvas = canvasRef.value;
     if (!canvas) return;
-    if (isPanning) {
+    if (isEditingKf) {
+        const rect = canvas.getBoundingClientRect();
+        const localX = e.clientX - rect.left;
+        const localY = e.clientY - rect.top;
+        const kfLaneH = 80;
+        const fps = Math.max(1, props.fps);
+        const frameAtX = Math.max(0, Math.floor(xToTime(localX, canvas.clientWidth) * fps));
+        const kfMin = Number.isFinite(props.kfValueMin) ? Number(props.kfValueMin) : 0;
+        const kfMax = Number.isFinite(props.kfValueMax) ? Number(props.kfValueMax) : 1;
+        const vNorm = 1 - Math.min(1, Math.max(0, (localY - 5) / (kfLaneH - 10)));
+        const value = kfMin + vNorm * (kfMax - kfMin);
+        if (draggingKfIndex != null) {
+            emit('kfUpdate', { index: draggingKfIndex, frame: frameAtX, value });
+        }
+        requestDraw();
+    } else if (isPanning) {
         const dx = e.clientX - startX;
         const secPerPx = viewDurationSec.value / Math.max(1, canvas.clientWidth);
         viewStartSec.value = startViewStart - dx * secPerPx;
@@ -192,6 +288,8 @@ const endPointer = (e: PointerEvent) => {
     isPointerDown = false;
     isPanning = false;
     isScrubbing = false;
+    isEditingKf = false;
+    draggingKfIndex = null;
     const canvas = canvasRef.value;
     if (canvas) {
         try { canvas.releasePointerCapture(e.pointerId); } catch {}
@@ -237,6 +335,11 @@ onMounted(() => {
         el.addEventListener('pointerup', endPointer);
         el.addEventListener('pointercancel', endPointer);
         el.addEventListener('wheel', onWheel, { passive: false });
+        el.addEventListener('keydown', (e: KeyboardEvent) => {
+            if ((e.key === 'Backspace' || e.key === 'Delete') && typeof props.selectedKfIndex === 'number' && props.selectedKfIndex >= 0) {
+                emit('kfDelete', { index: props.selectedKfIndex });
+            }
+        });
     }
     // Redraw on resize
     try {
@@ -261,7 +364,7 @@ onUnmounted(() => {
 });
 
 // Redraw on prop changes or view changes
-watch(() => [props.waveform, props.currentFrame, props.fps, props.durationSec, props.beats, props.spectrum], () => requestDraw());
+watch(() => [props.waveform, props.currentFrame, props.fps, props.durationSec, props.beats, props.spectrum, props.keyframes, props.selectedKfIndex, props.kfValueMin, props.kfValueMax], () => requestDraw());
 watch([viewStartSec, viewDurationSec], () => requestDraw());
 
 // Auto-follow playhead when it nears the right edge (>80% of viewport)
@@ -300,7 +403,7 @@ function niceGridSeconds(windowSec: number, widthPx: number): number {
 
 <template>
     <div style="width:100%; height:100%">
-        <canvas ref="canvasRef" style="width:100%; height:100%; touch-action: none"></canvas>
+        <canvas ref="canvasRef" style="width:100%; height:100%; touch-action: none" tabindex="0"></canvas>
     </div>
     
 </template>

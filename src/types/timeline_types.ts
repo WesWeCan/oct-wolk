@@ -4,6 +4,8 @@ export interface ProjectSettings {
     renderWidth: number;
     renderHeight: number;
     seed: string;
+    fontFamily?: string;
+    fontFallbacks?: string[];
 }
 
 export type SceneType = 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord';
@@ -21,6 +23,7 @@ export interface SceneRef {
 export interface TimelineDocument {
     settings: ProjectSettings;
     scenes: SceneRef[];
+    globalOpacityTrack?: PropertyTrack<number>;
 }
 
 export type InterpolationType = 'step' | 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | {
@@ -55,6 +58,8 @@ export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
     renderWidth: 1920,
     renderHeight: 1080,
     seed: 'wolk-default',
+    fontFamily: 'system-ui',
+    fontFallbacks: ['-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
 };
 
 

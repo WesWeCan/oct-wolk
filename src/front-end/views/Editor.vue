@@ -31,6 +31,8 @@ const aspectRatio = computed(() => `${targetWidth.value} / ${targetHeight.value}
 // Scene selection
 const selectedSceneId = ref<string | null>(null);
 const selectedScene = computed(() => (timeline.value?.scenes || []).find(s => s.id === selectedSceneId.value) || null);
+// Keyframe selection state (global opacity track)
+const selectedKfIndex = ref<number | null>(null);
 
 // Audio state
 let audioEl: HTMLAudioElement | null = null;
@@ -85,8 +87,28 @@ const tick = (now: number) => {
     } else {
         frame.value += Math.max(1, Math.round(dt * fps.value));
     }
-    // Send simple beat envelope (RMS over a sliding window)
-    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat: beatEnvelope.value });
+    // Evaluate global opacity keyframe track (0..1)
+    const evalGlobalOpacity = (): number => {
+        const track = timeline.value?.globalOpacityTrack?.keyframes || [];
+        if (!track.length) return 1;
+        const f = frame.value;
+        let a = track[0];
+        let b = track[track.length - 1];
+        for (let i = 0; i < track.length; i++) {
+            if (track[i].frame <= f) a = track[i];
+            if (track[i].frame >= f) { b = track[i]; break; }
+        }
+        if (a.frame === b.frame) return Math.min(1, Math.max(0, Number(a.value)));
+        // Respect step interpolation on segment starting at a
+        const interp = (a as any).interpolation;
+        if (interp === 'step') return Math.min(1, Math.max(0, Number(a.value)));
+        const t = (f - a.frame) / Math.max(1, (b.frame - a.frame));
+        const v = (1 - t) * Number(a.value) + t * Number(b.value);
+        return Math.min(1, Math.max(0, v));
+    };
+    const globalAlpha = evalGlobalOpacity();
+    // Send frame state
+    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat: beatEnvelope.value, globalAlpha });
     requestAnimationFrame(tick);
 };
 
@@ -252,7 +274,13 @@ const configureWorkerScene = () => {
     const seed = String(timeline.value?.settings.seed || 'seed');
     const words = Array.isArray(song.value?.wordBank) ? (song.value!.wordBank!.map(w => String(w))) : [];
     const sceneType = (selectedScene.value?.type || 'wordcloud') as any;
-    const payload = { type: 'configure', seed, words, sceneType } as any;
+    // Build font-family chain from settings
+    const primary = String(timeline.value?.settings.fontFamily || 'system-ui');
+    const fallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value!.settings.fontFallbacks as string[]) : [];
+    const names = [primary, ...fallbacks].filter(Boolean);
+    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
+    const fontFamilyChain = names.map(quote).join(', ');
+    const payload = { type: 'configure', seed, words, sceneType, fontFamilyChain } as any;
     // Deep-clone to strip Vue proxies before structured clone
     const cloned = JSON.parse(JSON.stringify(payload));
     workerRef.value?.postMessage(cloned);
@@ -331,7 +359,32 @@ const onScrub = (payload: { timeSec: number; frame: number }) => {
                 :duration-sec="(audioEl?.duration || 0) || undefined" 
                 :beats="beatTimesSec || undefined"
                 :spectrum="spectrum || undefined"
+                :keyframes="(timeline?.globalOpacityTrack?.keyframes || []) as any"
+                :selected-kf-index="selectedKfIndex"
                 @scrub="(p: any) => onScrub(p)"
+                @kfAdd="({ frame, value }) => {
+                    const t = timeline?.globalOpacityTrack?.keyframes ? [...timeline!.globalOpacityTrack!.keyframes] : [];
+                    t.push({ frame, value, interpolation: 'linear' } as any);
+                    t.sort((a:any,b:any) => a.frame - b.frame);
+                    const updated = { ...(timeline as any), globalOpacityTrack: { propertyPath: 'global.opacity', keyframes: t } } as TimelineDocument;
+                    onTimelineUpdated(updated);
+                    selectedKfIndex = t.findIndex((k:any) => k.frame === frame && k.value === value);
+                }"
+                @kfUpdate="({ index, frame, value }) => {
+                    const t = timeline?.globalOpacityTrack?.keyframes ? [...timeline!.globalOpacityTrack!.keyframes] : [];
+                    if (index >= 0 && index < t.length) { t[index] = { ...t[index], frame, value } as any; t.sort((a:any,b:any) => a.frame - b.frame); }
+                    const updated = { ...(timeline as any), globalOpacityTrack: { propertyPath: 'global.opacity', keyframes: t } } as TimelineDocument;
+                    onTimelineUpdated(updated);
+                    selectedKfIndex = Math.min(index, t.length - 1);
+                }"
+                @kfSelect="({ index }) => { selectedKfIndex = (index ?? null); }"
+                @kfDelete="({ index }) => {
+                    const t = timeline?.globalOpacityTrack?.keyframes ? [...timeline!.globalOpacityTrack!.keyframes] : [];
+                    if (index >= 0 && index < t.length) { t.splice(index, 1); }
+                    const updated = { ...(timeline as any), globalOpacityTrack: { propertyPath: 'global.opacity', keyframes: t } } as TimelineDocument;
+                    onTimelineUpdated(updated);
+                    selectedKfIndex = null;
+                }"
             />
         </div>
     </div>

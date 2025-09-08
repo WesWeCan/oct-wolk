@@ -3,6 +3,7 @@ export interface SingleWordConfig {
     words: string[];
     width: number;
     height: number;
+    fontFamilyChain?: string;
 }
 
 export class SingleWordScene {
@@ -13,6 +14,7 @@ export class SingleWordScene {
     private height = 0;
     private currentIndex = 0;
     private lastBeat = 0;
+    private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
 
     constructor(ctx: OffscreenCanvasRenderingContext2D, seed: string) {
         this.ctx = ctx;
@@ -26,6 +28,7 @@ export class SingleWordScene {
         this.height = config.height;
         this.currentIndex = Math.floor(this.rng() * this.words.length);
         this.lastBeat = 0;
+        this.fontFamilyChain = config.fontFamilyChain || 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
     }
 
     render(frame: number, beat: number) {
@@ -47,7 +50,7 @@ export class SingleWordScene {
         const size = base * (0.8 + 0.4 * beat);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = `${size}px sans-serif`;
+        ctx.font = `${size}px ${this.fontFamilyChain}`;
         ctx.fillStyle = '#fff';
         ctx.fillText(text, w / 2, h / 2);
     }

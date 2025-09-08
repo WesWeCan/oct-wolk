@@ -3,6 +3,7 @@ export interface SceneConfig {
     words: string[];
     width: number;
     height: number;
+    fontFamilyChain?: string;
 }
 
 export class WordCloudScene {
@@ -10,6 +11,7 @@ export class WordCloudScene {
     private rng: () => number;
     private layout: { text: string; x: number; y: number; size: number; hue: number; w: number; h: number }[] = [];
     private configured = false;
+    private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
 
     constructor(ctx: OffscreenCanvasRenderingContext2D, seed: string) {
         this.ctx = ctx;
@@ -17,6 +19,7 @@ export class WordCloudScene {
     }
 
     configure(config: SceneConfig) {
+        this.fontFamilyChain = config.fontFamilyChain || 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
         this.layout = this.computeLayout(config);
         this.configured = true;
     }
@@ -30,7 +33,7 @@ export class WordCloudScene {
         for (const w of this.layout) {
             const pulse = 0.9 + 0.3 * beat;
             const size = w.size * pulse;
-            ctx.font = `${size}px sans-serif`;
+            ctx.font = `${size}px ${this.fontFamilyChain}`;
             ctx.fillStyle = `hsl(${w.hue}, 80%, 60%)`;
             ctx.fillText(w.text, w.x, w.y);
         }
@@ -54,7 +57,7 @@ export class WordCloudScene {
             let attempt = 0;
             while (attempt < 200) {
                 const size = baseSize * (0.7 + this.rng() * 0.6);
-                ctx.font = `${size}px sans-serif`;
+                ctx.font = `${size}px ${this.fontFamilyChain}`;
                 const metrics = ctx.measureText(text);
                 const w = Math.ceil(metrics.width);
                 const h = Math.ceil(size);
