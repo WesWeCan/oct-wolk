@@ -59,6 +59,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fonts: {
         list: () => ipcRenderer.invoke('fonts:list'),
     },
+    export: {
+        saveWebM: (songId: string, fileData: ArrayBuffer, suggestedName: string) => ipcRenderer.invoke('export:saveWebM', songId, fileData, suggestedName),
+        ffmpegAvailable: () => ipcRenderer.invoke('export:ffmpegAvailable'),
+        encodeMp4FromWebM: (inputWebMPath: string, outputMp4Path: string) => ipcRenderer.invoke('export:encodeMp4FromWebM', inputWebMPath, outputMp4Path),
+        copyFontsForExport: (songId: string, fontFiles: string[]) => ipcRenderer.invoke('export:copyFonts', songId, fontFiles),
+        packageWolk: (songId: string, outputName: string) => ipcRenderer.invoke('export:packageWolk', songId, outputName),
+    },
 
     // Event methods
     on(channel: string, callback: (...args: any[]) => void) {

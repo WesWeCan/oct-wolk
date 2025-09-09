@@ -9,7 +9,8 @@
     height: calc(100vh - 48px);
 }
 
-.editor__toolbar { grid-area: toolbar; padding: 8px 12px; border-bottom: 1px solid #222; display: flex; gap: 8px; }
+.editor__toolbar { grid-area: toolbar; padding: 8px 12px; border-bottom: 1px solid #222; display: flex; gap: 8px; align-items: center; }
+.toolbar__notice { margin-left: 12px; padding: 4px 8px; border-radius: 4px; background: #442; color: #ffd8a8; font-size: 12px; }
 .editor__sidebar { grid-area: sidebar; border-right: 1px solid #222; overflow: auto; padding: 12px; }
 .editor__preview { grid-area: preview; display: grid; place-items: center; background: #111; overflow: hidden; }
 .editor__inspector { grid-area: inspector; border-left: 1px solid #222; overflow: auto; padding: 12px; }

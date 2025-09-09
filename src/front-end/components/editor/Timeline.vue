@@ -19,6 +19,7 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'scrub', payload: ScrubEvent): void; (e: 'kfAdd', payload: { frame: number; value: number }): void; (e: 'kfUpdate', payload: { index: number; frame: number; value: number }): void; (e: 'kfSelect', payload: { index: number | null }): void; (e: 'kfDelete', payload: { index: number }): void }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
+const opacityCollapsed = ref(false);
 
 const duration = computed(() => Math.max(1, props.durationSec || 60));
 
@@ -62,10 +63,17 @@ const draw = () => {
     ctx.fillStyle = '#181818';
     ctx.fillRect(0,0,w,h);
 
-    // Keyframe lane layout (top)
-    const kfLaneH = 80;
-    const wfTop = kfLaneH;
-    const wfHeight = Math.max(1, h - kfLaneH);
+    // Lanes layout
+    const headerH = 24;
+    const kfBodyH = opacityCollapsed.value ? 0 : 56;
+    const kfLaneH = headerH + kfBodyH;
+    // Introduce a global lane state holder on window to persist between draws without prop/state churn here
+    // @ts-ignore
+    const audioLaneState: 'expanded' | 'compact' | 'collapsed' = (window.__audioLaneState || 'expanded');
+    const audioHeaderTop = kfLaneH;
+    const audioBodyH = (audioLaneState === 'collapsed') ? 0 : (audioLaneState === 'compact' ? 80 : Math.max(80, h - (kfLaneH + headerH)));
+    const wfTop = audioHeaderTop + headerH;
+    const wfHeight = audioBodyH;
 
     // Minor time grid
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
@@ -80,11 +88,22 @@ const draw = () => {
         ctx.stroke();
     }
 
-    // Keyframe grid and points
-    {
+    // Opacity lane header
+    ctx.fillStyle = '#202020';
+    ctx.fillRect(0, 0, w, headerH);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Opacity', 8, headerH / 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.moveTo(0, headerH + 0.5); ctx.lineTo(w, headerH + 0.5); ctx.stroke();
+
+    // Keyframe grid and points (body)
+    if (kfBodyH > 0) {
         // Lane background
         ctx.fillStyle = '#202020';
-        ctx.fillRect(0, 0, w, kfLaneH);
+        ctx.fillRect(0, headerH, w, kfBodyH);
         // Draw keyframes
         const kfMin = Number.isFinite(props.kfValueMin) ? Number(props.kfValueMin) : 0;
         const kfMax = Number.isFinite(props.kfValueMax) ? Number(props.kfValueMax) : 1;
@@ -93,7 +112,7 @@ const draw = () => {
         const toXY = (kf: Kf) => {
             const tSec = kf.frame / Math.max(1, props.fps);
             const x = timeToX(tSec, w);
-            const y = Math.round((1 - norm01(kf.value)) * (kfLaneH - 10)) + 5;
+            const y = headerH + Math.round((1 - norm01(kf.value)) * (kfBodyH - 10)) + 5;
             return { x, y };
         };
         if (keyframes.length) {
@@ -115,6 +134,17 @@ const draw = () => {
             }
         }
     }
+
+    // Audio lane header
+    ctx.fillStyle = '#202020';
+    ctx.fillRect(0, audioHeaderTop, w, headerH);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Audio', 8, audioHeaderTop + headerH / 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.moveTo(0, audioHeaderTop + headerH + 0.5); ctx.lineTo(w, audioHeaderTop + headerH + 0.5); ctx.stroke();
 
     // waveform (subset for current view)
     const data = props.waveform || [];
@@ -141,7 +171,7 @@ const draw = () => {
     }
 
     // spectrum overlay (bottom)
-    if (Array.isArray(props.spectrum) && props.spectrum.length) {
+    if (wfHeight > 0 && Array.isArray(props.spectrum) && props.spectrum.length) {
         const bars = Math.min(96, props.spectrum.length);
         const barW = Math.max(1, Math.floor(w / bars));
         const maxVal = props.spectrum.reduce((a, b) => Math.max(a, b), 1e-6);
@@ -157,14 +187,14 @@ const draw = () => {
 
     // beat markers (in-view)
     const beats = props.beats || [];
-    if (beats.length) {
+    if (wfHeight > 0 && beats.length) {
         ctx.strokeStyle = 'rgba(255,255,255,0.3)';
         for (const t of beats) {
             if (t < viewStartSec.value || t > viewStartSec.value + viewDurationSec.value) continue;
             const x = timeToX(t, w);
             ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, h);
+            ctx.moveTo(x, wfTop);
+            ctx.lineTo(x, wfTop + wfHeight);
             ctx.stroke();
         }
     }
@@ -207,7 +237,23 @@ const onPointerDown = (e: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
     const localX = e.clientX - rect.left;
     const localY = e.clientY - rect.top;
-    const kfLaneH = 80;
+    const headerH = 24;
+    const kfBodyH = opacityCollapsed.value ? 0 : 56;
+    const kfLaneH = headerH + kfBodyH;
+    const audioHeaderTop = kfLaneH;
+    // Toggle collapse/compact via clicking header label region
+    if (localX < 120) {
+        if (localY >= 0 && localY <= headerH) {
+            opacityCollapsed.value = !opacityCollapsed.value; requestDraw(); return;
+        }
+        if (localY >= audioHeaderTop && localY <= audioHeaderTop + headerH) {
+            // @ts-ignore
+            const current = window.__audioLaneState || 'expanded';
+            // @ts-ignore
+            window.__audioLaneState = (current === 'expanded') ? 'compact' : (current === 'compact' ? 'collapsed' : 'expanded');
+            requestDraw(); return;
+        }
+    }
     if (localY <= kfLaneH && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         isEditingKf = true;
         isPanning = false;
@@ -257,12 +303,14 @@ const onPointerMove = (e: PointerEvent) => {
         const rect = canvas.getBoundingClientRect();
         const localX = e.clientX - rect.left;
         const localY = e.clientY - rect.top;
-        const kfLaneH = 80;
+        const headerH = 24;
+        const kfBodyH = opacityCollapsed.value ? 0 : 56;
+        const kfLaneH = headerH + kfBodyH;
         const fps = Math.max(1, props.fps);
         const frameAtX = Math.max(0, Math.floor(xToTime(localX, canvas.clientWidth) * fps));
         const kfMin = Number.isFinite(props.kfValueMin) ? Number(props.kfValueMin) : 0;
         const kfMax = Number.isFinite(props.kfValueMax) ? Number(props.kfValueMax) : 1;
-        const vNorm = 1 - Math.min(1, Math.max(0, (localY - 5) / (kfLaneH - 10)));
+        const vNorm = 1 - Math.min(1, Math.max(0, (localY - headerH - 5) / Math.max(1, (kfLaneH - headerH - 10))));
         const value = kfMin + vNorm * (kfMax - kfMin);
         if (draggingKfIndex != null) {
             emit('kfUpdate', { index: draggingKfIndex, frame: frameAtX, value });

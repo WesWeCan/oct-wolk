@@ -19,10 +19,26 @@ const playing = ref(false);
 const frame = ref(0);
 const fps = ref(60);
 
+const renderCanvas = ref<HTMLCanvasElement | null>(null);
 const previewCanvas = ref<HTMLCanvasElement | null>(null);
 const previewOverlay = ref<HTMLCanvasElement | null>(null);
 const workerRef = shallowRef<Worker | null>(null);
 let lastTime = 0;
+
+// Export state
+let mediaRecorder: MediaRecorder | null = null;
+let recordedChunks: BlobPart[] = [];
+const isRecording = ref(false);
+const ffmpegAvailable = ref<boolean | null>(null);
+
+const checkFfmpeg = async () => {
+    try {
+        const ok = await (window as any).electronAPI.export.ffmpegAvailable();
+        ffmpegAvailable.value = !!ok;
+    } catch {
+        ffmpegAvailable.value = false;
+    }
+};
 
 const targetWidth = computed(() => timeline.value?.settings.renderWidth || 1920);
 const targetHeight = computed(() => timeline.value?.settings.renderHeight || 1080);
@@ -71,8 +87,8 @@ const disposeWorker = () => {
 };
 
 const startWorker = async () => {
-    if (!previewCanvas.value) return;
-    const canvas = previewCanvas.value.transferControlToOffscreen();
+    if (!renderCanvas.value) return;
+    const canvas = renderCanvas.value.transferControlToOffscreen();
     const worker = new Worker(new URL('../workers/renderWorker.ts', import.meta.url), { type: 'module' });
     worker.postMessage({ type: 'init', canvas, width: targetWidth.value, height: targetHeight.value }, [canvas]);
     workerRef.value = worker;
@@ -82,8 +98,21 @@ const tick = (now: number) => {
     if (!playing.value) return;
     const dt = lastTime ? (now - lastTime) / 1000 : 0;
     lastTime = now;
-    if (audioEl && !audioEl.paused) {
-        frame.value = Math.max(0, Math.floor((audioEl.currentTime || 0) * fps.value));
+    if (audioEl) {
+        const dur = Number.isFinite(audioEl.duration) ? (audioEl.duration || 0) : 0;
+        if (!audioEl.paused) {
+            frame.value = Math.max(0, Math.floor((audioEl.currentTime || 0) * fps.value));
+        } else {
+            frame.value += Math.max(1, Math.round(dt * fps.value));
+        }
+        if (dur > 0) {
+            const maxFrame = Math.max(0, Math.floor(dur * fps.value));
+            if (frame.value >= maxFrame) {
+                frame.value = maxFrame;
+                pause();
+                return;
+            }
+        }
     } else {
         frame.value += Math.max(1, Math.round(dt * fps.value));
     }
@@ -109,6 +138,7 @@ const tick = (now: number) => {
     const globalAlpha = evalGlobalOpacity();
     // Send frame state
     workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat: beatEnvelope.value, globalAlpha });
+    drawPreview();
     requestAnimationFrame(tick);
 };
 
@@ -130,6 +160,86 @@ const pause = () => {
     try { meydaAnalyzer?.stop(); } catch {}
 };
 
+const exportWebM = async () => {
+    if (!renderCanvas.value) return;
+    // Copy fonts on export (best-effort based on family names)
+    try {
+        const primary = String(timeline.value?.settings.fontFamily || '');
+        const fallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value!.settings.fontFallbacks as string[]) : [];
+        const families = [primary, ...fallbacks].filter(Boolean).map(s => s.toLowerCase());
+        if (families.length) {
+            try {
+                const fonts = await (window as any).electronAPI.fonts.list();
+                const files = (fonts || []).filter((f: any) => families.includes(String(f.familyGuess || '').toLowerCase())).map((f: any) => f.filePath);
+                if (files.length) {
+                    await (window as any).electronAPI.export.copyFontsForExport(songId.value as string, files);
+                }
+            } catch {}
+        }
+    } catch {}
+
+    const fpsValue = timeline.value?.settings.fps || 60;
+    const stream = (renderCanvas.value as HTMLCanvasElement).captureStream(fpsValue);
+    // If audio element exists, add audio track
+    try {
+        if (audioEl) {
+            const audioStream = (audioEl as any).captureStream ? (audioEl as any).captureStream() : null;
+            if (audioStream) {
+                const audioTracks = audioStream.getAudioTracks();
+                for (const t of audioTracks) stream.addTrack(t);
+            }
+        }
+    } catch {}
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(stream as MediaStream, { mimeType: 'video/webm;codecs=vp9,opus' });
+    mediaRecorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = async () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const buf = await blob.arrayBuffer();
+        const name = `export_${Date.now()}.webm`;
+        const res = await (window as any).electronAPI.export.saveWebM(songId.value as string, buf, name);
+        recordedChunks = [];
+        isRecording.value = false;
+        try {
+            const ok = await (window as any).electronAPI.export.ffmpegAvailable();
+            if (ok && res?.filePath && res?.rootDir) {
+                const mp4Out = res.rootDir + '/export.mp4';
+                await (window as any).electronAPI.export.encodeMp4FromWebM(res.filePath, mp4Out);
+            }
+        } catch {}
+    };
+    mediaRecorder.start();
+    isRecording.value = true;
+    // Record for full song duration if available
+    const durSec = Number.isFinite(audioEl?.duration || 0) ? (audioEl?.duration || 0) : 0;
+    if (durSec > 0) {
+        // Play from start
+        try { if (audioEl) { audioEl.currentTime = 0; audioEl.play(); } } catch {}
+        playing.value = true; lastTime = 0; requestAnimationFrame(tick);
+        setTimeout(() => { try { mediaRecorder?.stop(); pause(); } catch {} }, Math.ceil(durSec * 1000) + 250);
+    } else {
+        // Fallback: record 5 seconds
+        playing.value = true; lastTime = 0; requestAnimationFrame(tick);
+        setTimeout(() => { try { mediaRecorder?.stop(); pause(); } catch {} }, 5000);
+    }
+};
+
+const exportWolk = async () => {
+    // Ask backend to zip the song folder and save to Downloads as {title}.wolk
+    try {
+        const s = song.value;
+        if (!s) return;
+        const safeTitle = (s.title || 'project').replace(/[^a-zA-Z0-9-_\.]+/g, '_');
+        await (window as any).electronAPI.export.packageWolk(s.id, `${safeTitle}.wolk`);
+    } catch {}
+};
+
+const stopExport = () => {
+    try { mediaRecorder?.stop(); } catch {}
+};
+
 const initForSong = async (id: string) => {
     pause();
     disposeWorker();
@@ -149,6 +259,7 @@ const initForSong = async (id: string) => {
             audioEl.addEventListener('loadedmetadata', () => {
                 // ensure timeline updates duration via prop binding
             });
+            audioEl.addEventListener('ended', () => { pause(); });
         } catch {}
         try {
             // Decode for waveform (handle custom wolk:// scheme via fetch)
@@ -264,6 +375,7 @@ watch(songId, async (id) => {
 
 onMounted(async () => {
     document.title = 'Editor - Words On Live Kanvas - Open Culture Tech';
+    await checkFfmpeg();
 });
 
 onUnmounted(() => {
@@ -327,7 +439,27 @@ const onScrub = (payload: { timeSec: number; frame: number }) => {
     // Immediately update preview when paused
     if (!playing.value) {
         workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat: beatEnvelope.value });
+        drawPreview();
     }
+};
+
+const drawPreview = () => {
+    const src = renderCanvas.value as HTMLCanvasElement | null;
+    const dst = previewCanvas.value as HTMLCanvasElement | null;
+    if (!src || !dst) return;
+    const ctx = dst.getContext('2d');
+    if (!ctx) return;
+    const w = dst.width = dst.clientWidth;
+    const h = dst.height = dst.clientHeight;
+    const rw = targetWidth.value;
+    const rh = targetHeight.value;
+    const scale = Math.min(w / Math.max(1, rw), h / Math.max(1, rh));
+    const dw = Math.floor(rw * scale);
+    const dh = Math.floor(rh * scale);
+    const dx = Math.floor((w - dw) / 2);
+    const dy = Math.floor((h - dh) / 2);
+    ctx.clearRect(0, 0, w, h);
+    try { ctx.drawImage(src, 0, 0, src.width, src.height, dx, dy, dw, dh); } catch {}
 };
 
 </script>
@@ -338,12 +470,17 @@ const onScrub = (payload: { timeSec: number; frame: number }) => {
             <button @click="play">Play</button>
             <button @click="pause">Pause</button>
             <span>Frame: {{ frame }}</span>
+            <button @click="exportWebM" style="margin-left:8px;">Export WebM</button>
+            <button @click="exportWolk" style="margin-left:8px;">Export .wolk</button>
+            <button @click="stopExport" style="margin-left:8px;" :disabled="!isRecording">Stop Export</button>
+            <span v-if="ffmpegAvailable === false" class="toolbar__notice">ffmpeg not found. On macOS: install with <code>brew install ffmpeg</code>. Only WebM will be produced.</span>
         </div>
         <div class="editor__sidebar">
             <SceneList :scenes="timeline?.scenes || []" :selected-id="selectedSceneId || undefined" @select="selectScene" @add="addScene" />
         </div>
         <div class="editor__preview" :style="{ aspectRatio }">
             <div class="preview__canvas-wrapper">
+                <canvas ref="renderCanvas" class="preview__canvas" style="display:none"></canvas>
                 <canvas ref="previewCanvas" class="preview__canvas"></canvas>
                 <canvas ref="previewOverlay" class="preview__overlay"></canvas>
             </div>
