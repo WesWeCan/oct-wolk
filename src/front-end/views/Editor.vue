@@ -9,6 +9,8 @@ import Inspector from '@/front-end/components/editor/Inspector.vue';
 import Timeline from '@/front-end/components/editor/Timeline.vue';
 import axios from 'axios';
 import Meyda from 'meyda';
+import { AnalysisService } from '@/front-end/services/AnalysisService';
+import type { AnalysisCache } from '@/types/analysis_types';
 
 const route = useRoute();
 const songId = computed(() => (route.params.songId as string) || '');
@@ -47,6 +49,7 @@ const aspectRatio = computed(() => `${targetWidth.value} / ${targetHeight.value}
 // Scene selection
 const selectedSceneId = ref<string | null>(null);
 const selectedScene = computed(() => (timeline.value?.scenes || []).find(s => s.id === selectedSceneId.value) || null);
+const isSingleWordScene = computed(() => ((selectedScene.value?.type || '') === 'singleWord'));
 // Keyframe selection state (global opacity track)
 const selectedKfIndex = ref<number | null>(null);
 
@@ -60,6 +63,10 @@ const beatEnvelope = ref<number>(0);
 const beatTimesSec = ref<number[] | null>(null);
 const audioReady = ref(false);
 const spectrum = ref<number[] | null>(null);
+const analysisCache = ref<AnalysisCache | null>(null);
+const overlayOpts = ref<{ showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }>({ showEnergy: true, showOnsets: true, showBeats: false });
+// Precomputed beat envelope samples (~60Hz) for deterministic scrubbing
+const beatEnv = ref<number[] | null>(null);
 
 const computeWaveform = (buffer: AudioBuffer, buckets = 1000): number[] => {
     const channelData = buffer.getChannelData(0);
@@ -88,9 +95,22 @@ const disposeWorker = () => {
 
 const startWorker = async () => {
     if (!renderCanvas.value) return;
+    // Ensure the visible canvas has the correct bitmap size for preview copy
+    try {
+        renderCanvas.value.width = targetWidth.value;
+        renderCanvas.value.height = targetHeight.value;
+    } catch {}
     const canvas = renderCanvas.value.transferControlToOffscreen();
     const worker = new Worker(new URL('../workers/renderWorker.ts', import.meta.url), { type: 'module' });
     worker.postMessage({ type: 'init', canvas, width: targetWidth.value, height: targetHeight.value }, [canvas]);
+    try {
+        worker.addEventListener('message', (e: MessageEvent) => {
+            const data: any = e.data;
+            if (data && data.type === 'rendered') {
+                drawPreview();
+            }
+        });
+    } catch {}
     workerRef.value = worker;
 };
 
@@ -116,30 +136,31 @@ const tick = (now: number) => {
     } else {
         frame.value += Math.max(1, Math.round(dt * fps.value));
     }
-    // Evaluate global opacity keyframe track (0..1)
-    const evalGlobalOpacity = (): number => {
-        const track = timeline.value?.globalOpacityTrack?.keyframes || [];
-        if (!track.length) return 1;
-        const f = frame.value;
-        let a = track[0];
-        let b = track[track.length - 1];
-        for (let i = 0; i < track.length; i++) {
-            if (track[i].frame <= f) a = track[i];
-            if (track[i].frame >= f) { b = track[i]; break; }
-        }
-        if (a.frame === b.frame) return Math.min(1, Math.max(0, Number(a.value)));
-        // Respect step interpolation on segment starting at a
-        const interp = (a as any).interpolation;
-        if (interp === 'step') return Math.min(1, Math.max(0, Number(a.value)));
-        const t = (f - a.frame) / Math.max(1, (b.frame - a.frame));
-        const v = (1 - t) * Number(a.value) + t * Number(b.value);
-        return Math.min(1, Math.max(0, v));
-    };
-    const globalAlpha = evalGlobalOpacity();
+    const globalAlpha = evalGlobalOpacityForFrame(frame.value);
+    const beat = evalBeatForFrame(frame.value);
+    const wordIndex = evalWordIndexForFrame(frame.value);
     // Send frame state
-    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat: beatEnvelope.value, globalAlpha });
+    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat, globalAlpha, wordIndex });
     drawPreview();
     requestAnimationFrame(tick);
+};
+
+// Evaluate global opacity keyframe track (0..1) for a specific frame
+const evalGlobalOpacityForFrame = (f: number): number => {
+    const track = timeline.value?.globalOpacityTrack?.keyframes || [];
+    if (!track.length) return 1;
+    let a = track[0];
+    let b = track[track.length - 1];
+    for (let i = 0; i < track.length; i++) {
+        if (track[i].frame <= f) a = track[i];
+        if (track[i].frame >= f) { b = track[i]; break; }
+    }
+    if ((a as any).frame === (b as any).frame) return Math.min(1, Math.max(0, Number((a as any).value)));
+    const interp = (a as any).interpolation;
+    if (interp === 'step') return Math.min(1, Math.max(0, Number((a as any).value)));
+    const t = (f - (a as any).frame) / Math.max(1, ((b as any).frame - (a as any).frame));
+    const v = (1 - t) * Number((a as any).value) + t * Number((b as any).value);
+    return Math.min(1, Math.max(0, v));
 };
 
 const play = () => {
@@ -147,6 +168,13 @@ const play = () => {
     playing.value = true;
     lastTime = 0;
     if (audioEl && audioReady.value) {
+        // Ensure playback resumes from the current scrubbed frame
+        try {
+            const t = Math.max(0, (frame.value || 0) / Math.max(1, fps.value));
+            if (Number.isFinite(t)) {
+                audioEl.currentTime = t;
+            }
+        } catch {}
         audioEl.play().catch(() => {});
         try { audioCtx?.resume(); } catch {}
         try { meydaAnalyzer?.start(); } catch {}
@@ -158,6 +186,42 @@ const pause = () => {
     playing.value = false;
     if (audioEl) audioEl.pause();
     try { meydaAnalyzer?.stop(); } catch {}
+};
+
+const stop = () => {
+    // Stop playback and reset to start
+    pause();
+    frame.value = 0;
+    try { if (audioEl) audioEl.currentTime = 0; } catch {}
+    // Update preview immediately
+    const globalAlpha0 = evalGlobalOpacityForFrame(0);
+    const beat0 = evalBeatForFrame(0);
+    const wordIndex0 = evalWordIndexForFrame(0);
+    workerRef.value?.postMessage({ type: 'frame', frame: 0, dt: 0, beat: beat0, globalAlpha: globalAlpha0, wordIndex: wordIndex0 });
+    requestAnimationFrame(() => drawPreview());
+};
+
+const reanalyze = async () => {
+    try {
+        const bytes = await (async () => {
+            if (song.value?.audioSrc?.startsWith('wolk://')) {
+                const r = await fetch(song.value.audioSrc);
+                return await r.arrayBuffer();
+            }
+            const resp = await axios.get<ArrayBuffer>(song.value?.audioSrc || '', { responseType: 'arraybuffer' });
+            return resp.data;
+        })();
+        if (!bytes) return;
+        if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const buf = await audioCtx.decodeAudioData(bytes.slice(0));
+        analysisCache.value = await AnalysisService.analyzeBufferToCache(buf, fps.value);
+        // Force a deterministic frame refresh
+        const ga = evalGlobalOpacityForFrame(frame.value);
+        const be = evalBeatForFrame(frame.value);
+        const wi = evalWordIndexForFrame(frame.value);
+        workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat: be, globalAlpha: ga, wordIndex: wi });
+        requestAnimationFrame(() => drawPreview());
+    } catch {}
 };
 
 const exportWebM = async () => {
@@ -284,6 +348,8 @@ const initForSong = async (id: string) => {
             }
             const buf = await audioCtx.decodeAudioData(audioArrayBuffer.slice(0));
             waveform.value = computeWaveform(buf, 1200);
+            // Build per-frame analysis cache aligned to timeline fps
+            analysisCache.value = await AnalysisService.analyzeBufferToCache(buf, fps.value);
             // Compute simple envelope ahead of time for beat pulsing
             const signal = buf.getChannelData(0);
             const hop = Math.max(1, Math.floor(buf.sampleRate / 60));
@@ -300,6 +366,8 @@ const initForSong = async (id: string) => {
             // Normalize envelope to 0..1
             const max = env.reduce((a, b) => Math.max(a, b), 1e-6);
             for (let i = 0; i < env.length; i++) env[i] = env[i] / max;
+            // save for deterministic scrubbing
+            beatEnv.value = env.slice();
             // naive beat times by threshold + peak picking
             const beats: number[] = [];
             const threshold = 0.6;
@@ -310,14 +378,6 @@ const initForSong = async (id: string) => {
                 }
             }
             beatTimesSec.value = beats;
-            // Update beatEnvelope each tick based on current frame
-            const framesPerSample = Math.max(1, Math.floor(fps.value / 1)); // 1 sample per frame approx
-            const updateBeat = () => {
-                const idx = Math.min(env.length - 1, Math.floor(frame.value / framesPerSample));
-                beatEnvelope.value = env[idx] || 0;
-                if (playing.value) requestAnimationFrame(updateBeat);
-            };
-            requestAnimationFrame(updateBeat);
 
             // Meyda analyzer for better onsets (spectralFlux + rms)
             try {
@@ -376,6 +436,17 @@ watch(songId, async (id) => {
 onMounted(async () => {
     document.title = 'Editor - Words On Live Kanvas - Open Culture Tech';
     await checkFfmpeg();
+    // Listen for worker render-complete to draw preview exactly after frame is ready
+    try {
+        if (workerRef.value) {
+            workerRef.value.addEventListener('message', (e: MessageEvent) => {
+                const data: any = e.data;
+                if (data && data.type === 'rendered') {
+                    drawPreview();
+                }
+            });
+        }
+    } catch {}
 });
 
 onUnmounted(() => {
@@ -436,11 +507,29 @@ const onScrub = (payload: { timeSec: number; frame: number }) => {
         try { audioEl.currentTime = Math.max(0, payload.timeSec); } catch {}
     }
     frame.value = Math.max(0, payload.frame | 0);
-    // Immediately update preview when paused
-    if (!playing.value) {
-        workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat: beatEnvelope.value });
-        drawPreview();
-    }
+    // Immediately update preview during scrubbing (paused or playing)
+    const globalAlpha = evalGlobalOpacityForFrame(frame.value);
+    const beat = evalBeatForFrame(frame.value);
+    const wordIndex = evalWordIndexForFrame(frame.value);
+    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat, globalAlpha, wordIndex });
+    // Defer preview draw to next frame so worker has time to render
+    requestAnimationFrame(() => drawPreview());
+};
+
+// Deterministic beat evaluation mapping frame -> precomputed env
+const evalBeatForFrame = (f: number): number => {
+    const cache = analysisCache.value;
+    if (!cache) return beatEnvelope.value || 0;
+    const idx = Math.min(cache.totalFrames - 1, Math.max(0, f | 0));
+    return Math.min(1, Math.max(0, cache.energyPerFrame[idx] || 0));
+};
+
+// Deterministic word index per frame based on precomputed beat crossings
+const evalWordIndexForFrame = (f: number): number => {
+    const cache = analysisCache.value;
+    if (!cache) return Math.floor(f / Math.max(1, Math.floor(fps.value / 2)));
+    const idx = Math.min(cache.totalFrames - 1, Math.max(0, f | 0));
+    return cache.onsetIndexPerFrame[idx] || 0;
 };
 
 const drawPreview = () => {
@@ -467,8 +556,10 @@ const drawPreview = () => {
 <template>
     <div class="editor">
         <div class="editor__toolbar">
-            <button @click="play">Play</button>
-            <button @click="pause">Pause</button>
+            <button @click="play" :disabled="playing">Play</button>
+            <button @click="pause" :disabled="!playing">Pause</button>
+            <button @click="stop" :disabled="!playing && frame === 0">Stop</button>
+            <button @click="reanalyze" :disabled="!audioReady">Reanalyze</button>
             <span>Frame: {{ frame }}</span>
             <button @click="exportWebM" style="margin-left:8px;">Export WebM</button>
             <button @click="exportWolk" style="margin-left:8px;">Export .wolk</button>
@@ -480,13 +571,13 @@ const drawPreview = () => {
         </div>
         <div class="editor__preview" :style="{ aspectRatio }">
             <div class="preview__canvas-wrapper">
-                <canvas ref="renderCanvas" class="preview__canvas" style="display:none"></canvas>
+                <canvas ref="renderCanvas" class="preview__canvas"></canvas>
                 <canvas ref="previewCanvas" class="preview__canvas"></canvas>
                 <canvas ref="previewOverlay" class="preview__overlay"></canvas>
             </div>
         </div>
         <div class="editor__inspector">
-            <Inspector :timeline="timeline" :selected-scene="selectedScene" @update:timeline="onTimelineUpdated" @update:scene="onSceneUpdated" />
+            <Inspector :timeline="timeline" :selected-scene="selectedScene" :overlay-opts="overlayOpts" @update:overlayOpts="v => overlayOpts = v" @update:timeline="onTimelineUpdated" @update:scene="onSceneUpdated" />
         </div>
         <div class="editor__timeline">
             <Timeline 
@@ -494,10 +585,14 @@ const drawPreview = () => {
                 :fps="fps" 
                 :current-frame="frame" 
                 :duration-sec="(audioEl?.duration || 0) || undefined" 
-                :beats="beatTimesSec || undefined"
+                :beats="undefined"
                 :spectrum="spectrum || undefined"
                 :keyframes="(timeline?.globalOpacityTrack?.keyframes || []) as any"
                 :selected-kf-index="selectedKfIndex"
+                :energy-per-frame="analysisCache?.energyPerFrame"
+                :is-onset-per-frame="analysisCache?.isOnsetPerFrame"
+                :show-energy="overlayOpts.showEnergy"
+                :show-onsets="overlayOpts.showOnsets && isSingleWordScene"
                 @scrub="(p: any) => onScrub(p)"
                 @kfAdd="({ frame, value }) => {
                     const t = timeline?.globalOpacityTrack?.keyframes ? [...timeline!.globalOpacityTrack!.keyframes] : [];

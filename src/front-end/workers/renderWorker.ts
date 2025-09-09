@@ -13,6 +13,7 @@ export interface RenderFrameMessage {
     dt: number;
     beat?: number; // 0..1 energy/envelope to drive pulsing
     globalAlpha?: number; // 0..1 project-wide opacity
+    wordIndex?: number; // precomputed word index for deterministic scenes
 }
 
 export interface RenderDisposeMessage {
@@ -41,7 +42,7 @@ let fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-
 // Scene dispatch
 import { WordCloudScene } from './scenes/WordCloudScene';
 import { SingleWordScene } from './scenes/SingleWordScene';
-type SceneInstance = { render: (frame: number, beat: number) => void; configure: (cfg: any) => void } | null;
+type SceneInstance = { render: (frame: number, beat: number, extras?: { wordIndex?: number }) => void; configure: (cfg: any) => void } | null;
 let sceneInstance: SceneInstance = null;
 
 // Simple seeded PRNG (Mulberry32)
@@ -110,6 +111,7 @@ const handleFrame = (msg: RenderFrameMessage) => {
         ctx2d.fillStyle = '#0f0';
         ctx2d.font = '20px sans-serif';
         ctx2d.fillText('Render worker initialized', 20, 40);
+        try { (self as any).postMessage({ type: 'rendered', frame }); } catch {}
         return;
     }
     const beat = typeof msg.beat === 'number' ? Math.max(0, Math.min(1, msg.beat)) : 0;
@@ -118,13 +120,14 @@ const handleFrame = (msg: RenderFrameMessage) => {
         if (typeof msg.globalAlpha === 'number') {
             ctx2d.globalAlpha = Math.min(1, Math.max(0, msg.globalAlpha));
         }
-        sceneInstance.render(frame, beat);
+        sceneInstance.render(frame, beat, { wordIndex: msg.wordIndex });
         ctx2d.globalAlpha = prevAlpha;
     } else {
         ctx2d.fillStyle = '#0ff';
         ctx2d.font = '24px sans-serif';
         ctx2d.fillText(`Frame ${frame}`, 20, 40);
     }
+    try { (self as any).postMessage({ type: 'rendered', frame }); } catch {}
 };
 
 const handleDispose = () => {

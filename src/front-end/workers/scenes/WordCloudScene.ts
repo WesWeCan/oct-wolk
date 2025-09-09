@@ -26,7 +26,6 @@ export class WordCloudScene {
 
     render(frame: number, beat: number) {
         if (!this.configured) return;
-        const t = frame / 60;
         const ctx = this.ctx;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';

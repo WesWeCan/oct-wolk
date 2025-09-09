@@ -31,18 +31,22 @@ export class SingleWordScene {
         this.fontFamilyChain = config.fontFamilyChain || 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
     }
 
-    render(frame: number, beat: number) {
+    render(frame: number, beat: number, extras?: { wordIndex?: number }) {
         const ctx = this.ctx;
         const w = this.width;
         const h = this.height;
-        // beat threshold to advance word (lowered to better match RMS envelope)
-        const threshold = 0.07;
-        if (beat > threshold && this.lastBeat <= threshold) {
-            this.currentIndex = (this.currentIndex + 1) % this.words.length;
+        // Prefer host-provided deterministic index if available (precomputed by frame)
+        const wordsLen = Math.max(1, this.words.length);
+        if (extras && typeof extras.wordIndex === 'number' && isFinite(extras.wordIndex)) {
+            this.currentIndex = ((extras.wordIndex % wordsLen) + wordsLen) % wordsLen;
+        } else {
+            // fallback: advance on beat crossings deterministically
+            const threshold = 0.07;
+            if (beat > threshold && this.lastBeat <= threshold) {
+                this.currentIndex = (this.currentIndex + 1) % this.words.length;
+            }
+            this.lastBeat = beat;
         }
-        this.lastBeat = beat;
-
-        console.log(beat, this.lastBeat, this.currentIndex);
 
 
         const text = this.words[this.currentIndex];

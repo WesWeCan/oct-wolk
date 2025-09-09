@@ -5,8 +5,8 @@ import { FontsService } from '@/front-end/services/FontsService';
 
 interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; }
 
-const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null }>();
-const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void }>();
+const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean } }>();
+const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void }>();
 
 const updateSeed = (e: Event) => {
     if (!props.timeline) return;
@@ -175,6 +175,19 @@ const removeOpacityKeyframe = (idx: number) => {
                 <input :value="selectedScene.name" @input="updateSceneName" />
             </label>
         </div>
+        <details style="margin-top:12px;">
+            <summary style="font-weight:600; margin-bottom:4px;">Timeline Overlays</summary>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-top:6px;">
+                <label>
+                    <input type="checkbox" :checked="!!overlayOpts?.showEnergy" @change="(e:any)=> emit('update:overlayOpts', { ...(overlayOpts||{showEnergy:true,showOnsets:true}), showEnergy: !!e.target.checked })" />
+                    Show energy
+                </label>
+                <label>
+                    <input type="checkbox" :checked="!!overlayOpts?.showOnsets" @change="(e:any)=> emit('update:overlayOpts', { ...(overlayOpts||{showEnergy:true,showOnsets:true}), showOnsets: !!e.target.checked })" />
+                    Show onsets / word changes
+                </label>
+            </div>
+        </details>
     </div>
 </template>
 
