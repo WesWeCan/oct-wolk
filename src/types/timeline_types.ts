@@ -6,6 +6,8 @@ export interface ProjectSettings {
     seed: string;
     fontFamily?: string;
     fontFallbacks?: string[];
+    includeAudio?: boolean;
+    exportBitrateMbps?: number;
 }
 
 export type SceneType = 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord';

@@ -95,3 +95,33 @@ export const loadScene = (songId: string, sceneId: string): SceneDocumentBase | 
 };
 
 
+export const resetTimeline = (songId: string): TimelineDocument => {
+    ensureTimelineFolders(songId);
+    // delete all scene json files
+    try {
+        const dir = getScenesDir(songId);
+        if (fs.existsSync(dir)) {
+            const files = fs.readdirSync(dir);
+            for (const f of files) {
+                try {
+                    if (f.endsWith('.json')) fs.unlinkSync(path.join(dir, f));
+                } catch {}
+            }
+        }
+    } catch {}
+    // write a minimal timeline.json keeping settings but clearing refs and actions
+    let current: TimelineDocument;
+    try {
+        current = createOrLoadTimeline(songId);
+    } catch {
+        current = { settings: { ...DEFAULTS }, scenes: [] } as any;
+    }
+    const cleared: TimelineDocument = {
+        settings: { ...DEFAULTS, ...(current.settings || {}) },
+        scenes: [],
+        actionTracks: [],
+    } as any;
+    fs.writeFileSync(getTimelineJsonPath(songId), JSON.stringify(cleared, null, 2), 'utf-8');
+    return cleared;
+};
+

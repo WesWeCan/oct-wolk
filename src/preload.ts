@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         listScenes: (songId: string) => ipcRenderer.invoke('timeline:listScenes', songId),
         saveScene: (songId: string, scene: SceneDocumentBase) => ipcRenderer.invoke('timeline:saveScene', songId, scene),
         loadScene: (songId: string, sceneId: string) => ipcRenderer.invoke('timeline:loadScene', songId, sceneId),
+        reset: (songId: string) => ipcRenderer.invoke('project:resetTimeline', songId),
     },
     fonts: {
         list: () => ipcRenderer.invoke('fonts:list'),
@@ -73,6 +74,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         encodeMp4FromWebM: (inputWebMPath: string, outputMp4Path: string) => ipcRenderer.invoke('export:encodeMp4FromWebM', inputWebMPath, outputMp4Path),
         copyFontsForExport: (songId: string, fontFiles: string[]) => ipcRenderer.invoke('export:copyFonts', songId, fontFiles),
         packageWolk: (songId: string, outputName: string) => ipcRenderer.invoke('export:packageWolk', songId, outputName),
+        importWolk: (filePath: string, strategy: 'override' | 'copy') => ipcRenderer.invoke('export:importWolk', filePath, strategy),
+        importWolkBytes: (fileData: ArrayBuffer, strategy: 'override' | 'copy') => ipcRenderer.invoke('export:importWolkBytes', fileData, strategy),
     },
 
     // Event methods

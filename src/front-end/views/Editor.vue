@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, shallowRef, computed, nextTick, watch, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { TimelineService } from '@/front-end/services/TimelineService';
 import { SongService } from '@/front-end/services/SongService';
 import type { TimelineDocument, SceneRef, SceneDocumentBase, ActionItem, TransitionEasing, PropertyTrack } from '@/types/timeline_types';
@@ -11,9 +11,62 @@ import axios from 'axios';
 import Meyda from 'meyda';
 import { AnalysisService } from '@/front-end/services/AnalysisService';
 import type { AnalysisCache } from '@/types/analysis_types';
+const handleReset = async () => {
+    try {
+        const res = await (window as any).electronAPI.timeline.reset(songId.value as string);
+        if (res?.ok && res?.doc) {
+            timeline.value = res.doc as any;
+            selectedSceneId.value = null;
+            sceneDocs.value = {} as any;
+            await configureWorkerScene();
+        }
+    } catch {}
+};
+
+// Import dialog state and actions
+const showImportDialog = ref(false);
+const importStrategy = ref<'copy' | 'override'>('copy');
+const importFile = ref<File | null>(null);
+const isImporting = ref(false);
+const importError = ref<string | null>(null);
 
 const route = useRoute();
-const songId = computed(() => (route.params.songId as string) || '');
+const router = useRouter();
+const handleOpenImportDialog = () => {
+    showImportDialog.value = true;
+    importStrategy.value = 'copy';
+    importFile.value = null;
+    importError.value = null;
+};
+const handleCancelImport = () => {
+    showImportDialog.value = false;
+    importFile.value = null;
+    importError.value = null;
+};
+const handlePickImportFile = (e: Event) => {
+    const files = (e.target as HTMLInputElement).files;
+    importFile.value = files && files[0] ? files[0] : null;
+};
+const handleDoImport = async () => {
+    if (!importFile.value) { importError.value = 'Choose a .wolk file'; return; }
+    try {
+        isImporting.value = true; importError.value = null;
+        const arrayBuffer = await importFile.value.arrayBuffer();
+        const res = await (window as any).electronAPI.export.importWolkBytes(arrayBuffer, importStrategy.value);
+        if (res?.songId) {
+            showImportDialog.value = false;
+            await router.push({ name: 'Editor', params: { songId: res.songId } });
+        } else {
+            importError.value = String(res?.error || 'Import failed. Please check the file.');
+        }
+    } catch (e: any) {
+        importError.value = String(e?.message || 'Import error');
+    } finally {
+        isImporting.value = false;
+    }
+};
+const props = defineProps<{ songId?: string }>();
+const songId = computed(() => String(props.songId || (route.params.songId as string) || ''));
 
 const timeline = ref<TimelineDocument | null>(null);
 const song = ref<import('@/types/song_types').Song | null>(null);
@@ -310,8 +363,25 @@ const reanalyze = async () => {
     } catch {}
 };
 
-const exportWebM = async () => {
+const exportWithOptions = async () => {
     if (!renderCanvas.value) return;
+    // Pre-export missing fonts check: warn and copy suggested fonts
+    try {
+        const primary = String(timeline.value?.settings.fontFamily || '');
+        const fallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value!.settings.fontFallbacks as string[]) : [];
+        const families = [primary, ...fallbacks].filter(Boolean).map(s => s.toLowerCase());
+        const fonts = await (window as any).electronAPI.fonts.list();
+        const matched = (fonts || []).filter((f: any) => families.includes(String(f.familyGuess || '').toLowerCase()));
+        const missingFamilies = families.filter(ff => !matched.find((m: any) => String(m.familyGuess||'').toLowerCase() === ff));
+        if (missingFamilies.length) {
+            const proceed = globalThis.confirm(`Some fonts may be missing: ${missingFamilies.join(', ')}. Continue anyway?`);
+            if (!proceed) return;
+        }
+        const files = (matched || []).map((f: any) => f.filePath);
+        if (files.length) {
+            await (window as any).electronAPI.export.copyFontsForExport(songId.value as string, files);
+        }
+    } catch {}
     // Copy fonts on export (best-effort based on family names)
     try {
         const primary = String(timeline.value?.settings.fontFamily || '');
@@ -332,7 +402,7 @@ const exportWebM = async () => {
     const stream = (renderCanvas.value as HTMLCanvasElement).captureStream(fpsValue);
     // If audio element exists, add audio track
     try {
-        if (audioEl) {
+        if (audioEl && (timeline.value?.settings.includeAudio ?? true)) {
             const audioStream = (audioEl as any).captureStream ? (audioEl as any).captureStream() : null;
             if (audioStream) {
                 const audioTracks = audioStream.getAudioTracks();
@@ -341,7 +411,9 @@ const exportWebM = async () => {
         }
     } catch {}
     recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream as MediaStream, { mimeType: 'video/webm;codecs=vp9,opus' });
+    const mime = 'video/webm;codecs=vp9,opus';
+    const bitrate = Math.max(1, Number(timeline.value?.settings.exportBitrateMbps || 8));
+    mediaRecorder = new MediaRecorder(stream as MediaStream, { mimeType: mime, videoBitsPerSecond: bitrate * 1_000_000 } as any);
     mediaRecorder.ondataavailable = (e: BlobEvent) => {
         if (e.data && e.data.size > 0) recordedChunks.push(e.data);
     };
@@ -801,7 +873,7 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
             <button @click="stop" :disabled="!playing && frame === 0">Stop</button>
             <button @click="reanalyze" :disabled="!audioReady">Reanalyze</button>
             <span>Frame: {{ frame }}</span>
-            <button @click="exportWebM" style="margin-left:8px;">Export WebM</button>
+            <button @click="exportWithOptions" style="margin-left:8px;">Export</button>
             <button @click="exportWolk" style="margin-left:8px;">Export .wolk</button>
             <button @click="stopExport" style="margin-left:8px;" :disabled="!isRecording">Stop Export</button>
             <span v-if="ffmpegAvailable === false" class="toolbar__notice">ffmpeg not found. On macOS: install with <code>brew install ffmpeg</code>. Only WebM will be produced.</span>
@@ -836,7 +908,7 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
             </div>
         </div>
         <div class="editor__inspector">
-            <Inspector :timeline="timeline" :selected-scene="selectedScene" :scene-params="sceneParamsView" :overlay-opts="overlayOpts" @update:overlayOpts="v => overlayOpts = v" @update:timeline="onTimelineUpdated" @update:scene="onSceneUpdated" @update:sceneParams="(p:any)=> applySceneParams(p)" />
+            <Inspector :timeline="timeline" :selected-scene="selectedScene" :scene-params="sceneParamsView" :overlay-opts="overlayOpts" @update:overlayOpts="v => overlayOpts = v" @update:timeline="onTimelineUpdated" @update:scene="onSceneUpdated" @update:sceneParams="(p:any)=> applySceneParams(p)" @resetProject="handleReset" @importWolk="handleOpenImportDialog" />
         </div>
         <div class="editor__timeline timeline-host">
             <TimelineRoot
@@ -863,5 +935,21 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
             />
         </div>
     </div>
-    
+    <div v-if="showImportDialog" class="modal-backdrop">
+        <div class="modal">
+            <h3>Import .wolk</h3>
+            <div style="margin:8px 0;">
+                <input type="file" accept=".wolk,application/zip,application/gzip" @change="handlePickImportFile" />
+            </div>
+            <div style="margin:8px 0; display:flex; gap:12px; align-items:center;">
+                <label><input type="radio" value="copy" v-model="importStrategy" /> Copy (create new project)</label>
+                <label><input type="radio" value="override" v-model="importStrategy" /> Override (replace if same ID)</label>
+            </div>
+            <div v-if="importError" style="color:#e66;">{{ importError }}</div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+                <button @click="handleCancelImport" :disabled="isImporting">Cancel</button>
+                <button @click="handleDoImport" :disabled="isImporting || !importFile">{{ isImporting ? 'Importing…' : 'Import' }}</button>
+            </div>
+        </div>
+    </div>
 </template>
