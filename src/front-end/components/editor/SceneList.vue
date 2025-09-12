@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import type { SceneRef } from '@/types/timeline_types';
 
-const props = defineProps<{ scenes: SceneRef[]; selectedId?: string }>();
+const props = defineProps<{ scenes: SceneRef[]; selectedId?: string; currentFrame?: number; fps?: number }>();
 const emit = defineEmits<{
     (e: 'select', id: string): void;
     (e: 'add', type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord'): void;
+    (e: 'switchHere', payload: { frame: number }): void;
 }>();
 
 const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord') => emit('add', type);
-
 </script>
 
 <template>
@@ -25,6 +25,16 @@ const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleW
                 {{ idx + 1 }}. {{ s.name }}
             </li>
         </ul>
+        <div style="margin-top:8px; padding:8px; border-top:1px solid #333; font-size:12px; line-height:18px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
+                <div style="font-weight:600;">Controls</div>
+                <button @click="() => emit('switchHere', { frame: Math.max(0, props.currentFrame||0) })">Switch active scene here</button>
+            </div>
+            <div>Drag scene: move</div>
+            <div>Resize: drag left/right edge</div>
+            <div>Adjust transition: Alt + drag edge</div>
+            <div>Pan timeline: Space/Ctrl/Meta drag; Zoom: Cmd/Ctrl + wheel</div>
+        </div>
     </div>
     
 </template>

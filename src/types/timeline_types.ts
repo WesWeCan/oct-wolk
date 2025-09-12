@@ -18,12 +18,14 @@ export interface SceneRef {
     durationFrames: number;
     transitionInFrames?: number;
     transitionOutFrames?: number;
+    transitionEasing?: TransitionEasing;
 }
 
 export interface TimelineDocument {
     settings: ProjectSettings;
     scenes: SceneRef[];
     globalOpacityTrack?: PropertyTrack<number>;
+    actionTracks?: ActionItem[];
 }
 
 export type InterpolationType = 'step' | 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | {
@@ -50,6 +52,15 @@ export interface SceneDocumentBase {
     seed?: string;
     tracks: PropertyTrack[];
     params: Record<string, any>;
+}
+
+export type TransitionEasing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+
+export interface ActionItem {
+    id: string;
+    frame: number;
+    actionType: 'transitionOverride' | 'wordOverride' | string;
+    payload: Record<string, any>;
 }
 
 export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {

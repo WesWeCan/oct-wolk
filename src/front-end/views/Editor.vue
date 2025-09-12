@@ -3,10 +3,10 @@ import { onMounted, ref, shallowRef, computed, nextTick, watch, onUnmounted } fr
 import { useRoute } from 'vue-router';
 import { TimelineService } from '@/front-end/services/TimelineService';
 import { SongService } from '@/front-end/services/SongService';
-import type { TimelineDocument } from '@/types/timeline_types';
+import type { TimelineDocument, SceneRef, SceneDocumentBase, ActionItem, TransitionEasing } from '@/types/timeline_types';
 import SceneList from '@/front-end/components/editor/SceneList.vue';
 import Inspector from '@/front-end/components/editor/Inspector.vue';
-import Timeline from '@/front-end/components/editor/Timeline.vue';
+import TimelineRoot from '@/front-end/components/timeline/TimelineRoot.vue';
 import axios from 'axios';
 import Meyda from 'meyda';
 import { AnalysisService } from '@/front-end/services/AnalysisService';
@@ -67,6 +67,9 @@ const analysisCache = ref<AnalysisCache | null>(null);
 const overlayOpts = ref<{ showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }>({ showEnergy: true, showOnsets: true, showBeats: false });
 // Precomputed beat envelope samples (~60Hz) for deterministic scrubbing
 const beatEnv = ref<number[] | null>(null);
+// Per-scene documents cache (lazy-loaded)
+const sceneDocs = ref<Record<string, SceneDocumentBase>>({});
+let lastConfiguredPair = '';
 
 const computeWaveform = (buffer: AudioBuffer, buckets = 1000): number[] => {
     const channelData = buffer.getChannelData(0);
@@ -136,32 +139,22 @@ const tick = (now: number) => {
     } else {
         frame.value += Math.max(1, Math.round(dt * fps.value));
     }
-    const globalAlpha = evalGlobalOpacityForFrame(frame.value);
     const beat = evalBeatForFrame(frame.value);
     const wordIndex = evalWordIndexForFrame(frame.value);
-    // Send frame state
-    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat, globalAlpha, wordIndex });
+    const mix = computeActiveScenesForFrame(frame.value);
+    const pairKey = mix.a.id + '|' + (mix.b?.id || '');
+    if (pairKey !== lastConfiguredPair) {
+        // reconfigure scenes when pair changes
+        configureWorkerScene();
+    }
+    const wordOverride = evalWordOverrideForFrame(frame.value);
+    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride });
     drawPreview();
     requestAnimationFrame(tick);
 };
 
-// Evaluate global opacity keyframe track (0..1) for a specific frame
-const evalGlobalOpacityForFrame = (f: number): number => {
-    const track = timeline.value?.globalOpacityTrack?.keyframes || [];
-    if (!track.length) return 1;
-    let a = track[0];
-    let b = track[track.length - 1];
-    for (let i = 0; i < track.length; i++) {
-        if (track[i].frame <= f) a = track[i];
-        if (track[i].frame >= f) { b = track[i]; break; }
-    }
-    if ((a as any).frame === (b as any).frame) return Math.min(1, Math.max(0, Number((a as any).value)));
-    const interp = (a as any).interpolation;
-    if (interp === 'step') return Math.min(1, Math.max(0, Number((a as any).value)));
-    const t = (f - (a as any).frame) / Math.max(1, ((b as any).frame - (a as any).frame));
-    const v = (1 - t) * Number((a as any).value) + t * Number((b as any).value);
-    return Math.min(1, Math.max(0, v));
-};
+// global opacity track deprecated (M2 moves to scene property tracks). Keep stub for compatibility, return 1.
+const evalGlobalOpacityForFrame = (_f: number): number => 1;
 
 const play = () => {
     if (!workerRef.value) return;
@@ -194,10 +187,11 @@ const stop = () => {
     frame.value = 0;
     try { if (audioEl) audioEl.currentTime = 0; } catch {}
     // Update preview immediately
-    const globalAlpha0 = evalGlobalOpacityForFrame(0);
     const beat0 = evalBeatForFrame(0);
     const wordIndex0 = evalWordIndexForFrame(0);
-    workerRef.value?.postMessage({ type: 'frame', frame: 0, dt: 0, beat: beat0, globalAlpha: globalAlpha0, wordIndex: wordIndex0 });
+    const mix0 = computeActiveScenesForFrame(0);
+    const wordOverride0 = evalWordOverrideForFrame(0);
+    workerRef.value?.postMessage({ type: 'frame', frame: 0, dt: 0, beat: beat0, wordIndex: wordIndex0, alphaA: mix0.alphaA, alphaB: mix0.alphaB, wordOverride: wordOverride0 });
     requestAnimationFrame(() => drawPreview());
 };
 
@@ -216,10 +210,11 @@ const reanalyze = async () => {
         const buf = await audioCtx.decodeAudioData(bytes.slice(0));
         analysisCache.value = await AnalysisService.analyzeBufferToCache(buf, fps.value);
         // Force a deterministic frame refresh
-        const ga = evalGlobalOpacityForFrame(frame.value);
         const be = evalBeatForFrame(frame.value);
         const wi = evalWordIndexForFrame(frame.value);
-        workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat: be, globalAlpha: ga, wordIndex: wi });
+        const mixR = computeActiveScenesForFrame(frame.value);
+        const wov = evalWordOverrideForFrame(frame.value);
+        workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat: be, wordIndex: wi, alphaA: mixR.alphaA, alphaB: mixR.alphaB, wordOverride: wov });
         requestAnimationFrame(() => drawPreview());
     } catch {}
 };
@@ -453,20 +448,28 @@ onUnmounted(() => {
     disposeWorker();
 });
 
-const configureWorkerScene = () => {
+const configureWorkerScene = async () => {
     const seed = String(timeline.value?.settings.seed || 'seed');
     const words = Array.isArray(song.value?.wordBank) ? (song.value!.wordBank!.map(w => String(w))) : [];
-    const sceneType = (selectedScene.value?.type || 'wordcloud') as any;
     // Build font-family chain from settings
     const primary = String(timeline.value?.settings.fontFamily || 'system-ui');
     const fallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value!.settings.fontFallbacks as string[]) : [];
     const names = [primary, ...fallbacks].filter(Boolean);
-    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
+    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\"') + '"' : s;
     const fontFamilyChain = names.map(quote).join(', ');
-    const payload = { type: 'configure', seed, words, sceneType, fontFamilyChain } as any;
-    // Deep-clone to strip Vue proxies before structured clone
-    const cloned = JSON.parse(JSON.stringify(payload));
-    workerRef.value?.postMessage(cloned);
+    const active = computeActiveScenesForFrame(frame.value);
+    // Ensure docs are loaded
+    if (active.a) await ensureSceneDoc(active.a.id, active.a);
+    if (active.b) await ensureSceneDoc(active.b.id, active.b);
+    const aParams = { ...(sceneDocs.value[active.a.id]?.params || {}), words, fontFamilyChain };
+    const payload: any = { type: 'configureMix', seed, a: { sceneType: active.a.type, params: aParams }, fontFamilyChain };
+    if (active.b) {
+        const bParams = { ...(sceneDocs.value[active.b.id!]?.params || {}), words, fontFamilyChain };
+        payload.b = { sceneType: active.b.type, params: bParams };
+    }
+    const pairKey = active.a.id + '|' + (active.b?.id || '');
+    lastConfiguredPair = pairKey;
+    workerRef.value?.postMessage(JSON.parse(JSON.stringify(payload)));
 };
 
 const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere') => {
@@ -476,20 +479,24 @@ const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere') => {
     const start = (last ? last.startFrame + last.durationFrames : 0);
     const scene = { id, type, name: `${type} ${timeline.value.scenes.length + 1}`, startFrame: start, durationFrames: 300 } as any;
     timeline.value.scenes.push(scene);
+    // create minimal per-scene document
+    const doc: SceneDocumentBase = { id, type, name: scene.name, seed: String(timeline.value.settings.seed || 'seed'), params: {}, tracks: [] } as any;
+    try { const saved = await TimelineService.saveScene(songId.value as string, doc); sceneDocs.value[id] = saved; } catch {}
     selectedSceneId.value = id;
     await TimelineService.save(songId.value as string, timeline.value);
-    configureWorkerScene();
+    await configureWorkerScene();
 };
 
-const selectScene = (id: string) => {
+const selectScene = async (id: string) => {
     selectedSceneId.value = id;
-    configureWorkerScene();
+    await ensureSceneDoc(id, (timeline.value?.scenes || []).find(s => s.id === id) || null);
+    await configureWorkerScene();
 };
 
 const onTimelineUpdated = async (t: TimelineDocument) => {
     timeline.value = t;
     await TimelineService.save(songId.value as string, t);
-    configureWorkerScene();
+    await configureWorkerScene();
 };
 
 const onSceneUpdated = async (s: any) => {
@@ -501,17 +508,22 @@ const onSceneUpdated = async (s: any) => {
     }
 };
 
-const onScrub = (payload: { timeSec: number; frame: number }) => {
+const onScrub = async (payload: { timeSec: number; frame: number }) => {
     try { if (audioCtx?.state === 'suspended') audioCtx.resume(); } catch {}
     if (audioEl && Number.isFinite(payload.timeSec)) {
         try { audioEl.currentTime = Math.max(0, payload.timeSec); } catch {}
     }
     frame.value = Math.max(0, payload.frame | 0);
     // Immediately update preview during scrubbing (paused or playing)
-    const globalAlpha = evalGlobalOpacityForFrame(frame.value);
     const beat = evalBeatForFrame(frame.value);
     const wordIndex = evalWordIndexForFrame(frame.value);
-    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat, globalAlpha, wordIndex });
+    const mix = computeActiveScenesForFrame(frame.value);
+    const pairKey = mix.a.id + '|' + (mix.b?.id || '');
+    if (pairKey !== lastConfiguredPair) {
+        await configureWorkerScene();
+    }
+    const wordOverride = evalWordOverrideForFrame(frame.value);
+    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride });
     // Defer preview draw to next frame so worker has time to render
     requestAnimationFrame(() => drawPreview());
 };
@@ -551,6 +563,75 @@ const drawPreview = () => {
     try { ctx.drawImage(src, 0, 0, src.width, src.height, dx, dy, dw, dh); } catch {}
 };
 
+const genId = () => (globalThis.crypto && 'randomUUID' in globalThis.crypto) ? (globalThis.crypto as any).randomUUID() : Math.random().toString(36).slice(2);
+
+const evalWordOverrideForFrame = (f: number): string | undefined => {
+    const acts = (timeline.value?.actionTracks || []) as ActionItem[];
+    if (!acts || !acts.length) return undefined;
+    const hit = acts.find(a => a.frame === f && a.actionType === 'wordOverride');
+    return hit?.payload?.word ? String(hit.payload.word) : undefined;
+};
+
+const ease = (t: number, type: TransitionEasing | undefined): number => {
+    const x = Math.min(1, Math.max(0, t));
+    switch (type) {
+        case 'easeIn': return x * x;
+        case 'easeOut': return 1 - (1 - x) * (1 - x);
+        case 'easeInOut': return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+        default: return x;
+    }
+};
+
+const computeActiveScenesForFrame = (f: number): { a: SceneRef; b?: SceneRef | null; alphaA: number; alphaB: number } => {
+    const scenes = (timeline.value?.scenes || []) as SceneRef[];
+    if (!scenes.length) {
+        const dummy: any = { id: 'none', type: 'wordcloud', name: 'None', startFrame: 0, durationFrames: 1 };
+        return { a: dummy, b: null, alphaA: 1, alphaB: 0 };
+    }
+    let a = scenes[0];
+    for (const s of scenes) {
+        if (f >= s.startFrame) a = s;
+        if (f < s.startFrame) break;
+    }
+    const endA = a.startFrame + a.durationFrames;
+    const idxA = scenes.findIndex(s => s.id === a.id);
+    const b = (idxA >= 0 && idxA + 1 < scenes.length) ? scenes[idxA + 1] : null;
+    const tin = Math.max(0, a.transitionInFrames || 0);
+    const tout = Math.max(0, a.transitionOutFrames || 0);
+    const easeType = a.transitionEasing || 'linear';
+    let alphaA = 1;
+    if (tin > 0 && f < a.startFrame + tin) {
+        alphaA = ease((f - a.startFrame) / Math.max(1, tin), easeType);
+    }
+    if (tout > 0 && f >= endA - tout) {
+        const t = (f - (endA - tout)) / Math.max(1, tout);
+        alphaA = alphaA * (1 - ease(t, easeType));
+    }
+    let alphaB = 0;
+    if (b) {
+        const tinB = Math.max(0, b.transitionInFrames || 0);
+        if (tinB > 0 && f >= b.startFrame && f < b.startFrame + tinB) {
+            alphaB = ease((f - b.startFrame) / Math.max(1, tinB), b.transitionEasing || easeType);
+        } else if (f >= b.startFrame) {
+            alphaB = 1;
+        }
+    }
+    return { a, b, alphaA: Math.min(1, Math.max(0, alphaA)), alphaB: Math.min(1, Math.max(0, alphaB)) };
+};
+
+const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
+    if (!id) return;
+    if (sceneDocs.value[id]) return;
+    try {
+        const doc = await TimelineService.loadScene(songId.value as string, id);
+        if (doc) { sceneDocs.value[id] = doc; return; }
+    } catch {}
+    if (ref) {
+        const doc: SceneDocumentBase = { id: ref.id, type: ref.type, name: ref.name, seed: String(timeline.value?.settings.seed || 'seed'), params: {}, tracks: [] } as any;
+        try { const saved = await TimelineService.saveScene(songId.value as string, doc); sceneDocs.value[id] = saved; } catch {}
+    }
+};
+
 </script>
 
 <template>
@@ -567,7 +648,26 @@ const drawPreview = () => {
             <span v-if="ffmpegAvailable === false" class="toolbar__notice">ffmpeg not found. On macOS: install with <code>brew install ffmpeg</code>. Only WebM will be produced.</span>
         </div>
         <div class="editor__sidebar">
-            <SceneList :scenes="timeline?.scenes || []" :selected-id="selectedSceneId || undefined" @select="selectScene" @add="addScene" />
+            <SceneList :scenes="timeline?.scenes || []" :selected-id="selectedSceneId || undefined" :current-frame="frame" :fps="fps" @select="selectScene" @add="addScene" @switchHere="({ frame }) => {
+                const scenes = [...(timeline?.scenes||[])];
+                if (!scenes.length) return;
+                // find current scene index
+                const idx = scenes.findIndex(s => frame >= s.startFrame && frame < s.startFrame + s.durationFrames);
+                if (idx < 0 || idx+1 >= scenes.length) return; // nothing to switch to
+                const a = { ...scenes[idx] } as any;
+                const b = { ...scenes[idx+1] } as any;
+                // split A at frame and start B at frame
+                const leftDur = Math.max(1, frame - a.startFrame);
+                const rightDur = Math.max(0, (a.startFrame + a.durationFrames) - frame);
+                a.durationFrames = leftDur;
+                b.startFrame = frame;
+                if (rightDur <= 0) {
+                    // shrink A fully before B
+                }
+                scenes[idx] = a;
+                scenes[idx+1] = b;
+                onTimelineUpdated({ ...(timeline as any), scenes } as any);
+            }" />
         </div>
         <div class="editor__preview" :style="{ aspectRatio }">
             <div class="preview__canvas-wrapper">
@@ -579,44 +679,25 @@ const drawPreview = () => {
         <div class="editor__inspector">
             <Inspector :timeline="timeline" :selected-scene="selectedScene" :overlay-opts="overlayOpts" @update:overlayOpts="v => overlayOpts = v" @update:timeline="onTimelineUpdated" @update:scene="onSceneUpdated" />
         </div>
-        <div class="editor__timeline">
-            <Timeline 
-                :waveform="waveform || []" 
-                :fps="fps" 
-                :current-frame="frame" 
-                :duration-sec="(audioEl?.duration || 0) || undefined" 
-                :beats="undefined"
-                :spectrum="spectrum || undefined"
-                :keyframes="(timeline?.globalOpacityTrack?.keyframes || []) as any"
-                :selected-kf-index="selectedKfIndex"
+        <div class="editor__timeline timeline-host">
+            <TimelineRoot
+                :fps="fps"
+                :current-frame="frame"
+                :duration-sec="(audioEl?.duration || 0) || undefined"
+                :beats="beatTimesSec || undefined"
+                :waveform="waveform || []"
+                :spectrum="spectrum || []"
                 :energy-per-frame="analysisCache?.energyPerFrame"
                 :is-onset-per-frame="analysisCache?.isOnsetPerFrame"
                 :show-energy="overlayOpts.showEnergy"
                 :show-onsets="overlayOpts.showOnsets && isSingleWordScene"
+                :scenes="timeline?.scenes || []"
+                :selected-scene-id="selectedSceneId || undefined"
+                :action-items="(timeline?.actionTracks || []) as any"
                 @scrub="(p: any) => onScrub(p)"
-                @kfAdd="({ frame, value }) => {
-                    const t = timeline?.globalOpacityTrack?.keyframes ? [...timeline!.globalOpacityTrack!.keyframes] : [];
-                    t.push({ frame, value, interpolation: 'linear' } as any);
-                    t.sort((a:any,b:any) => a.frame - b.frame);
-                    const updated = { ...(timeline as any), globalOpacityTrack: { propertyPath: 'global.opacity', keyframes: t } } as TimelineDocument;
-                    onTimelineUpdated(updated);
-                    selectedKfIndex = t.findIndex((k:any) => k.frame === frame && k.value === value);
-                }"
-                @kfUpdate="({ index, frame, value }) => {
-                    const t = timeline?.globalOpacityTrack?.keyframes ? [...timeline!.globalOpacityTrack!.keyframes] : [];
-                    if (index >= 0 && index < t.length) { t[index] = { ...t[index], frame, value } as any; t.sort((a:any,b:any) => a.frame - b.frame); }
-                    const updated = { ...(timeline as any), globalOpacityTrack: { propertyPath: 'global.opacity', keyframes: t } } as TimelineDocument;
-                    onTimelineUpdated(updated);
-                    selectedKfIndex = Math.min(index, t.length - 1);
-                }"
-                @kfSelect="({ index }) => { selectedKfIndex = (index ?? null); }"
-                @kfDelete="({ index }) => {
-                    const t = timeline?.globalOpacityTrack?.keyframes ? [...timeline!.globalOpacityTrack!.keyframes] : [];
-                    if (index >= 0 && index < t.length) { t.splice(index, 1); }
-                    const updated = { ...(timeline as any), globalOpacityTrack: { propertyPath: 'global.opacity', keyframes: t } } as TimelineDocument;
-                    onTimelineUpdated(updated);
-                    selectedKfIndex = null;
-                }"
+                @sceneUpdate="(s:any) => { const list = [...(timeline?.scenes||[])]; const i = list.findIndex(x=>x.id===s.id); if(i>=0){ list[i] = s; onTimelineUpdated({ ...(timeline as any), scenes: list } as TimelineDocument); } }"
+                @sceneSelect="({id}) => selectScene(id)"
+                @actionToggle="({frame}) => { const acts = Array.isArray(timeline?.actionTracks)? [...(timeline as any).actionTracks] : []; const idx = acts.findIndex((a:any)=>a.frame===frame && a.actionType==='wordOverride'); if(idx>=0){ acts.splice(idx,1);} else { acts.push({ id: genId(), frame, actionType: 'wordOverride', payload: { word: 'WOLK' } }); } onTimelineUpdated({ ...(timeline as any), actionTracks: acts } as TimelineDocument); }"
             />
         </div>
     </div>

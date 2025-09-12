@@ -1,44 +1,61 @@
-export interface SceneConfig {
-    seed: string;
-    words: string[];
-    width: number;
-    height: number;
-    fontFamilyChain?: string;
-}
+import type { SceneContext, WorkerScene } from '../engine/types';
 
-export class WordCloudScene {
-    private ctx: OffscreenCanvasRenderingContext2D;
-    private rng: () => number;
+export class WordCloudScene implements WorkerScene {
+    private rng: () => number = () => 0.5;
     private layout: { text: string; x: number; y: number; size: number; hue: number; w: number; h: number }[] = [];
     private configured = false;
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    private width = 0;
+    private height = 0;
+    private bgHue: number = 30;
 
-    constructor(ctx: OffscreenCanvasRenderingContext2D, seed: string) {
-        this.ctx = ctx;
-        this.rng = this.mulberry32(this.hashSeed(seed));
+    initialize(context: SceneContext): void {
+        this.width = context.resolution.width;
+        this.height = context.resolution.height;
+        this.fontFamilyChain = context.fontFamilyChain || this.fontFamilyChain;
+        this.rng = context.createScopedRng('wordcloud.layout');
     }
 
-    configure(config: SceneConfig) {
-        this.fontFamilyChain = config.fontFamilyChain || 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-        this.layout = this.computeLayout(config);
+    configure(params: Record<string, any>): void {
+        this.fontFamilyChain = String(params.fontFamilyChain || this.fontFamilyChain);
+        const words = Array.isArray(params.words) ? params.words as string[] : [];
+        this.layout = this.computeLayout({ width: this.width, height: this.height, words });
         this.configured = true;
+        const pHue = Number(params.bgHue);
+        this.bgHue = Number.isFinite(pHue) ? (Math.floor(pHue) % 360 + 360) % 360 : Math.floor(this.rng() * 360);
     }
 
-    render(frame: number, beat: number) {
+    update(frame: number, dt: number, context: SceneContext): void {
+        // no-op for now
+    }
+
+    render(target: OffscreenCanvasRenderingContext2D, context: SceneContext): void {
         if (!this.configured) return;
-        const ctx = this.ctx;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        // background to make transitions visible
+        target.fillStyle = `hsl(${this.bgHue}, 25%, 12%)`;
+        target.fillRect(0, 0, this.width, this.height);
+        target.textAlign = 'center';
+        target.textBaseline = 'middle';
+        const beat = Number(context.extras?.beat || 0);
         for (const w of this.layout) {
             const pulse = 0.9 + 0.3 * beat;
             const size = w.size * pulse;
-            ctx.font = `${size}px ${this.fontFamilyChain}`;
-            ctx.fillStyle = `hsl(${w.hue}, 80%, 60%)`;
-            ctx.fillText(w.text, w.x, w.y);
+            target.font = `${size}px ${this.fontFamilyChain}`;
+            target.fillStyle = `hsl(${w.hue}, 80%, 60%)`;
+            target.fillText(w.text, w.x, w.y);
         }
     }
 
-    private computeLayout(config: SceneConfig) {
+    dispose(): void {
+        this.layout = [];
+    }
+
+    serialize(): any { return { fontFamilyChain: this.fontFamilyChain, layout: this.layout }; }
+    deserialize(data: any): void {
+        try { if (data?.fontFamilyChain) this.fontFamilyChain = String(data.fontFamilyChain); } catch {}
+    }
+
+    private computeLayout(config: { width: number; height: number; words: string[] }) {
         const { width, height, words } = config;
         const layout: { text: string; x: number; y: number; size: number; hue: number; w: number; h: number }[] = [];
         const cx = width / 2;
@@ -48,7 +65,6 @@ export class WordCloudScene {
         const maxWords = Math.min(words.length, 200);
         const golden = Math.PI * (3 - Math.sqrt(5));
         const radiusStep = Math.max(8, Math.min(width, height) * 0.008);
-        const ctx = this.ctx;
         // helper to check overlaps
         const intersects = (a: any, b: any) => !(a.x + a.w < b.x || a.x > b.x + b.w || a.y + a.h < b.y || a.y > b.y + b.h);
         for (let i = 0, placed = 0; i < words.length && placed < maxWords; i++) {
@@ -56,9 +72,8 @@ export class WordCloudScene {
             let attempt = 0;
             while (attempt < 200) {
                 const size = baseSize * (0.7 + this.rng() * 0.6);
-                ctx.font = `${size}px ${this.fontFamilyChain}`;
-                const metrics = ctx.measureText(text);
-                const w = Math.ceil(metrics.width);
+                // approximate width using size * 0.6 * len (no ctx measure here)
+                const w = Math.ceil(size * 0.6 * Math.max(1, String(text).length));
                 const h = Math.ceil(size);
                 const r = (placed + attempt) * radiusStep;
                 const a = (placed + attempt) * golden;
@@ -75,21 +90,6 @@ export class WordCloudScene {
             }
         }
         return layout;
-    }
-
-    private hashSeed(seed: string): number {
-        let h = 2166136261 >>> 0;
-        for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
-        return h >>> 0;
-    }
-
-    private mulberry32(a: number) {
-        return () => {
-            let t = a += 0x6D2B79F5;
-            t = Math.imul(t ^ (t >>> 15), t | 1);
-            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
     }
 }
 

@@ -14,6 +14,9 @@ export interface RenderFrameMessage {
     beat?: number; // 0..1 energy/envelope to drive pulsing
     globalAlpha?: number; // 0..1 project-wide opacity
     wordIndex?: number; // precomputed word index for deterministic scenes
+    alphaA?: number; // 0..1 mix alpha for scene A
+    alphaB?: number; // 0..1 mix alpha for scene B
+    wordOverride?: string;
 }
 
 export interface RenderDisposeMessage {
@@ -24,26 +27,44 @@ export interface RenderConfigureMessage {
     type: 'configure';
     seed: string;
     words: string[];
-    sceneType: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord';
+    sceneType: 'wordcloud' | 'singleWord';
     fontFamilyChain?: string;
+    fps?: number;
 }
 
-type WorkerMessage = RenderInitMessage | RenderFrameMessage | RenderDisposeMessage | RenderConfigureMessage;
+export interface RenderConfigureMixMessage {
+    type: 'configureMix';
+    seed: string;
+    a: { sceneType: 'wordcloud' | 'singleWord'; params: Record<string, any> };
+    b?: { sceneType: 'wordcloud' | 'singleWord'; params: Record<string, any> };
+    fontFamilyChain?: string;
+    fps?: number;
+}
+
+type WorkerMessage = RenderInitMessage | RenderFrameMessage | RenderDisposeMessage | RenderConfigureMessage | RenderConfigureMixMessage;
 
 let ctx2d: OffscreenCanvasRenderingContext2D | null = null;
 let canvasRef: OffscreenCanvas | null = null;
 let configured = false;
-let sceneType: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' = 'wordcloud';
+let sceneType: 'wordcloud' | 'singleWord' = 'wordcloud';
 let words: string[] = [];
 let canvasWidth = 0;
 let canvasHeight = 0;
 let fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+let fps = 60;
 
-// Scene dispatch
+// Engine
+import { SceneEngine } from './engine/SceneEngine';
+import { registerScene } from './engine/SceneRegistry';
+import type { SceneType } from './engine/types';
 import { WordCloudScene } from './scenes/WordCloudScene';
 import { SingleWordScene } from './scenes/SingleWordScene';
-type SceneInstance = { render: (frame: number, beat: number, extras?: { wordIndex?: number }) => void; configure: (cfg: any) => void } | null;
-let sceneInstance: SceneInstance = null;
+
+// register scenes
+registerScene('wordcloud', () => new WordCloudScene());
+registerScene('singleWord', () => new SingleWordScene());
+
+const engine = new SceneEngine();
 
 // Simple seeded PRNG (Mulberry32)
 const mulberry32 = (a: number) => {
@@ -57,32 +78,7 @@ const mulberry32 = (a: number) => {
 
 let rng = mulberry32(1);
 
-// Cached layout for wordcloud
-type WordLayout = { text: string; x: number; y: number; size: number; hue: number };
-let layout: WordLayout[] = [];
-
-const computeWordCloudLayout = (width: number, height: number) => {
-    layout = [];
-    if (!ctx2d) return;
-    const area = width * height;
-    const baseSize = Math.max(12, Math.sqrt(area / 1500));
-    const maxWords = Math.min(words.length, 200);
-    const cx = width / 2;
-    const cy = height / 2;
-    const golden = Math.PI * (3 - Math.sqrt(5)); // golden angle ~2.399
-    const radiusStep = Math.max(8, Math.min(width, height) * 0.008);
-    for (let i = 0; i < maxWords; i++) {
-        const text = words[i];
-        const size = baseSize * (0.7 + rng() * 0.6);
-        const r = i * radiusStep;
-        const a = i * golden;
-        const jitter = 4;
-        const x = cx + Math.cos(a) * r + (rng() - 0.5) * jitter;
-        const y = cy + Math.sin(a) * r + (rng() - 0.5) * jitter;
-        const hue = Math.floor(rng() * 360);
-        layout.push({ text, x, y, size, hue });
-    }
-};
+// remove old ad-hoc layout cache
 
 const handleInit = (msg: RenderInitMessage) => {
     canvasRef = msg.canvas;
@@ -115,26 +111,23 @@ const handleFrame = (msg: RenderFrameMessage) => {
         return;
     }
     const beat = typeof msg.beat === 'number' ? Math.max(0, Math.min(1, msg.beat)) : 0;
-    if (sceneInstance) {
-        const prevAlpha = ctx2d.globalAlpha;
-        if (typeof msg.globalAlpha === 'number') {
-            ctx2d.globalAlpha = Math.min(1, Math.max(0, msg.globalAlpha));
-        }
-        sceneInstance.render(frame, beat, { wordIndex: msg.wordIndex });
-        ctx2d.globalAlpha = prevAlpha;
-    } else {
-        ctx2d.fillStyle = '#0ff';
-        ctx2d.font = '24px sans-serif';
-        ctx2d.fillText(`Frame ${frame}`, 20, 40);
+    const prevAlpha = ctx2d.globalAlpha;
+    if (typeof msg.globalAlpha === 'number') {
+        ctx2d.globalAlpha = Math.min(1, Math.max(0, msg.globalAlpha));
     }
+    engine.update(frame, msg.dt, { beat, wordIndex: msg.wordIndex, globalAlpha: msg.globalAlpha, wordOverride: (msg as any).wordOverride });
+    const aA = typeof msg.alphaA === 'number' ? Math.min(1, Math.max(0, msg.alphaA)) : 1;
+    const aB = typeof msg.alphaB === 'number' ? Math.min(1, Math.max(0, msg.alphaB)) : 0;
+    engine.renderMix(frame, msg.dt, { beat, wordIndex: msg.wordIndex, globalAlpha: msg.globalAlpha, wordOverride: (msg as any).wordOverride }, aA, aB);
+    ctx2d.globalAlpha = prevAlpha;
     try { (self as any).postMessage({ type: 'rendered', frame }); } catch {}
 };
 
 const handleDispose = () => {
+    engine.dispose();
     ctx2d = null;
     canvasRef = null;
     configured = false;
-    layout = [];
 };
 
 self.onmessage = (event: MessageEvent<WorkerMessage>) => {
@@ -149,26 +142,36 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         case 'configure':
             configured = true;
             words = Array.isArray(msg.words) ? msg.words.slice(0, 500) : [];
-            sceneType = msg.sceneType;
+            sceneType = msg.sceneType as any;
             fontFamilyChain = String(msg.fontFamilyChain || 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif');
-            // Seed RNG
-            let seedInt = 1;
-            try {
-                seedInt = Array.from(msg.seed || 'seed').reduce((a: number, c: string) => ((a << 5) - a) + c.charCodeAt(0) | 0, 0) >>> 0;
-            } catch {}
-            rng = mulberry32(seedInt);
-            // Create scene instance
-            sceneInstance = null;
+            fps = Math.max(1, (msg.fps as any) | 0) || 60;
             if (ctx2d) {
-                if (sceneType === 'wordcloud') {
-                    const sc = new WordCloudScene(ctx2d, String(msg.seed || 'seed'));
-                    sc.configure({ seed: String(msg.seed || 'seed'), words, width: canvasWidth, height: canvasHeight, fontFamilyChain });
-                    sceneInstance = sc as SceneInstance;
-                } else if (sceneType === 'singleWord') {
-                    const sc = new SingleWordScene(ctx2d, String(msg.seed || 'seed'));
-                    sc.configure({ seed: String(msg.seed || 'seed'), words, width: canvasWidth, height: canvasHeight, fontFamilyChain });
-                    sceneInstance = sc as SceneInstance;
-                }
+                engine.attachTarget(ctx2d);
+                engine.configure({
+                    seed: String(msg.seed || 'seed'),
+                    resolution: { width: canvasWidth, height: canvasHeight },
+                    fontFamilyChain,
+                    fps,
+                    sceneType: sceneType as any,
+                    params: { words, fontFamilyChain },
+                });
+            }
+            break;
+        case 'configureMix':
+            configured = true;
+            fontFamilyChain = String((msg as any).fontFamilyChain || 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif');
+            fps = Math.max(1, ((msg as any).fps as any) | 0) || 60;
+            if (ctx2d) {
+                engine.attachTarget(ctx2d);
+                engine.configure({
+                    seed: String((msg as any).seed || 'seed'),
+                    resolution: { width: canvasWidth, height: canvasHeight },
+                    fontFamilyChain,
+                    fps,
+                    sceneType: (msg as any).a.sceneType,
+                    params: (msg as any).a.params,
+                });
+                engine.configureMix({ type: (msg as any).a.sceneType, params: (msg as any).a.params }, (msg as any).b ? { type: (msg as any).b.sceneType, params: (msg as any).b.params } : undefined);
             }
             break;
         case 'dispose':

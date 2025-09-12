@@ -3,6 +3,8 @@ import { onMounted, ref, watch, computed, onUnmounted } from 'vue';
 
 interface ScrubEvent { timeSec: number; frame: number; }
 interface Kf { frame: number; value: number; interpolation?: 'step' | 'linear'; }
+interface SceneRef { id: string; type: string; name: string; startFrame: number; durationFrames: number; transitionInFrames?: number; transitionOutFrames?: number; transitionEasing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' }
+interface ActionItem { id: string; frame: number; actionType: string; payload: Record<string, any>; }
 
 const props = defineProps<{
     waveform: number[];
@@ -20,8 +22,22 @@ const props = defineProps<{
     isOnsetPerFrame?: boolean[];
     showEnergy?: boolean;
     showOnsets?: boolean;
+    // Scenes and actions
+    scenes?: SceneRef[];
+    selectedSceneId?: string;
+    actionItems?: ActionItem[];
 }>();
-const emit = defineEmits<{ (e: 'scrub', payload: ScrubEvent): void; (e: 'kfAdd', payload: { frame: number; value: number }): void; (e: 'kfUpdate', payload: { index: number; frame: number; value: number }): void; (e: 'kfSelect', payload: { index: number | null }): void; (e: 'kfDelete', payload: { index: number }): void }>();
+const emit = defineEmits<{
+    (e: 'scrub', payload: ScrubEvent): void;
+    (e: 'kfAdd', payload: { frame: number; value: number }): void;
+    (e: 'kfUpdate', payload: { index: number; frame: number; value: number }): void;
+    (e: 'kfSelect', payload: { index: number | null }): void;
+    (e: 'kfDelete', payload: { index: number }): void;
+    // Scenes
+    (e: 'sceneSelect', payload: { id: string }): void;
+    (e: 'sceneUpdate', payload: SceneRef): void;
+    (e: 'actionToggle', payload: { frame: number }): void;
+}>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const opacityCollapsed = ref(false);
@@ -63,22 +79,23 @@ const draw = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const w = canvas.width = canvas.clientWidth;
-    const h = canvas.height = canvas.clientHeight;
+    // content height determines scrollable area
+    const headerH = 24;
+    const sceneLaneH = headerH + 36;
+    const kfBodyH = opacityCollapsed.value ? 0 : 56;
+    const kfLaneH = headerH + kfBodyH;
+    // @ts-ignore
+    const audioLaneState: 'expanded' | 'compact' | 'collapsed' = (window.__audioLaneState || 'expanded');
+    const audioHeaderTop = sceneLaneH + kfLaneH;
+    const audioBodyH = (audioLaneState === 'collapsed') ? 0 : (audioLaneState === 'compact' ? 120 : 220);
+    const wfTop = audioHeaderTop + headerH;
+    const wfHeight = audioBodyH;
+    const contentH = wfTop + wfHeight + 10;
+    canvas.height = contentH;
+    const h = contentH;
     ctx.clearRect(0,0,w,h);
     ctx.fillStyle = '#181818';
     ctx.fillRect(0,0,w,h);
-
-    // Lanes layout
-    const headerH = 24;
-    const kfBodyH = opacityCollapsed.value ? 0 : 56;
-    const kfLaneH = headerH + kfBodyH;
-    // Introduce a global lane state holder on window to persist between draws without prop/state churn here
-    // @ts-ignore
-    const audioLaneState: 'expanded' | 'compact' | 'collapsed' = (window.__audioLaneState || 'expanded');
-    const audioHeaderTop = kfLaneH;
-    const audioBodyH = (audioLaneState === 'collapsed') ? 0 : (audioLaneState === 'compact' ? 80 : Math.max(80, h - (kfLaneH + headerH)));
-    const wfTop = audioHeaderTop + headerH;
-    const wfHeight = audioBodyH;
 
     // Minor time grid
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
@@ -93,51 +110,98 @@ const draw = () => {
         ctx.stroke();
     }
 
-    // Opacity lane header
+    // Scene lane header
     ctx.fillStyle = '#202020';
     ctx.fillRect(0, 0, w, headerH);
     ctx.fillStyle = '#ffffff';
     ctx.font = '12px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Opacity', 8, headerH / 2);
+    // collapse indicator triangle
+    ctx.beginPath();
+    ctx.moveTo(8, headerH/2 - 4);
+    ctx.lineTo(14, headerH/2);
+    ctx.lineTo(8, headerH/2 + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillText('Scenes', 20, headerH / 2);
     ctx.strokeStyle = 'rgba(255,255,255,0.1)';
     ctx.beginPath(); ctx.moveTo(0, headerH + 0.5); ctx.lineTo(w, headerH + 0.5); ctx.stroke();
 
-    // Keyframe grid and points (body)
-    if (kfBodyH > 0) {
-        // Lane background
-        ctx.fillStyle = '#202020';
-        ctx.fillRect(0, headerH, w, kfBodyH);
-        // Draw keyframes
-        const kfMin = Number.isFinite(props.kfValueMin) ? Number(props.kfValueMin) : 0;
-        const kfMax = Number.isFinite(props.kfValueMax) ? Number(props.kfValueMax) : 1;
-        const norm01 = (v: number) => Math.min(1, Math.max(0, (v - kfMin) / Math.max(1e-9, (kfMax - kfMin))));
-        const keyframes = Array.isArray(props.keyframes) ? props.keyframes : [];
-        const toXY = (kf: Kf) => {
-            const tSec = kf.frame / Math.max(1, props.fps);
-            const x = timeToX(tSec, w);
-            const y = headerH + Math.round((1 - norm01(kf.value)) * (kfBodyH - 10)) + 5;
-            return { x, y };
-        };
-        if (keyframes.length) {
-            ctx.strokeStyle = 'rgba(0, 230, 118, 0.7)';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            for (let i = 0; i < keyframes.length; i++) {
-                const p = toXY(keyframes[i]);
-                if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-            }
-            ctx.stroke();
-            for (let i = 0; i < keyframes.length; i++) {
-                const p = toXY(keyframes[i]);
-                const selected = (i === (props.selectedKfIndex ?? -1));
-                ctx.fillStyle = selected ? '#ff3b30' : '#00e676';
+    // Scene blocks
+    const scenes = Array.isArray(props.scenes) ? props.scenes : [];
+    if (scenes.length) {
+        const laneTop = headerH;
+        const laneH = sceneLaneH - headerH;
+        for (const s of scenes) {
+            const startSec = s.startFrame / Math.max(1, props.fps);
+            const endSec = (s.startFrame + s.durationFrames) / Math.max(1, props.fps);
+            const x1 = timeToX(startSec, w);
+            const x2 = timeToX(endSec, w);
+            const sel = s.id === props.selectedSceneId;
+            ctx.fillStyle = sel ? 'rgba(0,150,255,0.35)' : 'rgba(255,255,255,0.15)';
+            ctx.fillRect(Math.floor(x1), laneTop + 4, Math.max(2, Math.floor(x2 - x1)), laneH - 8);
+            ctx.strokeStyle = sel ? 'rgba(0,150,255,0.9)' : 'rgba(255,255,255,0.4)';
+            ctx.strokeRect(Math.floor(x1) + 0.5, laneTop + 4.5, Math.max(2, Math.floor(x2 - x1)) - 1, laneH - 9);
+            // Name
+            ctx.fillStyle = '#fff';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(s.name || s.type, Math.floor(x1) + 6, laneTop + 6);
+            // Transitions as fade triangles
+            const ti = Math.max(0, s.transitionInFrames || 0) / Math.max(1, props.fps);
+            const to = Math.max(0, s.transitionOutFrames || 0) / Math.max(1, props.fps);
+            if (ti > 0) {
+                const xi2 = timeToX(startSec + ti, w);
+                ctx.fillStyle = 'rgba(0,0,0,0.25)';
                 ctx.beginPath();
-                ctx.arc(p.x, p.y, selected ? 5 : 4, 0, Math.PI * 2);
+                ctx.moveTo(x1, laneTop + 4);
+                ctx.lineTo(xi2, laneTop + 4);
+                ctx.lineTo(x1, laneTop + laneH - 4);
+                ctx.closePath();
                 ctx.fill();
             }
+            if (to > 0) {
+                const xo1 = timeToX(endSec - to, w);
+                ctx.fillStyle = 'rgba(0,0,0,0.25)';
+                ctx.beginPath();
+                ctx.moveTo(x2, laneTop + 4);
+                ctx.lineTo(xo1, laneTop + 4);
+                ctx.lineTo(x2, laneTop + laneH - 4);
+                ctx.closePath();
+                ctx.fill();
+            }
+            // Handles (small bars)
+            ctx.fillStyle = '#ffd54f';
+            ctx.fillRect(Math.floor(x1) - 2, laneTop + 4, 3, laneH - 8);
+            ctx.fillRect(Math.floor(x2) - 1, laneTop + 4, 3, laneH - 8);
         }
+    }
+
+    // Scene params lane header (renamed from Opacity)
+    const kfHeaderTop = sceneLaneH;
+    ctx.fillStyle = '#202020';
+    ctx.fillRect(0, kfHeaderTop, w, headerH);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    // collapse triangle
+    ctx.beginPath();
+    ctx.moveTo(8, kfHeaderTop + headerH/2 - 4);
+    ctx.lineTo(14, kfHeaderTop + headerH/2);
+    ctx.lineTo(8, kfHeaderTop + headerH/2 + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillText('Scenes', 20, kfHeaderTop + headerH / 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.moveTo(0, kfHeaderTop + headerH + 0.5); ctx.lineTo(w, kfHeaderTop + headerH + 0.5); ctx.stroke();
+
+    // Scene params body background (no curve yet)
+    if (kfBodyH > 0) {
+        ctx.fillStyle = '#202020';
+        ctx.fillRect(0, kfHeaderTop + headerH, w, kfBodyH);
     }
 
     // Audio lane header
@@ -150,6 +214,20 @@ const draw = () => {
     ctx.fillText('Audio', 8, audioHeaderTop + headerH / 2);
     ctx.strokeStyle = 'rgba(255,255,255,0.1)';
     ctx.beginPath(); ctx.moveTo(0, audioHeaderTop + headerH + 0.5); ctx.lineTo(w, audioHeaderTop + headerH + 0.5); ctx.stroke();
+
+    // Action markers (read-only)
+    const acts = Array.isArray(props.actionItems) ? props.actionItems : [];
+    if (acts.length) {
+        const laneTop = headerH;
+        const laneH = sceneLaneH - headerH;
+        ctx.fillStyle = '#ff7043';
+        for (const a of acts) {
+            const tSec = a.frame / Math.max(1, props.fps);
+            if (tSec < viewStartSec.value || tSec > viewStartSec.value + viewDurationSec.value) continue;
+            const x = timeToX(tSec, w);
+            ctx.fillRect(Math.floor(x) - 1, laneTop + 4, 2, laneH - 8);
+        }
+    }
 
     // waveform (subset for current view)
     const data = props.waveform || [];
@@ -226,7 +304,6 @@ const draw = () => {
 
     // playhead
     ctx.strokeStyle = '#ff3b30';
-    const totalFrames = Math.max(1, Math.floor(duration.value * props.fps));
     const curTime = Math.max(0, Math.min(duration.value, props.currentFrame / props.fps));
     const playheadX = timeToX(curTime, w);
     ctx.beginPath();
@@ -252,6 +329,14 @@ let draggingKfIndex: number | null = null;
 let startX = 0;
 let startViewStart = 0;
 
+// Scene drag state
+type DragMode = 'none' | 'moveScene' | 'resizeLeft' | 'resizeRight' | 'adjustIn' | 'adjustOut';
+let dragMode: DragMode = 'none';
+let dragSceneIndex: number = -1;
+let dragMoveOffsetFrames: number = 0;
+
+const setCursor = (cursor: string) => { const el = canvasRef.value; if (el) el.style.cursor = cursor; };
+
 const onPointerDown = (e: PointerEvent) => {
     const canvas = canvasRef.value;
     if (!canvas) return;
@@ -263,53 +348,46 @@ const onPointerDown = (e: PointerEvent) => {
     const localX = e.clientX - rect.left;
     const localY = e.clientY - rect.top;
     const headerH = 24;
+    const sceneLaneH = headerH + 36;
     const kfBodyH = opacityCollapsed.value ? 0 : 56;
     const kfLaneH = headerH + kfBodyH;
-    const audioHeaderTop = kfLaneH;
-    // Toggle collapse/compact via clicking header label region
-    if (localX < 120) {
-        if (localY >= 0 && localY <= headerH) {
-            opacityCollapsed.value = !opacityCollapsed.value; requestDraw(); return;
-        }
-        if (localY >= audioHeaderTop && localY <= audioHeaderTop + headerH) {
-            // @ts-ignore
-            const current = window.__audioLaneState || 'expanded';
-            // @ts-ignore
-            window.__audioLaneState = (current === 'expanded') ? 'compact' : (current === 'compact' ? 'collapsed' : 'expanded');
-            requestDraw(); return;
-        }
+    const audioHeaderTop = sceneLaneH + kfLaneH;
+    // Toggle collapse (by clicking left area of header)
+    if (localX < 20) {
+        if (localY >= 0 && localY <= headerH) { requestDraw(); return; }
+        if (localY >= sceneLaneH && localY <= sceneLaneH + headerH) { opacityCollapsed.value = !opacityCollapsed.value; requestDraw(); return; }
     }
-    if (localY <= kfLaneH && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-        isEditingKf = true;
-        isPanning = false;
-        isScrubbing = false;
-        const kfMin = Number.isFinite(props.kfValueMin) ? Number(props.kfValueMin) : 0;
-        const kfMax = Number.isFinite(props.kfValueMax) ? Number(props.kfValueMax) : 1;
-        const keyframes = Array.isArray(props.keyframes) ? props.keyframes : [];
+    // Scene lane interactions
+    if (localY >= headerH && localY <= sceneLaneH) {
+        const scenes = Array.isArray(props.scenes) ? props.scenes : [];
         const fps = Math.max(1, props.fps);
-        const frameAtX = Math.floor(xToTime(localX, canvas.clientWidth) * fps);
-        const radius = 8;
-        let hit: number | null = null;
-        for (let i = 0; i < keyframes.length; i++) {
-            const k = keyframes[i];
-            const x = timeToX(k.frame / fps, canvas.clientWidth);
-            const vNorm = Math.min(1, Math.max(0, (k.value - kfMin) / Math.max(1e-9, (kfMax - kfMin))));
-            const y = Math.round((1 - vNorm) * (kfLaneH - 10)) + 5;
-            const dx = Math.abs(x - localX);
-            const dy = Math.abs(y - localY);
-            if (dx * dx + dy * dy <= radius * radius) { hit = i; break; }
+        const t = xToTime(localX, canvas.clientWidth);
+        const fAt = Math.max(0, Math.floor(t * fps));
+        let hitIdx = -1;
+        for (let i = 0; i < scenes.length; i++) {
+            const s = scenes[i];
+            if (fAt >= s.startFrame && fAt <= s.startFrame + s.durationFrames) { hitIdx = i; break; }
         }
-        if (hit != null) {
-            draggingKfIndex = hit;
-            emit('kfSelect', { index: hit });
-        } else {
-            const vNorm = 1 - Math.min(1, Math.max(0, (localY - 5) / (kfLaneH - 10)));
-            const value = kfMin + vNorm * (kfMax - kfMin);
-            emit('kfAdd', { frame: Math.max(0, frameAtX), value });
+        if (hitIdx >= 0) {
+            const s = scenes[hitIdx];
+            emit('sceneSelect', { id: s.id });
+            dragSceneIndex = hitIdx;
+            const startSec = s.startFrame / fps;
+            const endSec = (s.startFrame + s.durationFrames) / fps;
+            const x1 = timeToX(startSec, canvas.clientWidth);
+            const x2 = timeToX(endSec, canvas.clientWidth);
+            const nearLeft = Math.abs(localX - x1) <= 6;
+            const nearRight = Math.abs(localX - x2) <= 6;
+            if (nearLeft) { dragMode = e.altKey ? 'adjustIn' : 'resizeLeft'; setCursor('ew-resize'); return; }
+            if (nearRight) { dragMode = e.altKey ? 'adjustOut' : 'resizeRight'; setCursor('ew-resize'); return; }
+            dragMode = 'moveScene';
+            dragMoveOffsetFrames = fAt - s.startFrame;
+            setCursor('grabbing');
+            return;
         }
-        return;
     }
-    // Hold Space/Ctrl/Meta or non-left button to pan; otherwise scrub
+    // Keyframe lane interaction disabled for now (placeholder)
+    // Panning or scrubbing
     isEditingKf = false;
     isPanning = e.button !== 0 || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
     isScrubbing = !isPanning;
@@ -317,42 +395,88 @@ const onPointerDown = (e: PointerEvent) => {
         const t = xToTime(localX, canvas.clientWidth);
         const clamped = Math.max(0, Math.min(duration.value, t));
         emit('scrub', { timeSec: clamped, frame: Math.floor(clamped * props.fps) });
+        setCursor('ew-resize');
     }
 };
 
 const onPointerMove = (e: PointerEvent) => {
-    if (!isPointerDown) return;
     const canvas = canvasRef.value;
     if (!canvas) return;
-    if (isEditingKf) {
-        const rect = canvas.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        const localY = e.clientY - rect.top;
-        const headerH = 24;
-        const kfBodyH = opacityCollapsed.value ? 0 : 56;
-        const kfLaneH = headerH + kfBodyH;
+    const rect = canvas.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    const localY = e.clientY - rect.top;
+    const headerH = 24;
+    const sceneLaneH = headerH + 36;
+    if (!isPointerDown) {
+        // hover cursors for scene edges
+        if (localY >= headerH && localY <= sceneLaneH) {
+            const scenes = Array.isArray(props.scenes) ? props.scenes : [];
+            const fps = Math.max(1, props.fps);
+            const t = xToTime(localX, canvas.clientWidth);
+            const fAt = Math.max(0, Math.floor(t * fps));
+            let hitIdx = -1;
+            for (let i = 0; i < scenes.length; i++) {
+                const s = scenes[i];
+                if (fAt >= s.startFrame && fAt <= s.startFrame + s.durationFrames) { hitIdx = i; break; }
+            }
+            if (hitIdx >= 0) {
+                const s = scenes[hitIdx];
+                const startSec = s.startFrame / fps;
+                const endSec = (s.startFrame + s.durationFrames) / fps;
+                const x1 = timeToX(startSec, canvas.clientWidth);
+                const x2 = timeToX(endSec, canvas.clientWidth);
+                const nearLeft = Math.abs(localX - x1) <= 6;
+                const nearRight = Math.abs(localX - x2) <= 6;
+                setCursor(nearLeft || nearRight ? 'ew-resize' : 'grab');
+                return;
+            }
+        }
+        setCursor('default');
+        return;
+    }
+    if (dragMode !== 'none') {
         const fps = Math.max(1, props.fps);
         const frameAtX = Math.max(0, Math.floor(xToTime(localX, canvas.clientWidth) * fps));
-        const kfMin = Number.isFinite(props.kfValueMin) ? Number(props.kfValueMin) : 0;
-        const kfMax = Number.isFinite(props.kfValueMax) ? Number(props.kfValueMax) : 1;
-        const vNorm = 1 - Math.min(1, Math.max(0, (localY - headerH - 5) / Math.max(1, (kfLaneH - headerH - 10))));
-        const value = kfMin + vNorm * (kfMax - kfMin);
-        if (draggingKfIndex != null) {
-            emit('kfUpdate', { index: draggingKfIndex, frame: frameAtX, value });
+        const scenes = Array.isArray(props.scenes) ? props.scenes : [];
+        if (dragSceneIndex >= 0 && dragSceneIndex < scenes.length) {
+            const s = { ...scenes[dragSceneIndex] } as SceneRef;
+            if (dragMode === 'moveScene') {
+                s.startFrame = Math.max(0, frameAtX - dragMoveOffsetFrames);
+            } else if (dragMode === 'resizeLeft') {
+                const newStart = Math.min(frameAtX, s.startFrame + s.durationFrames - 1);
+                const newDur = Math.max(1, (s.startFrame + s.durationFrames) - newStart);
+                s.startFrame = Math.max(0, newStart);
+                s.durationFrames = newDur;
+            } else if (dragMode === 'resizeRight') {
+                const newDur = Math.max(1, frameAtX - s.startFrame);
+                s.durationFrames = newDur;
+            } else if (dragMode === 'adjustIn') {
+                const maxTi = Math.max(0, s.durationFrames - Math.max(0, s.transitionOutFrames || 0));
+                const newTi = Math.max(0, Math.min(maxTi, frameAtX - s.startFrame));
+                s.transitionInFrames = newTi;
+            } else if (dragMode === 'adjustOut') {
+                const endFrame = s.startFrame + s.durationFrames;
+                const maxTo = Math.max(0, s.durationFrames - Math.max(0, s.transitionInFrames || 0));
+                const newTo = Math.max(0, Math.min(maxTo, endFrame - frameAtX));
+                s.transitionOutFrames = newTo;
+            }
+            emit('sceneUpdate', s);
         }
         requestDraw();
-    } else if (isPanning) {
+        return;
+    }
+    if (isPanning) {
         const dx = e.clientX - startX;
         const secPerPx = viewDurationSec.value / Math.max(1, canvas.clientWidth);
         viewStartSec.value = startViewStart - dx * secPerPx;
         clampView();
         requestDraw();
+        setCursor('grabbing');
     } else if (isScrubbing) {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const t = xToTime(x, canvas.clientWidth);
+        const t = xToTime(localX, canvas.clientWidth);
         const clamped = Math.max(0, Math.min(duration.value, t));
         emit('scrub', { timeSec: clamped, frame: Math.floor(clamped * props.fps) });
+        setCursor('ew-resize');
     }
 };
 
@@ -362,10 +486,13 @@ const endPointer = (e: PointerEvent) => {
     isPanning = false;
     isScrubbing = false;
     isEditingKf = false;
+    dragMode = 'none';
+    dragSceneIndex = -1;
     draggingKfIndex = null;
     const canvas = canvasRef.value;
     if (canvas) {
         try { canvas.releasePointerCapture(e.pointerId); } catch {}
+        setCursor('default');
     }
 };
 
@@ -475,7 +602,7 @@ function niceGridSeconds(windowSec: number, widthPx: number): number {
 </script>
 
 <template>
-    <div style="width:100%; height:100%">
+    <div style="width:100%; height:100%; overflow:auto">
         <canvas ref="canvasRef" style="width:100%; height:100%; touch-action: none" tabindex="0"></canvas>
     </div>
     
