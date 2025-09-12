@@ -17,6 +17,9 @@ export interface RenderFrameMessage {
     alphaA?: number; // 0..1 mix alpha for scene A
     alphaB?: number; // 0..1 mix alpha for scene B
     wordOverride?: string;
+    lowBand?: number;
+    midBand?: number;
+    highBand?: number;
 }
 
 export interface RenderDisposeMessage {
@@ -115,10 +118,10 @@ const handleFrame = (msg: RenderFrameMessage) => {
     if (typeof msg.globalAlpha === 'number') {
         ctx2d.globalAlpha = Math.min(1, Math.max(0, msg.globalAlpha));
     }
-    engine.update(frame, msg.dt, { beat, wordIndex: msg.wordIndex, globalAlpha: msg.globalAlpha, wordOverride: (msg as any).wordOverride });
+    engine.update(frame, msg.dt, { beat, wordIndex: msg.wordIndex, globalAlpha: msg.globalAlpha, wordOverride: (msg as any).wordOverride, lowBand: (msg as any).lowBand, midBand: (msg as any).midBand, highBand: (msg as any).highBand });
     const aA = typeof msg.alphaA === 'number' ? Math.min(1, Math.max(0, msg.alphaA)) : 1;
     const aB = typeof msg.alphaB === 'number' ? Math.min(1, Math.max(0, msg.alphaB)) : 0;
-    engine.renderMix(frame, msg.dt, { beat, wordIndex: msg.wordIndex, globalAlpha: msg.globalAlpha, wordOverride: (msg as any).wordOverride }, aA, aB);
+    engine.renderMix(frame, msg.dt, { beat, wordIndex: msg.wordIndex, globalAlpha: msg.globalAlpha, wordOverride: (msg as any).wordOverride, lowBand: (msg as any).lowBand, midBand: (msg as any).midBand, highBand: (msg as any).highBand }, aA, aB);
     ctx2d.globalAlpha = prevAlpha;
     try { (self as any).postMessage({ type: 'rendered', frame }); } catch {}
 };

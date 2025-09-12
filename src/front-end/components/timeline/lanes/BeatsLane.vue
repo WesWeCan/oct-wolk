@@ -2,7 +2,11 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useLaneInteractions } from '../useLaneInteractions';
 
-const props = defineProps<{ viewport: { startSec: number; durationSec: number; totalSec?: number; fps: number }; fps: number }>();
+const props = defineProps<{
+    viewport: { startSec: number; durationSec: number; totalSec?: number; fps: number };
+    fps: number;
+    beats?: number[]; // times in seconds
+}>();
 
 const emit = defineEmits<{
     (e: 'pan', secDelta: number): void;
@@ -37,18 +41,33 @@ onMounted(() => {
 });
 onUnmounted(() => { try { ro?.disconnect(); } catch {} ro = null; });
 
-const markers = computed(() => [] as number[]);
+const visibleBeats = computed(() => {
+    const beats = Array.isArray(props.beats) ? props.beats : [];
+    const start = props.viewport.startSec;
+    const end = props.viewport.startSec + props.viewport.durationSec;
+    return beats.filter((t) => t >= start && t <= end);
+});
 
-watch(() => [props.viewport.startSec, props.viewport.durationSec, props.isOnsetPerFrame, props.fps], () => {
-    // Force re-render by updating viewBox to current size, then Vue will update lines
+const xForTime = (t: number) => {
+    return (t - props.viewport.startSec) / Math.max(1e-6, props.viewport.durationSec) * width.value;
+};
+
+watch(() => [props.viewport.startSec, props.viewport.durationSec, props.beats, props.fps], () => {
     updateViewBox();
 }, { deep: true });
+
 </script>
 
 <template>
-    <svg ref="svgRef" class="keyframes-lane">
-        <!-- Scaffold: reserved for future keyframe tracks -->
+    <svg ref="svgRef" class="beats-lane">
+        <g v-if="visibleBeats.length">
+            <g v-for="(t, i) in visibleBeats" :key="i">
+                <line :x1="xForTime(t)" :x2="xForTime(t)" y1="0" :y2="height" stroke="#7c4dff" stroke-width="2" />
+                <circle :cx="xForTime(t)" :cy="height - 6" r="3" fill="#7c4dff" />
+            </g>
+        </g>
     </svg>
 </template>
+
 
 

@@ -5,7 +5,10 @@ import ScenesLane from '@/front-end/components/timeline/lanes/ScenesLane.vue';
 import ActionsLane from '@/front-end/components/timeline/lanes/ActionsLane.vue';
 import KeyframesLane from '@/front-end/components/timeline/lanes/KeyframesLane.vue';
 import WaveformLane from '@/front-end/components/timeline/lanes/WaveformLane.vue';
-import SpectrumLane from '@/front-end/components/timeline/lanes/SpectrumLane.vue';
+import EnergyLane from '@/front-end/components/timeline/lanes/EnergyLane.vue';
+import BeatsLane from '@/front-end/components/timeline/lanes/BeatsLane.vue';
+import BandsLane from '@/front-end/components/timeline/lanes/BandsLane.vue';
+import BeatStrengthLane from '@/front-end/components/timeline/lanes/BeatStrengthLane.vue';
 import { useTimelineViewport } from './useTimelineViewport';
 import TimelineHelp from './TimelineHelp.vue';
 import type { SceneRef, ActionItem } from '@/types/timeline_types';
@@ -15,8 +18,11 @@ const props = defineProps<{
     durationSec?: number;
     currentFrame: number;
     waveform?: number[];
-    spectrum?: number[];
     energyPerFrame?: number[];
+    bandsLowPerFrame?: number[];
+    bandsMidPerFrame?: number[];
+    bandsHighPerFrame?: number[];
+    beatStrengthPerFrame?: number[];
     isOnsetPerFrame?: boolean[];
     showEnergy?: boolean;
     showOnsets?: boolean;
@@ -47,8 +53,12 @@ const laneHeights = ref<{ [key: string]: number }>({
     scenes: 96,
     actions: 40,
     keyframes: 120,
-    waveform: 220,
-    spectrum: 120,
+    waveform: 160,
+    energy: 80,
+    bands: 80,
+    beatstrength: 60,
+    
+    beats: 80,
 });
 const collapsed = ref<{ [key: string]: boolean }>({});
 
@@ -62,7 +72,7 @@ const onResize = (lane: string, h: number) => {
 
 // Lane vertical resize via drag handle
 const resizing = ref<{ key: string; startY: number; startH: number } | null>(null);
-const minHeights: Record<string, number> = { ruler: 48, scenes: 60, actions: 28, keyframes: 80, waveform: 120, spectrum: 80 };
+const minHeights: Record<string, number> = { ruler: 48, scenes: 60, actions: 28, keyframes: 80, waveform: 120, energy: 60, bands: 60, beatstrength: 48, beats: 60 };
 const startResize = (key: string, e: PointerEvent) => {
     resizing.value = { key, startY: e.clientY, startH: laneHeights.value[key] };
     const onMove = (ev: PointerEvent) => {
@@ -118,28 +128,15 @@ onMounted(() => {
         <div class="lane lane--ruler-sticky lane--no-resize" :style="{ height: `${laneHeights.ruler}px` }">
             <RulerLane :viewport="vp.viewport.value" :playhead="vp.playhead.value" :beats="beats || []" @scrub="onScrub" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" />
         </div>
-        <div class="lane" :style="{ height: `${collapsed.scenes ? 28 : laneHeights.scenes}px` }">
-            <div class="lane__header" @click="collapsed.scenes = !collapsed.scenes">
-                <span class="twisty">▸</span>
-                <span>Scenes</span>
-            </div>
-            <ScenesLane v-if="!collapsed.scenes" :viewport="vp.viewport.value" :fps="fps" :scenes="scenes || []" :selected-id="selectedSceneId" @select="(id:string) => emit('sceneSelect',{ id })" @updateScene="(s:any) => emit('sceneUpdate', s)" @scrub="(p:any) => emit('scrub', p)" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" />
-            <div class="lane-resizer" @pointerdown="(e:any) => startResize('scenes', e)"></div>
-        </div>
-        <div class="lane" :style="{ height: `${collapsed.actions ? 28 : laneHeights.actions}px` }">
-            <div class="lane__header" @click="collapsed.actions = !collapsed.actions">
-                <span class="twisty">▸</span>
-                <span>Actions</span>
-            </div>
-            <ActionsLane v-if="!collapsed.actions" :viewport="vp.viewport.value" :fps="fps" :actions="actionItems || []" @toggle="(frame:number) => emit('actionToggle', { frame })" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" />
-            <div class="lane-resizer" @pointerdown="(e:any) => startResize('actions', e)"></div>
-        </div>
+        
+        
+        <!-- Arrange lanes: Waveform, Energy, Beat Strength, Beats, Bands, Keyframes, Actions -->
         <div class="lane" :style="{ height: `${collapsed.keyframes ? 28 : laneHeights.keyframes}px` }">
             <div class="lane__header" @click="collapsed.keyframes = !collapsed.keyframes">
                 <span class="twisty">▸</span>
                 <span>Keyframes</span>
             </div>
-            <KeyframesLane v-if="!collapsed.keyframes" :viewport="vp.viewport.value" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <KeyframesLane v-if="!collapsed.keyframes" :viewport="vp.viewport.value" :fps="fps" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('keyframes', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.waveform ? 28 : laneHeights.waveform}px` }">
@@ -147,17 +144,42 @@ onMounted(() => {
                 <span class="twisty">▸</span>
                 <span>Waveform</span>
             </div>
-            <WaveformLane v-if="!collapsed.waveform" :viewport="vp.viewport.value" :fps="fps" :waveform="waveform || []" :energy-per-frame="energyPerFrame" :is-onset-per-frame="isOnsetPerFrame" :show-energy="showEnergy" :show-onsets="showOnsets" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <WaveformLane v-if="!collapsed.waveform" :viewport="vp.viewport.value" :fps="fps" :waveform="waveform || []" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('waveform', e)"></div>
         </div>
-        <div class="lane" :style="{ height: `${collapsed.spectrum ? 28 : laneHeights.spectrum}px` }">
-            <div class="lane__header" @click="collapsed.spectrum = !collapsed.spectrum">
+        <div class="lane" :style="{ height: `${collapsed.energy ? 28 : laneHeights.energy}px` }">
+            <div class="lane__header" @click="collapsed.energy = !collapsed.energy">
                 <span class="twisty">▸</span>
-                <span>Spectrum</span>
+                <span>Energy</span>
             </div>
-            <SpectrumLane v-if="!collapsed.spectrum" :viewport="vp.viewport.value" :spectrum="spectrum || []" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
-            <div class="lane-resizer" @pointerdown="(e:any) => startResize('spectrum', e)"></div>
+            <EnergyLane v-if="!collapsed.energy" :viewport="vp.viewport.value" :fps="fps" :energy-per-frame="energyPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <div class="lane-resizer" @pointerdown="(e:any) => startResize('energy', e)"></div>
         </div>
+        <div class="lane" :style="{ height: `${collapsed.beatstrength ? 28 : laneHeights.beatstrength}px` }">
+            <div class="lane__header" @click="collapsed.beatstrength = !collapsed.beatstrength">
+                <span class="twisty">▸</span>
+                <span>Beat Strength</span>
+            </div>
+            <BeatStrengthLane v-if="!collapsed.beatstrength" :viewport="vp.viewport.value" :fps="fps" :beat-strength-per-frame="beatStrengthPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <div class="lane-resizer" @pointerdown="(e:any) => startResize('beatstrength', e)"></div>
+        </div>
+        <div class="lane" :style="{ height: `${collapsed.beats ? 28 : laneHeights.beats}px` }">
+            <div class="lane__header" @click="collapsed.beats = !collapsed.beats">
+                <span class="twisty">▸</span>
+                <span>Beats</span>
+            </div>
+            <BeatsLane v-if="!collapsed.beats" :viewport="vp.viewport.value" :fps="fps" :beats="beats || []" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <div class="lane-resizer" @pointerdown="(e:any) => startResize('beats', e)"></div>
+        </div>
+        <div class="lane" :style="{ height: `${collapsed.bands ? 28 : laneHeights.bands}px` }">
+            <div class="lane__header" @click="collapsed.bands = !collapsed.bands">
+                <span class="twisty">▸</span>
+                <span>Bands (Low/Mid/High)</span>
+            </div>
+            <BandsLane v-if="!collapsed.bands" :viewport="vp.viewport.value" :fps="fps" :low="bandsLowPerFrame" :mid="bandsMidPerFrame" :high="bandsHighPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <div class="lane-resizer" @pointerdown="(e:any) => startResize('bands', e)"></div>
+        </div>
+        
         <!-- <div class="lane" :style="{ height: 'auto' }">
             <TimelineHelp />
         </div> -->

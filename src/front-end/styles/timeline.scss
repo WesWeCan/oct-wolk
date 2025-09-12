@@ -184,12 +184,40 @@
     background: #111;
 }
 
-/* Spectrum lane */
-.spectrum-lane {
+/* Energy lane */
+.energy-lane {
     width: 100%;
     height: calc(100% - 28px);
     display: block;
-    background: #121212;
+    background: #111;
+}
+
+ 
+
+/* Bands lane */
+.bands-lane {
+    width: 100%;
+    height: calc(100% - 28px);
+    display: block;
+    background: #0f0f0f;
+}
+
+/* Beat strength lane */
+.beatstrength-lane {
+    width: 100%;
+    height: calc(100% - 28px);
+    display: block;
+    background: #111;
+}
+
+ 
+
+/* Beats lane */
+.beats-lane {
+    width: 100%;
+    height: calc(100% - 28px);
+    display: block;
+    background: #151515;
 }
 
 /* Keyframes lane */

@@ -6,10 +6,6 @@ const props = defineProps<{
     viewport: { startSec: number; durationSec: number; totalSec: number; fps: number };
     fps: number;
     waveform: number[];
-    energyPerFrame?: number[];
-    isOnsetPerFrame?: boolean[];
-    showEnergy?: boolean;
-    showOnsets?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -52,32 +48,7 @@ const draw = () => {
         }
         ctx.stroke();
     }
-    // overlays
-    if (props.showEnergy && Array.isArray(props.energyPerFrame)) {
-        const fps = Math.max(1, props.fps);
-        ctx.strokeStyle = 'rgba(0, 200, 255, 0.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); let started = false;
-        const startF = Math.max(0, Math.floor(props.viewport.startSec * fps));
-        const endF = Math.max(startF + 1, Math.floor((props.viewport.startSec + props.viewport.durationSec) * fps));
-        for (let f = startF; f <= endF; f++) {
-            const tSec = f / fps;
-            const x = (tSec - props.viewport.startSec) / props.viewport.durationSec * wCss;
-            const e = Math.min(1, Math.max(0, props.energyPerFrame[f] || 0));
-            const y = (1 - e) * hCss;
-            if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
-        }
-        ctx.stroke();
-    }
-    if (props.showOnsets && Array.isArray(props.isOnsetPerFrame)) {
-        const fps = Math.max(1, props.fps);
-        ctx.strokeStyle = 'rgba(255, 200, 0, 0.9)';
-        for (let f = 0; f < (props.isOnsetPerFrame.length || 0); f++) {
-            if (!props.isOnsetPerFrame[f]) continue;
-            const tSec = f / fps;
-            if (tSec < props.viewport.startSec || tSec > props.viewport.startSec + props.viewport.durationSec) continue;
-            const x = (tSec - props.viewport.startSec) / props.viewport.durationSec * wCss;
-            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, hCss); ctx.stroke();
-        }
-    }
+    // overlays removed: energy line and onset bars handled in separate lanes
 };
 
 const requestDraw = () => { if (raf != null) return; raf = requestAnimationFrame(() => { raf = null; draw(); }); };
@@ -142,7 +113,12 @@ onMounted(() => {
 });
 onUnmounted(() => { if (raf) cancelAnimationFrame(raf); });
 
-watch(() => [props.viewport.startSec, props.viewport.durationSec, props.waveform, props.energyPerFrame, props.isOnsetPerFrame], () => requestDraw(), { deep: true });
+watch(() => [
+    props.viewport.startSec,
+    props.viewport.durationSec,
+    props.waveform,
+    props.fps,
+], () => requestDraw(), { deep: true });
 
 </script>
 

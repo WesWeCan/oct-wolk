@@ -5,8 +5,8 @@ import { FontsService } from '@/front-end/services/FontsService';
 
 interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; }
 
-const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean } }>();
-const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void }>();
+const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; sceneParams?: Record<string, any> | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean } }>();
+const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:sceneParams', value: Record<string, any>): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void }>();
 
 const updateSeed = (e: Event) => {
     if (!props.timeline) return;
@@ -174,6 +174,12 @@ const removeOpacityKeyframe = (idx: number) => {
                 Scene name
                 <input :value="selectedScene.name" @input="updateSceneName" />
             </label>
+            <div v-if="selectedScene.type === 'singleWord'" style="margin-top:8px;">
+                <label style="display:block;">
+                    Beat threshold (0..1)
+                    <input type="number" min="0" max="1" step="0.01" :value="Number((sceneParams && (sceneParams as any).beatThreshold) ?? 0.07)" @input="(e:any)=>{ const v=Math.min(1,Math.max(0,Number(e.target.value)||0)); emit('update:sceneParams', { ...(sceneParams||{}), beatThreshold: v }); }" />
+                </label>
+            </div>
         </div>
         <details style="margin-top:12px;">
             <summary style="font-weight:600; margin-bottom:4px;">Timeline Overlays</summary>

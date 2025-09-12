@@ -3,7 +3,7 @@ import { onMounted, ref, shallowRef, computed, nextTick, watch, onUnmounted } fr
 import { useRoute } from 'vue-router';
 import { TimelineService } from '@/front-end/services/TimelineService';
 import { SongService } from '@/front-end/services/SongService';
-import type { TimelineDocument, SceneRef, SceneDocumentBase, ActionItem, TransitionEasing } from '@/types/timeline_types';
+import type { TimelineDocument, SceneRef, SceneDocumentBase, ActionItem, TransitionEasing, PropertyTrack } from '@/types/timeline_types';
 import SceneList from '@/front-end/components/editor/SceneList.vue';
 import Inspector from '@/front-end/components/editor/Inspector.vue';
 import TimelineRoot from '@/front-end/components/timeline/TimelineRoot.vue';
@@ -62,14 +62,102 @@ const waveform = ref<number[] | null>(null);
 const beatEnvelope = ref<number>(0);
 const beatTimesSec = ref<number[] | null>(null);
 const audioReady = ref(false);
-const spectrum = ref<number[] | null>(null);
 const analysisCache = ref<AnalysisCache | null>(null);
 const overlayOpts = ref<{ showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }>({ showEnergy: true, showOnsets: true, showBeats: false });
 // Precomputed beat envelope samples (~60Hz) for deterministic scrubbing
 const beatEnv = ref<number[] | null>(null);
+// Additional precomputed per-frame features
+const bandsLowPerFrame = ref<number[] | null>(null);
+const bandsMidPerFrame = ref<number[] | null>(null);
+const bandsHighPerFrame = ref<number[] | null>(null);
+const beatStrengthPerFrame = ref<number[] | null>(null);
 // Per-scene documents cache (lazy-loaded)
 const sceneDocs = ref<Record<string, SceneDocumentBase>>({});
+const sceneParamsView = computed<Record<string, any>>(() => {
+    const id = selectedSceneId.value || '';
+    return (id && sceneDocs.value[id]?.params) ? (sceneDocs.value[id].params as any) : {};
+});
+// Derived onsets per frame (optionally using per-scene threshold)
+const derivedOnsetPerFrame = computed<boolean[] | undefined>(() => {
+    const cache = analysisCache.value;
+    const t = timeline.value;
+    if (!cache) return undefined;
+    const base = Array.isArray(cache.isOnsetPerFrame) ? cache.isOnsetPerFrame.slice() : new Array(cache.totalFrames).fill(false);
+    if (!t || !Array.isArray(t.scenes) || !t.scenes.length) return base;
+    const e = cache.energyPerFrame || [];
+    for (const s of t.scenes) {
+        if ((s as any).type !== 'singleWord') continue;
+        const params = sceneDocs.value[s.id]?.params || {};
+        const thr = Number((params as any).beatThreshold);
+        if (!Number.isFinite(thr)) continue;
+        const startF = Math.max(0, s.startFrame | 0);
+        const endF = Math.min(cache.totalFrames - 1, (s.startFrame + s.durationFrames - 1) | 0);
+        let lastAbove = (e[Math.max(0, startF - 1)] || 0) > thr;
+        for (let f = startF; f <= endF && f < e.length; f++) {
+            const above = (e[f] || 0) > thr;
+            const onset = above && !lastAbove;
+            base[f] = onset;
+            lastAbove = above;
+        }
+    }
+    return base;
+});
+
+const derivedOnsetIndexPerFrame = computed<number[] | undefined>(() => {
+    const cache = analysisCache.value;
+    const on = derivedOnsetPerFrame.value || cache?.isOnsetPerFrame;
+    if (!on || !on.length) return undefined;
+    const out: number[] = new Array(on.length);
+    let c = 0;
+    for (let i = 0; i < on.length; i++) {
+        if (on[i]) c++;
+        out[i] = c;
+    }
+    return out;
+});
+
+// Beat-based cumulative index per frame (monotonic, increments on each beat time)
+const derivedBeatIndexPerFrame = computed<number[] | undefined>(() => {
+    const beats = beatTimesSec.value;
+    const cache = analysisCache.value;
+    if (!Array.isArray(beats) || !cache) return undefined;
+    const totalFrames = Math.max(1, cache.totalFrames);
+    const fpsVal = Math.max(1, fps.value);
+    const out: number[] = new Array(totalFrames);
+    const sorted = beats.slice().sort((a, b) => a - b);
+    let count = 0;
+    let bi = 0;
+    for (let f = 0; f < totalFrames; f++) {
+        const t = f / fpsVal;
+        while (bi < sorted.length && sorted[bi] <= t) { count++; bi++; }
+        out[f] = count;
+    }
+    return out;
+});
 let lastConfiguredPair = '';
+
+const applySceneParams = async (p: Record<string, any>) => {
+    const id = selectedSceneId.value || null;
+    if (!id) return;
+    const baseDoc: SceneDocumentBase = sceneDocs.value[id] || {
+        id: (selectedScene.value as any)?.id,
+        type: (selectedScene.value as any)?.type,
+        name: (selectedScene.value as any)?.name,
+        seed: String(timeline.value?.settings.seed || 'seed'),
+        params: {},
+        tracks: [] as any,
+    } as any;
+    baseDoc.params = { ...(baseDoc.params || {}), ...(p || {}) };
+    sceneDocs.value[id] = baseDoc as any;
+    try { await TimelineService.saveScene(songId.value as any, baseDoc as any); } catch {}
+    await configureWorkerScene();
+    // Push a new frame immediately so preview updates without needing to scrub/play
+    const be = evalBeatForFrame(frame.value);
+    const wi = evalWordIndexForFrame(frame.value);
+    const mix = computeActiveScenesForFrame(frame.value);
+    const wov = evalWordOverrideForFrame(frame.value);
+    try { workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat: be, wordIndex: wi, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride: wov } as any); } catch {}
+};
 
 const computeWaveform = (buffer: AudioBuffer, buckets = 1000): number[] => {
     const channelData = buffer.getChannelData(0);
@@ -141,6 +229,9 @@ const tick = (now: number) => {
     }
     const beat = evalBeatForFrame(frame.value);
     const wordIndex = evalWordIndexForFrame(frame.value);
+    const lowB = (bandsLowPerFrame.value && analysisCache.value) ? (bandsLowPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
+    const midB = (bandsMidPerFrame.value && analysisCache.value) ? (bandsMidPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
+    const highB = (bandsHighPerFrame.value && analysisCache.value) ? (bandsHighPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
     const mix = computeActiveScenesForFrame(frame.value);
     const pairKey = mix.a.id + '|' + (mix.b?.id || '');
     if (pairKey !== lastConfiguredPair) {
@@ -148,7 +239,7 @@ const tick = (now: number) => {
         configureWorkerScene();
     }
     const wordOverride = evalWordOverrideForFrame(frame.value);
-    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride });
+    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride, lowBand: lowB, midBand: midB, highBand: highB } as any);
     drawPreview();
     requestAnimationFrame(tick);
 };
@@ -345,6 +436,83 @@ const initForSong = async (id: string) => {
             waveform.value = computeWaveform(buf, 1200);
             // Build per-frame analysis cache aligned to timeline fps
             analysisCache.value = await AnalysisService.analyzeBufferToCache(buf, fps.value);
+            // Precompute spectral centroid and 3-band energies at fixed rate, then map to per-frame
+            try {
+                const N = 1024;
+                const featureRate = 60; // Hz
+                const totalSteps = Math.max(1, Math.ceil(buf.duration * featureRate));
+                const ch = buf.getChannelData(0);
+                const windowed = new Float32Array(N);
+                const centEnv: number[] = new Array(totalSteps);
+                const lowEnv: number[] = new Array(totalSteps);
+                const midEnv: number[] = new Array(totalSteps);
+                const highEnv: number[] = new Array(totalSteps);
+                const nyquist = buf.sampleRate / 2;
+                for (let i = 0; i < totalSteps; i++) {
+                    const t = i / featureRate;
+                    const center = Math.floor(t * buf.sampleRate);
+                    const half = Math.floor(N / 2);
+                    const start = Math.max(0, center - half);
+                    const end = Math.min(ch.length, start + N);
+                    for (let j = 0; j < N; j++) windowed[j] = 0;
+                    for (let j = start, k = 0; j < end && k < N; j++, k++) {
+                        const w = 0.5 * (1 - Math.cos((2 * Math.PI * k) / Math.max(1, N - 1)));
+                        windowed[k] = ch[j] * w;
+                    }
+                    const spec: number[] = (Meyda as any).extract('amplitudeSpectrum', windowed, { bufferSize: N, sampleRate: buf.sampleRate }) || [];
+                    const centroidHz: number = (Meyda as any).extract('spectralCentroid', windowed, { sampleRate: buf.sampleRate }) || 0;
+                    centEnv[i] = Math.min(1, Math.max(0, centroidHz / Math.max(1, nyquist)));
+                    // 3 bands integration
+                    const bins = spec.length;
+                    const hzPerBin = nyquist / Math.max(1, bins);
+                    let l = 0, m = 0, h = 0;
+                    for (let b = 0; b < bins; b++) {
+                        const f = (b + 0.5) * hzPerBin;
+                        const v = spec[b] || 0;
+                        if (f < 200) l += v; else if (f < 2000) m += v; else h += v;
+                    }
+                    // log-compress and normalize per-step
+                    const lz = Math.log1p(l), mz = Math.log1p(m), hzv = Math.log1p(h);
+                    const maxz = Math.max(1e-6, Math.max(lz, Math.max(mz, hzv)));
+                    lowEnv[i] = lz / maxz;
+                    midEnv[i] = mz / maxz;
+                    highEnv[i] = hzv / maxz;
+                }
+                // Map to per-frame arrays
+                const totalFrames = Math.max(1, Math.floor(buf.duration * Math.max(1, fps.value)));
+                const cpf: number[] = new Array(totalFrames);
+                const lpf: number[] = new Array(totalFrames);
+                const mpf: number[] = new Array(totalFrames);
+                const hpf: number[] = new Array(totalFrames);
+                for (let f = 0; f < totalFrames; f++) {
+                    const t = f / Math.max(1, fps.value);
+                    const idx = Math.min(centEnv.length - 1, Math.floor(t * featureRate));
+                    cpf[f] = centEnv[idx] || 0;
+                    lpf[f] = lowEnv[idx] || 0;
+                    mpf[f] = midEnv[idx] || 0;
+                    hpf[f] = highEnv[idx] || 0;
+                }
+                bandsLowPerFrame.value = lpf;
+                bandsMidPerFrame.value = mpf;
+                bandsHighPerFrame.value = hpf;
+            } catch {}
+            // Precompute beat strength per frame (pulse based on beats list, weighted by energy)
+            try {
+                const cache = analysisCache.value!;
+                const e = cache.energyPerFrame || [];
+                const totalFrames = cache.totalFrames;
+                const fpsVal = Math.max(1, fps.value);
+                const beats = Array.isArray(beatTimesSec.value) ? beatTimesSec.value.slice().sort((a,b)=>a-b) : [];
+                const out: number[] = new Array(totalFrames).fill(0);
+                let bi = 0;
+                for (let f = 0; f < totalFrames; f++) {
+                    const t = f / fpsVal;
+                    while (bi < beats.length && beats[bi] < t - (0.5 / fpsVal)) bi++;
+                    const isBeat = (bi < beats.length) && Math.abs(beats[bi] - t) <= (0.5 / fpsVal);
+                    out[f] = isBeat ? (e[f] || 1) : 0;
+                }
+                beatStrengthPerFrame.value = out;
+            } catch {}
             // Compute simple envelope ahead of time for beat pulsing
             const signal = buf.getChannelData(0);
             const hop = Math.max(1, Math.floor(buf.sampleRate / 60));
@@ -383,10 +551,9 @@ const initForSong = async (id: string) => {
                         source: sourceNode,
                         bufferSize: 1024,
                         hopSize: 512,
-                        featureExtractors: ['rms', 'amplitudeSpectrum'],
+                        featureExtractors: ['rms'],
                         callback: (features: any) => {
                             const rms = features.rms || 0;
-                            const amp: number[] = Array.isArray(features.amplitudeSpectrum) ? features.amplitudeSpectrum : [];
                             beatEnvelope.value = Math.min(1, Math.max(0, rms));
                             // Optional: simple peak detection on RMS for beatTimes
                             if (!beatTimesSec.value) beatTimesSec.value = [];
@@ -394,22 +561,6 @@ const initForSong = async (id: string) => {
                             const last = beatTimesSec.value[beatTimesSec.value.length - 1] || -999;
                             // naive threshold on rms
                             if (rms > 0.15 && t - last > 0.25) beatTimesSec.value.push(t);
-                            if (amp && amp.length) {
-                                // Downsample spectrum to ~96 bars for UI
-                                const bars = 96;
-                                const binSize = Math.max(1, Math.floor(amp.length / bars));
-                                const ds: number[] = [];
-                                for (let i = 0; i < bars; i++) {
-                                    let sum = 0;
-                                    let count = 0;
-                                    for (let j = 0; j < binSize; j++) {
-                                        const idx = i * binSize + j;
-                                        if (idx < amp.length) { sum += amp[idx]; count++; }
-                                    }
-                                    ds.push(count ? sum / count : 0);
-                                }
-                                spectrum.value = ds;
-                            }
                         }
                     });
                 }
@@ -523,7 +674,10 @@ const onScrub = async (payload: { timeSec: number; frame: number }) => {
         await configureWorkerScene();
     }
     const wordOverride = evalWordOverrideForFrame(frame.value);
-    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride });
+    const lowB0 = (bandsLowPerFrame.value && analysisCache.value) ? (bandsLowPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
+    const midB0 = (bandsMidPerFrame.value && analysisCache.value) ? (bandsMidPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
+    const highB0 = (bandsHighPerFrame.value && analysisCache.value) ? (bandsHighPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
+    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride, lowBand: lowB0, midBand: midB0, highBand: highB0 } as any);
     // Defer preview draw to next frame so worker has time to render
     requestAnimationFrame(() => drawPreview());
 };
@@ -541,6 +695,10 @@ const evalWordIndexForFrame = (f: number): number => {
     const cache = analysisCache.value;
     if (!cache) return Math.floor(f / Math.max(1, Math.floor(fps.value / 2)));
     const idx = Math.min(cache.totalFrames - 1, Math.max(0, f | 0));
+    const beatIdx = derivedBeatIndexPerFrame.value;
+    if (beatIdx && beatIdx.length > idx) return beatIdx[idx] || 0;
+    const derivedIdx = derivedOnsetIndexPerFrame.value;
+    if (derivedIdx && derivedIdx.length > idx) return derivedIdx[idx] || 0;
     return cache.onsetIndexPerFrame[idx] || 0;
 };
 
@@ -677,7 +835,7 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
             </div>
         </div>
         <div class="editor__inspector">
-            <Inspector :timeline="timeline" :selected-scene="selectedScene" :overlay-opts="overlayOpts" @update:overlayOpts="v => overlayOpts = v" @update:timeline="onTimelineUpdated" @update:scene="onSceneUpdated" />
+            <Inspector :timeline="timeline" :selected-scene="selectedScene" :scene-params="sceneParamsView" :overlay-opts="overlayOpts" @update:overlayOpts="v => overlayOpts = v" @update:timeline="onTimelineUpdated" @update:scene="onSceneUpdated" @update:sceneParams="(p:any)=> applySceneParams(p)" />
         </div>
         <div class="editor__timeline timeline-host">
             <TimelineRoot
@@ -686,9 +844,12 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
                 :duration-sec="(audioEl?.duration || 0) || undefined"
                 :beats="beatTimesSec || undefined"
                 :waveform="waveform || []"
-                :spectrum="spectrum || []"
                 :energy-per-frame="analysisCache?.energyPerFrame"
-                :is-onset-per-frame="analysisCache?.isOnsetPerFrame"
+                :bands-low-per-frame="bandsLowPerFrame || undefined"
+                :bands-mid-per-frame="bandsMidPerFrame || undefined"
+                :bands-high-per-frame="bandsHighPerFrame || undefined"
+                :beat-strength-per-frame="beatStrengthPerFrame || undefined"
+                :is-onset-per-frame="derivedOnsetPerFrame || analysisCache?.isOnsetPerFrame"
                 :show-energy="overlayOpts.showEnergy"
                 :show-onsets="overlayOpts.showOnsets && isSingleWordScene"
                 :scenes="timeline?.scenes || []"
