@@ -28,6 +28,10 @@ declare global {
                 saveScene: (songId: string, scene: SceneDocumentBase) => Promise<SceneDocumentBase>;
                 loadScene: (songId: string, sceneId: string) => Promise<SceneDocumentBase | null>;
             },
+            analysis: {
+                loadCache: (songId: string) => Promise<any | null>;
+                saveCache: (songId: string, cache: any) => Promise<{ ok: boolean }>;
+            },
             fonts: {
                 list: () => Promise<{ familyGuess: string; filePath: string; fileName: string; }[]>;
             }
@@ -58,6 +62,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     fonts: {
         list: () => ipcRenderer.invoke('fonts:list'),
+    },
+    analysis: {
+        loadCache: (songId: string) => ipcRenderer.invoke('analysis:loadCache', songId),
+        saveCache: (songId: string, cache: any) => ipcRenderer.invoke('analysis:saveCache', songId, cache),
     },
     export: {
         saveWebM: (songId: string, fileData: ArrayBuffer, suggestedName: string) => ipcRenderer.invoke('export:saveWebM', songId, fileData, suggestedName),

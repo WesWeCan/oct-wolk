@@ -33,20 +33,14 @@ const timeToX = (t: number, w: number) => {
 };
 
 const formatLabel = (t: number, step: number): string => {
-    if (showFrames) {
-        return String(Math.floor(t * Math.max(1, props.viewport.fps)));
-    }
-    if (step < 1) {
-        return `${Math.round(t * 1000)}ms`;
-    }
-    if (step < 60) {
-        const decimals = step >= 10 ? 0 : 1;
-        return `${t.toFixed(decimals)}s`;
-    }
+    const frames = Math.floor(t * Math.max(1, props.viewport.fps));
+    // show mm:ss.ms and frame number together
     const total = Math.max(0, t);
     const m = Math.floor(total / 60);
     const s = Math.floor(total % 60);
-    return `${m}:${String(s).padStart(2, '0')}`;
+    const ms = Math.floor((total - Math.floor(total)) * 1000);
+    const timeStr = `${m}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+    return `${timeStr} (${frames}f)`;
 };
 
 const redraw = () => {
@@ -70,7 +64,8 @@ const redraw = () => {
     // playhead
     const curTime = Math.max(0, props.playhead.frame / Math.max(1, props.viewport.fps));
     const px = timeToX(curTime, w);
-    const ph = mk('line'); ph.setAttribute('x1', String(px)); ph.setAttribute('y1', '0'); ph.setAttribute('x2', String(px)); ph.setAttribute('y2', String(h)); ph.setAttribute('stroke', 'transparent'); ph.setAttribute('stroke-width', '0'); svg.appendChild(ph);
+    const ph = mk('line'); ph.setAttribute('x1', String(px)); ph.setAttribute('y1', '0'); ph.setAttribute('x2', String(px)); ph.setAttribute('y2', String(h)); ph.setAttribute('stroke', 'rgba(255,0,0,0.5)'); ph.setAttribute('stroke-width', '1'); svg.appendChild(ph);
+    const label = mk('text'); label.textContent = formatLabel(curTime, 0.5); label.setAttribute('x', String(px + 6)); label.setAttribute('y', '14'); label.setAttribute('fill', '#ff8080'); label.setAttribute('font-size', '11'); label.setAttribute('paint-order','stroke'); label.setAttribute('stroke','#000'); label.setAttribute('stroke-width','2'); label.setAttribute('pointer-events','none'); svg.appendChild(label);
 };
 
 let isPointerDown = false;

@@ -10,6 +10,7 @@ import { getDocStoragePath } from './internal-storage';
 import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
 import os from 'os';
 import { spawnSync } from 'child_process';
+import { loadAnalysisCache, saveAnalysisCache } from './analysis-storage';
 
 
 
@@ -70,6 +71,14 @@ export const registerInternalProcesses = async () => {
     // Fonts API
     ipcMain.handle('fonts:list', () => {
         return listSystemFonts();
+    });
+
+    // Analysis Cache API
+    ipcMain.handle('analysis:loadCache', (_event, songId: string) => {
+        return loadAnalysisCache(songId);
+    });
+    ipcMain.handle('analysis:saveCache', (_event, songId: string, cache: any) => {
+        return saveAnalysisCache(songId, cache);
     });
 
     // Export API

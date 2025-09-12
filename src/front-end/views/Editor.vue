@@ -539,6 +539,7 @@ const initForSong = async (id: string) => {
                     const timeSec = i * (hop / buf.sampleRate);
                     beats.push(timeSec);
                 }
+
             }
             beatTimesSec.value = beats;
 
