@@ -6,6 +6,7 @@ const emit = defineEmits<{
     (e: 'select', id: string): void;
     (e: 'add', type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord'): void;
     (e: 'switchHere', payload: { frame: number }): void;
+    (e: 'delete', id: string): void;
 }>();
 
 const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord') => emit('add', type);
@@ -21,8 +22,9 @@ const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleW
             </div>
         </div>
         <ul>
-            <li v-for="(s, idx) in scenes" :key="s.id" :style="{padding:'6px', cursor:'pointer', background: s.id===props.selectedId ? '#ccc' : 'transparent'}" @click="emit('select', s.id)">
-                {{ idx + 1 }}. {{ s.name }}
+            <li v-for="(s, idx) in scenes" :key="s.id" :style="{padding:'6px', cursor:'pointer', background: s.id===props.selectedId ? '#ccc' : 'transparent', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px'}" @click="emit('select', s.id)">
+                <span>{{ idx + 1 }}. {{ s.name }}</span>
+                <button title="Delete scene" @click.stop="emit('delete', s.id)">Delete</button>
             </li>
         </ul>
         <div style="margin-top:8px; padding:8px; border-top:1px solid #333; font-size:12px; line-height:18px;">

@@ -3,7 +3,7 @@ import { onMounted, ref, watch, computed } from 'vue';
 import RulerLane from '@/front-end/components/timeline/lanes/RulerLane.vue';
 import ScenesLane from '@/front-end/components/timeline/lanes/ScenesLane.vue';
 import ActionsLane from '@/front-end/components/timeline/lanes/ActionsLane.vue';
-import KeyframesLane from '@/front-end/components/timeline/lanes/KeyframesLane.vue';
+import WordKeyframesLane from '@/front-end/components/timeline/lanes/WordKeyframesLane.vue';
 import WaveformLane from '@/front-end/components/timeline/lanes/WaveformLane.vue';
 import EnergyLane from '@/front-end/components/timeline/lanes/EnergyLane.vue';
 import BeatsLane from '@/front-end/components/timeline/lanes/BeatsLane.vue';
@@ -30,6 +30,8 @@ const props = defineProps<{
     scenes?: SceneRef[];
     selectedSceneId?: string;
     actionItems?: ActionItem[];
+    // Global word pool keyframe frames (timeline-level markers)
+    wordKeyframes?: number[];
 }>();
 
 const emit = defineEmits<{
@@ -37,6 +39,7 @@ const emit = defineEmits<{
     (e: 'sceneSelect', payload: { id: string }): void;
     (e: 'sceneUpdate', payload: SceneRef): void;
     (e: 'actionToggle', payload: { frame: number }): void;
+    (e: 'dragGlobalPoolMarker', payload: { index: number; frame: number; originalFrame: number }): void;
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -121,6 +124,15 @@ onMounted(() => {
     host.addEventListener('pointerdown', onPointerDown);
 });
 
+// Debug instrumentation for keyframes flow
+watch(() => props.wordKeyframes, (m) => {
+    const count = Array.isArray(m) ? m.length : 0;
+    console.debug('[TimelineRoot] wordKeyframes updated:', { count, sample: (m || []).slice(0, 8) });
+}, { deep: true, immediate: true });
+watch(() => vp.viewport.value, (v) => {
+    console.debug('[TimelineRoot] viewport:', v);
+}, { deep: true });
+
 </script>
 
 <template>
@@ -130,13 +142,44 @@ onMounted(() => {
         </div>
         
         
+        <!-- Scenes lane -->
+        <div class="lane" :style="{ height: `${collapsed.scenes ? 28 : laneHeights.scenes}px` }">
+            <div class="lane__header" @click="collapsed.scenes = !collapsed.scenes">
+                <span class="twisty">▸</span>
+                <span>Scenes</span>
+            </div>
+            <ScenesLane
+                v-if="!collapsed.scenes"
+                :viewport="vp.viewport.value"
+                :fps="fps"
+                :scenes="scenes || []"
+                :selected-id="selectedSceneId"
+                @select="(id:string) => emit('sceneSelect', { id })"
+                @updateScene="(s:any) => emit('sceneUpdate', s)"
+                @scrub="(p:any) => emit('scrub', p)"
+                @pan="(sec:number) => vp.panBy(sec)"
+                @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)"
+            />
+            <div class="lane-resizer" @pointerdown="(e:any) => startResize('scenes', e)"></div>
+        </div>
+
         <!-- Arrange lanes: Waveform, Energy, Beat Strength, Beats, Bands, Keyframes, Actions -->
         <div class="lane" :style="{ height: `${collapsed.keyframes ? 28 : laneHeights.keyframes}px` }">
             <div class="lane__header" @click="collapsed.keyframes = !collapsed.keyframes">
                 <span class="twisty">▸</span>
-                <span>Keyframes</span>
+                <span>Word Keyframes</span>
             </div>
-            <KeyframesLane v-if="!collapsed.keyframes" :viewport="vp.viewport.value" :fps="fps" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <WordKeyframesLane
+                v-if="!collapsed.keyframes"
+                :viewport="vp.viewport.value"
+                :fps="fps"
+                :markers="wordKeyframes || []"
+                :beats="beats || []"
+                @pan="(sec:number) => vp.panBy(sec)"
+                @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)"
+                @scrub="(p:any) => emit('scrub', p)"
+                @dragMarker="({ index, frame, originalFrame }) => emit('dragGlobalPoolMarker', { index, frame, originalFrame })"
+            />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('keyframes', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.waveform ? 28 : laneHeights.waveform}px` }">

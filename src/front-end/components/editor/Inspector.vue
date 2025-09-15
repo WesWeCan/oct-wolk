@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { TimelineDocument, SceneRef } from '@/types/timeline_types';
+import type { TimelineDocument, SceneRef, SceneDocumentBase, PropertyTrack } from '@/types/timeline_types';
+import type { WordGroup } from '@/types/song_types';
+import InspectorAllowedWords from './InspectorAllowedWords.vue';
 import { FontsService } from '@/front-end/services/FontsService';
 
 interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; }
 
-const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; sceneParams?: Record<string, any> | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean } }>();
-const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:sceneParams', value: Record<string, any>): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void; (e: 'resetProject'): void; (e: 'importWolk'): void }>();
+const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; sceneParams?: Record<string, any> | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }; currentFrame?: number; wordBank?: string[]; wordGroups?: WordGroup[]; allowedTrack?: PropertyTrack<string[]> | null }>();
+const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:sceneParams', value: Record<string, any>): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void; (e: 'resetProject'): void; (e: 'importWolk'): void; (e: 'update:sceneTracks', value: { sceneId: string; tracks: PropertyTrack[] }): void; (e: 'navigate', value: { dir: 'prevKf' | 'nextKf' | 'prevBeat' | 'nextBeat' }): void }>();
 
 const updateSeed = (e: Event) => {
     if (!props.timeline) return;
@@ -143,6 +145,19 @@ const removeOpacityKeyframe = (idx: number) => {
     if (idx >= 0 && idx < kf.length) { kf.splice(idx, 1); opacityTrack.value = kf; }
 };
 
+// Allowed words helpers (UI glue; content editing to come)
+const highlightWordSearch = (e: Event) => {
+    try {
+        const v = String((e.target as HTMLInputElement).value || '').toLowerCase();
+        const doc: any = (globalThis as any).document || (window as any).document;
+        const els = Array.from(doc.querySelectorAll('.wb-chip')) as HTMLElement[];
+        els.forEach(el => {
+            const t = (el.innerText || '').toLowerCase();
+            (el as any).style.outline = v && t.includes(v) ? '1px solid #7fd' : '';
+        });
+    } catch {}
+};
+
 </script>
 
 <template>
@@ -231,6 +246,7 @@ const removeOpacityKeyframe = (idx: number) => {
                 Scene name
                 <input :value="selectedScene.name" @input="updateSceneName" />
             </label>
+            
             <div v-if="selectedScene.type === 'singleWord'" style="margin-top:8px;">
                 <label style="display:block;">
                     Beat threshold (0..1)
@@ -238,6 +254,24 @@ const removeOpacityKeyframe = (idx: number) => {
                 </label>
             </div>
         </div>
+
+        <details style="margin-top:12px;">
+            <summary style="font-weight:600; margin-bottom:4px;">Global Word Pool</summary>
+            <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
+                <button @click="() => emit('navigate', { dir: 'prevKf' })">Prev keyframe</button>
+                <button @click="() => emit('navigate', { dir: 'nextKf' })">Next keyframe</button>
+                <button @click="() => emit('navigate', { dir: 'prevBeat' })">Prev beat</button>
+                <button @click="() => emit('navigate', { dir: 'nextBeat' })">Next beat</button>
+            </div>
+            <InspectorAllowedWords
+                :word-bank="wordBank || []"
+                :word-groups="wordGroups || []"
+                :allowed-track="(timeline?.wordsPoolTrack || null) as any"
+                :current-frame="currentFrame || 0"
+                :use-global="true"
+                @update:globalTrack="(track: any) => { if (!timeline) return; const updated: TimelineDocument = { ...(timeline as any), wordsPoolTrack: { propertyPath: 'timeline.words.pool', keyframes: Array.isArray(track?.keyframes) ? track.keyframes : [] } }; emit('update:timeline', updated); }"
+            />
+        </details>
         
         <details style="margin-top:12px;">
             <summary style="font-weight:600; margin-bottom:4px;">Timeline Overlays</summary>

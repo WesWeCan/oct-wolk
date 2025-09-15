@@ -48,6 +48,8 @@ export const createOrLoadTimeline = (songId: string): TimelineDocument => {
         // Backfill defaults if missing
         parsed.settings = { ...DEFAULTS, ...(parsed.settings || {}) };
         parsed.scenes = Array.isArray(parsed.scenes) ? parsed.scenes : [];
+        // Keep optional fields if present
+        if (parsed.actionTracks && !Array.isArray(parsed.actionTracks)) parsed.actionTracks = [] as any;
         return parsed;
     } catch {
         const fallback: TimelineDocument = { settings: { ...DEFAULTS }, scenes: [] };
@@ -61,7 +63,10 @@ export const saveTimeline = (songId: string, doc: TimelineDocument): TimelineDoc
     const toSave: TimelineDocument = {
         settings: { ...DEFAULTS, ...(doc.settings || {}) },
         scenes: Array.isArray(doc.scenes) ? doc.scenes : [],
-    };
+        // Persist optional fields
+        wordsPoolTrack: (doc as any).wordsPoolTrack,
+        actionTracks: Array.isArray((doc as any).actionTracks) ? (doc as any).actionTracks : [],
+    } as any;
     fs.writeFileSync(getTimelineJsonPath(songId), JSON.stringify(toSave, null, 2), 'utf-8');
     return toSave;
 };
@@ -77,9 +82,11 @@ export const listScenes = (songId: string): string[] => {
 
 export const saveScene = (songId: string, scene: SceneDocumentBase): SceneDocumentBase => {
     ensureTimelineFolders(songId);
+    // Purge obsolete per-scene words.allowed track
+    const cleaned = { ...scene, tracks: Array.isArray(scene.tracks) ? scene.tracks.filter(t => t?.propertyPath !== 'words.allowed') : [] } as SceneDocumentBase;
     const filePath = path.join(getScenesDir(songId), `${scene.id}.json`);
-    fs.writeFileSync(filePath, JSON.stringify(scene, null, 2), 'utf-8');
-    return scene;
+    fs.writeFileSync(filePath, JSON.stringify(cleaned, null, 2), 'utf-8');
+    return cleaned;
 };
 
 export const loadScene = (songId: string, sceneId: string): SceneDocumentBase | null => {
@@ -88,7 +95,12 @@ export const loadScene = (songId: string, sceneId: string): SceneDocumentBase | 
     if (!fs.existsSync(filePath)) return null;
     try {
         const json = fs.readFileSync(filePath, 'utf-8');
-        return JSON.parse(json) as SceneDocumentBase;
+        const parsed = JSON.parse(json) as SceneDocumentBase;
+        // Purge obsolete per-scene words.allowed on load to complete migration
+        if (Array.isArray(parsed?.tracks)) {
+            parsed.tracks = parsed.tracks.filter((t: any) => t?.propertyPath !== 'words.allowed');
+        }
+        return parsed;
     } catch {
         return null;
     }

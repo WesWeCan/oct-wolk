@@ -27,6 +27,8 @@ export interface TimelineDocument {
     settings: ProjectSettings;
     scenes: SceneRef[];
     globalOpacityTrack?: PropertyTrack<number>;
+    // Global word pool timeline track (words available at any frame)
+    wordsPoolTrack?: PropertyTrack<string[]>;
     actionTracks?: ActionItem[];
 }
 

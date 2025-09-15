@@ -130,6 +130,35 @@ const sceneParamsView = computed<Record<string, any>>(() => {
     const id = selectedSceneId.value || '';
     return (id && sceneDocs.value[id]?.params) ? (sceneDocs.value[id].params as any) : {};
 });
+// Word keyframe marker frames for the selected scene
+const selectedSceneWordKeyframes = computed<number[]>(() => {
+    const id = selectedSceneId.value || '';
+    if (!id) return [];
+    const doc = sceneDocs.value[id];
+    const tracks = Array.isArray(doc?.tracks) ? doc!.tracks : [];
+    const track = tracks.find(t => t.propertyPath === 'words.allowed') as PropertyTrack<string[]> | undefined;
+    if (!track || !Array.isArray(track.keyframes)) return [];
+    return track.keyframes.map(k => Math.max(0, (k.frame as any) | 0)).sort((a, b) => a - b);
+});
+
+// Global word pool keyframe markers (timeline-level)
+const allScenesWordKeyframes = computed<number[]>(() => {
+    const track = timeline.value?.wordsPoolTrack;
+    if (!track || !Array.isArray(track.keyframes)) return [];
+    return track.keyframes.map(k => Math.max(0, (k.frame as any) | 0)).sort((a, b) => a - b);
+});
+
+// Debug instrumentation for keyframes/sceneDocs flow
+watch(allScenesWordKeyframes, (m) => {
+    console.debug('[Editor] allScenesWordKeyframes changed:', { count: m.length, sample: m.slice(0, 12) });
+}, { immediate: true });
+watch(selectedSceneWordKeyframes, (m) => {
+    console.debug('[Editor] selectedSceneWordKeyframes changed:', { count: m.length, sample: m.slice(0, 12), selectedSceneId: selectedSceneId.value });
+}, { immediate: true });
+watch(sceneDocs, (docs) => {
+    const ids = Object.keys(docs || {});
+    console.debug('[Editor] sceneDocs updated:', { count: ids.length, ids: ids.slice(0, 8) });
+}, { deep: true });
 // Derived onsets per frame (optionally using per-scene threshold)
 const derivedOnsetPerFrame = computed<boolean[] | undefined>(() => {
     const cache = analysisCache.value;
@@ -188,6 +217,56 @@ const derivedBeatIndexPerFrame = computed<number[] | undefined>(() => {
     return out;
 });
 let lastConfiguredPair = '';
+let lastConfiguredKey = '';
+
+const hashWords = (arr: string[]) => {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < arr.length; i++) {
+        const s = arr[i];
+        for (let j = 0; j < s.length; j++) { h ^= s.charCodeAt(j); h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24); }
+    }
+    return String(h >>> 0);
+};
+const computeConfigKeyForFrame = (f: number) => {
+    const mix = computeActiveScenesForFrame(f);
+    const pairKey = (mix.a?.id || 'none') + '|' + (mix.b?.id || '');
+    const pool = evalGlobalWordPoolAtFrame(f);
+    const wordsKey = 'pool:' + hashWords(pool);
+    return pairKey + '|' + wordsKey;
+};
+// Move a marker at index to a new frame and persist wordsPoolTrack
+const moveGlobalPoolMarker = (index: number, newFrame: number, originalFrame?: number) => {
+    if (!timeline.value) return;
+    const track = timeline.value.wordsPoolTrack || { propertyPath: 'timeline.words.pool', keyframes: [] } as any;
+    const frames = (track.keyframes || []).slice();
+    // Identify the logical marker by its original frame if provided to avoid reordering issues
+    let targetIdx = index;
+    if (typeof originalFrame === 'number') {
+        const cand = frames.findIndex((k: any) => (k.frame | 0) === (originalFrame | 0));
+        if (cand >= 0) targetIdx = cand;
+    }
+    if (targetIdx < 0 || targetIdx >= frames.length) return;
+    const updated = frames.slice();
+    const target = updated[targetIdx];
+    updated.splice(targetIdx, 1);
+    // Insert without colliding with other frames: allow duplicates in list but we'll merge by unique frames later if needed
+    const next = { frame: Math.max(0, newFrame | 0), value: Array.isArray(target.value) ? target.value : [] } as any;
+    updated.push(next);
+    updated.sort((a: any, b: any) => (a.frame | 0) - (b.frame | 0));
+    const nextDoc: TimelineDocument = { ...(timeline.value as any), wordsPoolTrack: { propertyPath: 'timeline.words.pool', keyframes: updated } } as any;
+    onTimelineUpdated(nextDoc);
+};
+// Evaluate global word pool at frame (defaults to full word bank when no keyframes)
+const evalGlobalWordPoolAtFrame = (f: number): string[] => {
+    const bank = Array.isArray(song.value?.wordBank) ? song.value!.wordBank!.map(w => String(w)) : [];
+    const track = timeline.value?.wordsPoolTrack;
+    if (!track || !Array.isArray(track.keyframes) || !track.keyframes.length) return bank;
+    const sorted = track.keyframes.slice().sort((a: any, b: any) => (a.frame|0) - (b.frame|0));
+    let last = sorted[0];
+    for (const k of sorted) { if ((k.frame|0) <= (f|0)) last = k; else break; }
+    const val = Array.isArray((last as any).value) ? (last as any).value.map((w: any) => String(w)) : bank;
+    return val;
+};
 
 const applySceneParams = async (p: Record<string, any>) => {
     const id = selectedSceneId.value || null;
@@ -285,13 +364,12 @@ const tick = (now: number) => {
     const lowB = (bandsLowPerFrame.value && analysisCache.value) ? (bandsLowPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
     const midB = (bandsMidPerFrame.value && analysisCache.value) ? (bandsMidPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
     const highB = (bandsHighPerFrame.value && analysisCache.value) ? (bandsHighPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
-    const mix = computeActiveScenesForFrame(frame.value);
-    const pairKey = mix.a.id + '|' + (mix.b?.id || '');
-    if (pairKey !== lastConfiguredPair) {
-        // reconfigure scenes when pair changes
+    const cfgKey = computeConfigKeyForFrame(frame.value);
+    if (cfgKey !== lastConfiguredKey) {
         configureWorkerScene();
     }
     const wordOverride = evalWordOverrideForFrame(frame.value);
+    const mix = computeActiveScenesForFrame(frame.value);
     workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride, lowBand: lowB, midBand: midB, highBand: highB } as any);
     drawPreview();
     requestAnimationFrame(tick);
@@ -468,6 +546,8 @@ const initForSong = async (id: string) => {
     frame.value = 0;
     timeline.value = await TimelineService.createOrLoad(id);
     fps.value = timeline.value.settings.fps;
+    // Preload all scene documents so keyframe markers can be aggregated
+    try { await preloadAllSceneDocs(); } catch {}
     // Load song for audio and words
     song.value = await SongService.load(id);
     audioReady.value = false;
@@ -674,7 +754,6 @@ onUnmounted(() => {
 
 const configureWorkerScene = async () => {
     const seed = String(timeline.value?.settings.seed || 'seed');
-    const words = Array.isArray(song.value?.wordBank) ? (song.value!.wordBank!.map(w => String(w))) : [];
     // Build font-family chain from settings
     const primary = String(timeline.value?.settings.fontFamily || 'system-ui');
     const fallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value!.settings.fontFallbacks as string[]) : [];
@@ -683,25 +762,34 @@ const configureWorkerScene = async () => {
     const fontFamilyChain = names.map(quote).join(', ');
     const active = computeActiveScenesForFrame(frame.value);
     // Ensure docs are loaded
-    if (active.a) await ensureSceneDoc(active.a.id, active.a);
-    if (active.b) await ensureSceneDoc(active.b.id, active.b);
-    const aParams = { ...(sceneDocs.value[active.a.id]?.params || {}), words, fontFamilyChain };
-    const payload: any = { type: 'configureMix', seed, a: { sceneType: active.a.type, params: aParams }, fontFamilyChain };
-    if (active.b) {
-        const bParams = { ...(sceneDocs.value[active.b.id!]?.params || {}), words, fontFamilyChain };
-        payload.b = { sceneType: active.b.type, params: bParams };
-    }
-    const pairKey = active.a.id + '|' + (active.b?.id || '');
+    if (active.a && active.a.id !== 'none') await ensureSceneDoc(active.a.id, active.a);
+    if (active.b && active.b.id !== 'none') await ensureSceneDoc(active.b.id, active.b);
+    const pool = evalGlobalWordPoolAtFrame(frame.value);
+    const wordsA = (active.a && active.a.id !== 'none') ? pool : [];
+    const wordsB = (active.b && (active.b as any).id !== 'none') ? pool : [];
+    const aParams = active.a && active.a.id !== 'none' ? { ...(sceneDocs.value[active.a.id]?.params || {}), words: wordsA, fontFamilyChain } : null;
+    const bParams = active.b && (active.b as any).id !== 'none' ? { ...(sceneDocs.value[(active.b as any).id!]?.params || {}), words: wordsB, fontFamilyChain } : null;
+    const pairKey = (active.a?.id || 'none') + '|' + (active.b?.id || '');
+    const wordsKey = 'pool:' + hashWords(pool);
+    const configKey = pairKey + '|' + wordsKey;
     lastConfiguredPair = pairKey;
+    if (active.a.id === 'none' && !active.b) { lastConfiguredKey = configKey; return; }
+    if (configKey === lastConfiguredKey) return;
+    lastConfiguredKey = configKey;
+    const payload: any = { type: 'configureMix', seed, a: { sceneType: active.a.type, params: aParams || {} }, fontFamilyChain };
+    if (bParams && active.b) payload.b = { sceneType: active.b.type, params: bParams };
     workerRef.value?.postMessage(JSON.parse(JSON.stringify(payload)));
 };
 
-const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere') => {
+const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord') => {
     if (!timeline.value) return;
     const id = (window.crypto && typeof window.crypto.randomUUID === 'function') ? window.crypto.randomUUID() : Math.random().toString(36).slice(2);
     const last = timeline.value.scenes.at(-1);
-    const start = (last ? last.startFrame + last.durationFrames : 0);
-    const scene = { id, type, name: `${type} ${timeline.value.scenes.length + 1}`, startFrame: start, durationFrames: 300 } as any;
+    const totalFrames = Math.max(1, Math.floor(((audioEl?.duration || 0) * Math.max(1, fps.value)) | 0));
+    const isFirst = timeline.value.scenes.length === 0;
+    const start = isFirst ? 0 : (last ? last.startFrame + last.durationFrames : 0);
+    const dur = isFirst && totalFrames > 0 ? totalFrames : 300;
+    const scene = { id, type: (type as any), name: `${type} ${timeline.value.scenes.length + 1}`, startFrame: start, durationFrames: dur } as any;
     timeline.value.scenes.push(scene);
     // create minimal per-scene document
     const doc: SceneDocumentBase = { id, type, name: scene.name, seed: String(timeline.value.settings.seed || 'seed'), params: {}, tracks: [] } as any;
@@ -720,6 +808,8 @@ const selectScene = async (id: string) => {
 const onTimelineUpdated = async (t: TimelineDocument) => {
     timeline.value = t;
     await TimelineService.save(songId.value as string, t);
+    // Ensure scene docs are loaded for updated scenes list
+    try { await preloadAllSceneDocs(); } catch {}
     await configureWorkerScene();
 };
 
@@ -741,15 +831,15 @@ const onScrub = async (payload: { timeSec: number; frame: number }) => {
     // Immediately update preview during scrubbing (paused or playing)
     const beat = evalBeatForFrame(frame.value);
     const wordIndex = evalWordIndexForFrame(frame.value);
-    const mix = computeActiveScenesForFrame(frame.value);
-    const pairKey = mix.a.id + '|' + (mix.b?.id || '');
-    if (pairKey !== lastConfiguredPair) {
+    const cfgKey = computeConfigKeyForFrame(frame.value);
+    if (cfgKey !== lastConfiguredKey) {
         await configureWorkerScene();
     }
     const wordOverride = evalWordOverrideForFrame(frame.value);
     const lowB0 = (bandsLowPerFrame.value && analysisCache.value) ? (bandsLowPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
     const midB0 = (bandsMidPerFrame.value && analysisCache.value) ? (bandsMidPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
     const highB0 = (bandsHighPerFrame.value && analysisCache.value) ? (bandsHighPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
+    const mix = computeActiveScenesForFrame(frame.value);
     workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride, lowBand: lowB0, midBand: midB0, highBand: highB0 } as any);
     // Defer preview draw to next frame so worker has time to render
     requestAnimationFrame(() => drawPreview());
@@ -815,39 +905,13 @@ const ease = (t: number, type: TransitionEasing | undefined): number => {
 
 const computeActiveScenesForFrame = (f: number): { a: SceneRef; b?: SceneRef | null; alphaA: number; alphaB: number } => {
     const scenes = (timeline.value?.scenes || []) as SceneRef[];
+    const dummy: any = { id: 'none', type: 'wordcloud', name: 'None', startFrame: 0, durationFrames: 1 };
     if (!scenes.length) {
-        const dummy: any = { id: 'none', type: 'wordcloud', name: 'None', startFrame: 0, durationFrames: 1 };
-        return { a: dummy, b: null, alphaA: 1, alphaB: 0 };
+        return { a: dummy, b: null, alphaA: 0, alphaB: 0 };
     }
-    let a = scenes[0];
-    for (const s of scenes) {
-        if (f >= s.startFrame) a = s;
-        if (f < s.startFrame) break;
-    }
-    const endA = a.startFrame + a.durationFrames;
-    const idxA = scenes.findIndex(s => s.id === a.id);
-    const b = (idxA >= 0 && idxA + 1 < scenes.length) ? scenes[idxA + 1] : null;
-    const tin = Math.max(0, a.transitionInFrames || 0);
-    const tout = Math.max(0, a.transitionOutFrames || 0);
-    const easeType = a.transitionEasing || 'linear';
-    let alphaA = 1;
-    if (tin > 0 && f < a.startFrame + tin) {
-        alphaA = ease((f - a.startFrame) / Math.max(1, tin), easeType);
-    }
-    if (tout > 0 && f >= endA - tout) {
-        const t = (f - (endA - tout)) / Math.max(1, tout);
-        alphaA = alphaA * (1 - ease(t, easeType));
-    }
-    let alphaB = 0;
-    if (b) {
-        const tinB = Math.max(0, b.transitionInFrames || 0);
-        if (tinB > 0 && f >= b.startFrame && f < b.startFrame + tinB) {
-            alphaB = ease((f - b.startFrame) / Math.max(1, tinB), b.transitionEasing || easeType);
-        } else if (f >= b.startFrame) {
-            alphaB = 1;
-        }
-    }
-    return { a, b, alphaA: Math.min(1, Math.max(0, alphaA)), alphaB: Math.min(1, Math.max(0, alphaB)) };
+    const hit = scenes.find(s => f >= s.startFrame && f < s.startFrame + s.durationFrames) || null;
+    if (!hit) return { a: dummy, b: null, alphaA: 0, alphaB: 0 };
+    return { a: hit, b: null, alphaA: 1, alphaB: 0 };
 };
 
 const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
@@ -860,6 +924,14 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
     if (ref) {
         const doc: SceneDocumentBase = { id: ref.id, type: ref.type, name: ref.name, seed: String(timeline.value?.settings.seed || 'seed'), params: {}, tracks: [] } as any;
         try { const saved = await TimelineService.saveScene(songId.value as string, doc); sceneDocs.value[id] = saved; } catch {}
+    }
+};
+
+// Load all scene documents referenced by the current timeline
+const preloadAllSceneDocs = async () => {
+    const list = (timeline.value?.scenes || []) as SceneRef[];
+    for (const s of list) {
+        try { await ensureSceneDoc(s.id, s); } catch {}
     }
 };
 
@@ -879,7 +951,9 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
             <span v-if="ffmpegAvailable === false" class="toolbar__notice">ffmpeg not found. On macOS: install with <code>brew install ffmpeg</code>. Only WebM will be produced.</span>
         </div>
         <div class="editor__sidebar">
-            <SceneList :scenes="timeline?.scenes || []" :selected-id="selectedSceneId || undefined" :current-frame="frame" :fps="fps" @select="selectScene" @add="addScene" @switchHere="({ frame }) => {
+            <SceneList :scenes="timeline?.scenes || []" :selected-id="selectedSceneId || undefined" :current-frame="frame" :fps="fps" @select="selectScene" @add="addScene" @delete="(id:string)=>{
+                if(!timeline?.scenes) return; const list = [...timeline.scenes]; const i = list.findIndex(s=>s.id===id); if(i>=0){ list.splice(i,1); onTimelineUpdated({ ...(timeline as any), scenes: list } as any); if(selectedSceneId===id) selectedSceneId=null; }
+            }" @switchHere="({ frame }) => {
                 const scenes = [...(timeline?.scenes||[])];
                 if (!scenes.length) return;
                 // find current scene index
@@ -908,7 +982,24 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
             </div>
         </div>
         <div class="editor__inspector">
-            <Inspector :timeline="timeline" :selected-scene="selectedScene" :scene-params="sceneParamsView" :overlay-opts="overlayOpts" @update:overlayOpts="v => overlayOpts = v" @update:timeline="onTimelineUpdated" @update:scene="onSceneUpdated" @update:sceneParams="(p:any)=> applySceneParams(p)" @resetProject="handleReset" @importWolk="handleOpenImportDialog" />
+            <Inspector
+                :timeline="timeline"
+                :selected-scene="selectedScene"
+                :scene-params="sceneParamsView"
+                :overlay-opts="overlayOpts"
+                :current-frame="frame"
+                :word-bank="song?.wordBank || []"
+                :word-groups="song?.wordGroups || []"
+                :allowed-track="(() => { const id = selectedSceneId || null; if (!id) return null; const doc = id ? (sceneDocs as any).value?.[id] : null; const tracks = Array.isArray(doc?.tracks) ? doc.tracks : []; return (tracks.find((t:any)=>t.propertyPath==='words.allowed') || null) as any; })()"
+                @update:overlayOpts="v => overlayOpts = v"
+                @update:timeline="onTimelineUpdated"
+                @update:scene="onSceneUpdated"
+                @update:sceneParams="(p:any)=> applySceneParams(p)"
+                @update:sceneTracks="(payload:any) => { try { const sid = String((payload && payload.sceneId) || ''); const incoming: any[] = Array.isArray(payload && payload.tracks) ? payload.tracks : []; if (!sid) return; const doc = (sceneDocs.value as any)[sid] as any; if (!doc) return; const existing: any[] = Array.isArray(doc.tracks) ? doc.tracks : []; const merged: any[] = (() => { const map: Record<string, any> = {}; existing.forEach((t:any)=>{ map[t.propertyPath]=t; }); incoming.forEach((t:any)=>{ map[t.propertyPath]=t; }); return Object.values(map); })(); const updated: any = { ...(doc || {}), tracks: merged }; (sceneDocs.value as any)[sid] = updated; TimelineService.saveScene(String(songId || ''), updated as any); configureWorkerScene(); } catch {} }"
+                @navigate="({ dir }) => { try { const track = timeline?.wordsPoolTrack; const kf: number[] = Array.isArray(track?.keyframes) ? (track as any).keyframes.map((k:any)=>Math.max(0,(k.frame as any)|0)).sort((a:number,b:number)=>a-b) : []; const beats: number[] = Array.isArray(beatTimesSec) ? (beatTimesSec as any).slice() : []; const fpsVal = Math.max(1, fps as any); const cur = frame as any; const secs = (f:number)=> f/Math.max(1,fpsVal); const toFrame = (t:number)=> Math.max(0, Math.round(t*Math.max(1,fpsVal))); if (dir==='nextKf' && kf.length){ const n = kf.find((f:number)=>f>cur); if (typeof n==='number'){ onScrub({ timeSec: secs(n), frame: n }); return; } } if (dir==='prevKf' && kf.length){ const p = [...kf].reverse().find((f:number)=>f<cur); if (typeof p==='number'){ onScrub({ timeSec: secs(p), frame: p }); return; } } if ((dir==='nextBeat'||dir==='prevBeat') && beats.length){ const curT = secs(cur); const sorted = beats.slice().sort((a:number,b:number)=>a-b); if (dir==='nextBeat'){ const nb = sorted.find((b:number)=>b>curT); if (typeof nb==='number'){ onScrub({ timeSec: nb, frame: toFrame(nb) }); return; } } else { const pb = [...sorted].reverse().find((b:number)=>b<curT); if (typeof pb==='number'){ onScrub({ timeSec: pb, frame: toFrame(pb) }); return; } } } } catch {} }"
+                @resetProject="handleReset"
+                @importWolk="handleOpenImportDialog"
+            />
         </div>
         <div class="editor__timeline timeline-host">
             <TimelineRoot
@@ -928,7 +1019,9 @@ const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
                 :scenes="timeline?.scenes || []"
                 :selected-scene-id="selectedSceneId || undefined"
                 :action-items="(timeline?.actionTracks || []) as any"
+                :word-keyframes="allScenesWordKeyframes"
                 @scrub="(p: any) => onScrub(p)"
+                @dragGlobalPoolMarker="({ index, frame, originalFrame }) => moveGlobalPoolMarker(index, frame, originalFrame)"
                 @sceneUpdate="(s:any) => { const list = [...(timeline?.scenes||[])]; const i = list.findIndex(x=>x.id===s.id); if(i>=0){ list[i] = s; onTimelineUpdated({ ...(timeline as any), scenes: list } as TimelineDocument); } }"
                 @sceneSelect="({id}) => selectScene(id)"
                 @actionToggle="({frame}) => { const acts = Array.isArray(timeline?.actionTracks)? [...(timeline as any).actionTracks] : []; const idx = acts.findIndex((a:any)=>a.frame===frame && a.actionType==='wordOverride'); if(idx>=0){ acts.splice(idx,1);} else { acts.push({ id: genId(), frame, actionType: 'wordOverride', payload: { word: 'WOLK' } }); } onTimelineUpdated({ ...(timeline as any), actionTracks: acts } as TimelineDocument); }"
