@@ -61,10 +61,9 @@ const onHoverWord = (w: string | null) => {
 type Path = number[]
 
 const onRemoveGroup = (path: Path) => removeGroup(path)
-const onRenameGroup = (path: Path) => {
-    const current = getGroupNameByPath(path)
-    const name = prompt('Rename group', current || '')
-    if (name !== null) renameGroup(path, name)
+const onRenameGroup = (path: Path, name: string) => {
+    if (!name || !name.trim()) return
+    renameGroup(path, name.trim())
 }
 
 const getGroupNameByPath = (path: Path): string | null => {

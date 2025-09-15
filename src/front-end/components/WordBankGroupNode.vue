@@ -7,7 +7,7 @@ const props = defineProps<{ group: WordGroup; path: number[]; hoveredWord?: stri
 const emit = defineEmits<{
     (e: 'drop-word', path: number[], word: string): void
     (e: 'remove-group', path: number[]): void
-    (e: 'rename-group', path: number[]): void
+    (e: 'rename-group', path: number[], name: string): void
     (e: 'toggle-collapsed', path: number[]): void
     (e: 'hover-word', value: string | null): void
 }>()
@@ -32,8 +32,29 @@ const onWordDroppedForSubgroup = (evt: any) => {
     }
 }
 
+const isRenaming = ref(false)
+const newName = ref('')
+
 const onRemove = () => emit('remove-group', props.path)
-const onRename = () => emit('rename-group', props.path)
+const beginRename = () => {
+    isRenaming.value = true
+    newName.value = (props as any).group.name || ''
+}
+const commitRename = () => {
+    const name = newName.value.trim()
+    if (name) emit('rename-group', props.path, name)
+    isRenaming.value = false
+}
+const cancelRename = () => {
+    isRenaming.value = false
+}
+const onRenameKey = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+        commitRename()
+    } else if (e.key === 'Escape') {
+        cancelRename()
+    }
+}
 const onToggle = () => emit('toggle-collapsed', props.path)
 </script>
 
@@ -41,8 +62,25 @@ const onToggle = () => emit('toggle-collapsed', props.path)
     <div class="group-node">
         <div class="header">
             <button class="collapse" @click="onToggle">{{ props.group.collapsed ? '▶' : '▼' }}</button>
-            <span class="name">{{ props.group.name }}</span>
-            <button class="rename" @click="onRename">Rename</button>
+            <span>{{ props.group.name }}</span>
+            <template v-if="!isRenaming">
+                <span class="name">{{ props.group.name }}</span>
+                <button class="rename" @click="beginRename">Rename</button>
+            </template>
+            <template v-else>
+                <input
+                    type="text"
+                    v-model="newName"
+                    @keydown.enter.prevent="commitRename"
+                    @keydown.esc.prevent="cancelRename"
+                    @blur="commitRename"
+                    class="rename-input"
+                    :placeholder="props.group.name"
+                    autofocus
+                />
+                <button class="confirm" @click="commitRename">Save</button>
+                <button class="cancel" @click="cancelRename">Cancel</button>
+            </template>
             <button class="remove" @click="onRemove">Remove</button>
         </div>
 
@@ -62,7 +100,7 @@ const onToggle = () => emit('toggle-collapsed', props.path)
 
             <draggable v-model="(props as any).group.groups" :group="{ name: 'groups', put: ['groups'], pull: true }" item-key="(g:any)=>g._uid || g.name" tag="div" class="children">
                 <template #item="{ element, index }">
-                    <WordBankGroupNode :group="element" :path="[...props.path, index]" @drop-word="(p,w)=>emit('drop-word', p, w)" @remove-group="(p)=>emit('remove-group', p)" @rename-group="(p)=>emit('rename-group', p)" @toggle-collapsed="(p)=>emit('toggle-collapsed', p)" />
+                    <WordBankGroupNode :group="element" :path="[...props.path, index]" @drop-word="(p,w)=>emit('drop-word', p, w)" @remove-group="(p)=>emit('remove-group', p)" @rename-group="(p,n)=>emit('rename-group', p, n)" @toggle-collapsed="(p)=>emit('toggle-collapsed', p)" />
                 </template>
             </draggable>
 
