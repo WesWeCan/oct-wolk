@@ -330,6 +330,7 @@ const highlightWordSearch = (e: Event) => {
                     <button :disabled="uploading || !(sceneParams as any)?.normalMapUrl" @click="async()=>{ const songId=(route.params.songId as string)||''; const n=(sceneParams as any)?.normalMapUrl; if(n){ const name=n.split('/').pop()||''; await SongService.deleteAsset(songId, name); emit('update:sceneParams', { ...(sceneParams||{}), normalMapUrl: undefined }); } }">Delete normal</button>
                     <button :disabled="uploading || (!((sceneParams as any)?.modelObjUrl || (sceneParams as any)?.diffuseMapUrl || (sceneParams as any)?.normalMapUrl))" @click="async()=>{ const songId=(route.params.songId as string)||''; const paths=[(sceneParams as any)?.modelObjUrl,(sceneParams as any)?.diffuseMapUrl,(sceneParams as any)?.normalMapUrl].filter(Boolean) as string[]; for(const p of paths){ const name=p.split('/').pop()||''; await SongService.deleteAsset(songId, name); } emit('update:sceneParams', { ...(sceneParams||{}), modelObjUrl: undefined, diffuseMapUrl: undefined, normalMapUrl: undefined }); }">Clear all</button>
                 </div>
+                
                 <div v-if="!(sceneParams as any)?.modelObjUrl" style="padding:8px; border:1px dashed #555; background:#1a1a1a;">Upload model first</div>
                 <div v-if="uploadError" style="color:#e66;">{{ uploadError }}</div>
                 <label>
