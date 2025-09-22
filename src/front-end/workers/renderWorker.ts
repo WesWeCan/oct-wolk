@@ -30,7 +30,7 @@ export interface RenderConfigureMessage {
     type: 'configure';
     seed: string;
     words: string[];
-    sceneType: 'wordcloud' | 'singleWord' | 'wordSphere';
+    sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d';
     fontFamilyChain?: string;
     fps?: number;
 }
@@ -38,8 +38,8 @@ export interface RenderConfigureMessage {
 export interface RenderConfigureMixMessage {
     type: 'configureMix';
     seed: string;
-    a: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere'; params: Record<string, any> };
-    b?: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere'; params: Record<string, any> };
+    a: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d'; params: Record<string, any> };
+    b?: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d'; params: Record<string, any> };
     fontFamilyChain?: string;
     fps?: number;
 }
@@ -49,7 +49,7 @@ type WorkerMessage = RenderInitMessage | RenderFrameMessage | RenderDisposeMessa
 let ctx2d: OffscreenCanvasRenderingContext2D | null = null;
 let canvasRef: OffscreenCanvas | null = null;
 let configured = false;
-let sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' = 'wordcloud';
+let sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d' = 'wordcloud';
 let words: string[] = [];
 let canvasWidth = 0;
 let canvasHeight = 0;
@@ -63,11 +63,13 @@ import type { SceneType } from './engine/types';
 import { WordCloudScene } from './scenes/WordCloudScene';
 import { SingleWordScene } from './scenes/SingleWordScene';
 import { WordSphereScene } from './scenes/WordSphereScene';
+import { ModelScene } from './scenes/ModelScene';
 
 // register scenes
 registerScene('wordcloud', () => new WordCloudScene());
 registerScene('singleWord', () => new SingleWordScene());
 registerScene('wordSphere', () => new WordSphereScene());
+registerScene('model3d', () => new ModelScene());
 
 const engine = new SceneEngine();
 

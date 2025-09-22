@@ -4,12 +4,12 @@ import type { SceneRef } from '@/types/timeline_types';
 const props = defineProps<{ scenes: SceneRef[]; selectedId?: string; currentFrame?: number; fps?: number }>();
 const emit = defineEmits<{
     (e: 'select', id: string): void;
-    (e: 'add', type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord'): void;
+    (e: 'add', type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d'): void;
     (e: 'switchHere', payload: { frame: number }): void;
     (e: 'delete', id: string): void;
 }>();
 
-const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord') => emit('add', type);
+const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d') => emit('add', type);
 </script>
 
 <template>
@@ -20,6 +20,7 @@ const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleW
                 <button @click="handleAdd('wordcloud')">+ WordCloud</button>
                 <button @click="handleAdd('wordSphere')">+ 3D Word Sphere</button>
                 <button @click="handleAdd('singleWord')">+ Single Word</button>
+                <button @click="handleAdd('model3d')">+ 3D Model</button>
             </div>
         </div>
         <ul>

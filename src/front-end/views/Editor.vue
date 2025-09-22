@@ -811,7 +811,7 @@ const configureWorkerScene = async () => {
     workerRef.value?.postMessage(JSON.parse(JSON.stringify(payload)));
 };
 
-const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord') => {
+const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d') => {
     if (!timeline.value) return;
     const id = (window.crypto && typeof window.crypto.randomUUID === 'function') ? window.crypto.randomUUID() : Math.random().toString(36).slice(2);
     const last = timeline.value.scenes.at(-1);

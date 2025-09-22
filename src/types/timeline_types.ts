@@ -10,7 +10,7 @@ export interface ProjectSettings {
     exportBitrateMbps?: number;
 }
 
-export type SceneType = 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord';
+export type SceneType = 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d';
 
 export interface SceneRef {
     id: string;

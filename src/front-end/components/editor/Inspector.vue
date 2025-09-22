@@ -5,11 +5,52 @@ import type { TimelineDocument, SceneRef, SceneDocumentBase, PropertyTrack } fro
 import type { WordGroup } from '@/types/song_types';
 import InspectorAllowedWords from './InspectorAllowedWords.vue';
 import { FontsService } from '@/front-end/services/FontsService';
+import { SongService } from '@/front-end/services/SongService';
 
 interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; }
 
 const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; sceneParams?: Record<string, any> | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }; currentFrame?: number; wordBank?: string[]; wordGroups?: WordGroup[]; allowedTrack?: PropertyTrack<string[]> | null }>();
 const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:sceneParams', value: Record<string, any>): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void; (e: 'resetProject'): void; (e: 'importWolk'): void; (e: 'update:sceneTracks', value: { sceneId: string; tracks: PropertyTrack[] }): void; (e: 'navigate', value: { dir: 'prevKf' | 'nextKf' | 'prevBeat' | 'nextBeat' }): void }>();
+// Capture route in setup to avoid calling useRoute() later in event handlers
+const route = useRoute();
+const isModel3DScene = computed(() => ((props.selectedScene as any)?.type === 'model3d'));
+// Helpers for model3d asset uploads
+const uploading = ref(false);
+const uploadError = ref<string | null>(null);
+const handleUpload = async (kind: 'obj' | 'diffuse' | 'normal') => {
+    try {
+        uploadError.value = null; uploading.value = true;
+        const input = document.createElement('input');
+        input.type = 'file';
+        if (kind === 'obj') input.accept = '.obj,model/obj,application/octet-stream';
+        if (kind === 'diffuse' || kind === 'normal') input.accept = '.jpg,.jpeg,.png,image/jpeg,image/png';
+        const picked = await new Promise<File | null>((resolve) => {
+            input.onchange = () => {
+                const file = input.files && input.files[0] ? input.files[0] : null;
+                resolve(file);
+            };
+            input.click();
+        });
+        if (!picked) { uploading.value = false; return; }
+        const songId = (route.params.songId as string) || '';
+        // delete old for that slot before uploading with prefixed base name
+        const p0: any = props.sceneParams || {};
+        const currentUrlForSlot = kind === 'obj' ? p0.modelObjUrl : (kind === 'diffuse' ? p0.diffuseMapUrl : p0.normalMapUrl);
+        if (currentUrlForSlot) { try { const name = String(currentUrlForSlot).split('/').pop() || ''; await SongService.deleteAsset(songId, name); } catch {} }
+        const ext = (picked.name.split('.').pop() || '').toLowerCase();
+        const preferred = `${kind === 'obj' ? 'obj' : (kind === 'diffuse' ? 'tex' : 'normal')}_${Date.now()}.${ext || 'bin'}`;
+        const res = await SongService.uploadAsset(songId, picked, preferred);
+        const p: Record<string, any> = { ...(props.sceneParams || {}) };
+        if (kind === 'obj') p.modelObjUrl = res.url;
+        if (kind === 'diffuse') p.diffuseMapUrl = res.url;
+        if (kind === 'normal') p.normalMapUrl = res.url;
+        emit('update:sceneParams', p);
+    } catch (e: any) {
+        uploadError.value = String(e?.message || 'Upload failed');
+    } finally {
+        uploading.value = false;
+    }
+};
 
 const updateSeed = (e: Event) => {
     if (!props.timeline) return;
@@ -277,6 +318,34 @@ const highlightWordSearch = (e: Event) => {
                     Energy response (0..1)
                     <input type="number" min="0" max="1" step="0.05" :value="Number((sceneParams && (sceneParams as any).energyResponse) ?? 0.25)" @input="(e:any)=>{ const v=Math.min(1,Math.max(0,Number(e.target.value)||0)); emit('update:sceneParams', { ...(sceneParams||{}), energyResponse: v }); }" />
                 </label>
+            </div>
+
+            <div v-if="isModel3DScene" style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <button :disabled="uploading" @click="() => handleUpload('obj')">Upload .obj</button>
+                    <button :disabled="uploading" @click="() => handleUpload('diffuse')">Upload diffuse</button>
+                    <button :disabled="uploading" @click="() => handleUpload('normal')">Upload normal</button>
+                    <button :disabled="uploading || !(sceneParams as any)?.modelObjUrl" @click="async()=>{ const songId=(route.params.songId as string)||''; const obj=(sceneParams as any)?.modelObjUrl; if(obj){ const name=obj.split('/').pop()||''; await SongService.deleteAsset(songId, name); emit('update:sceneParams', { ...(sceneParams||{}), modelObjUrl: undefined }); } }">Delete OBJ</button>
+                    <button :disabled="uploading || !(sceneParams as any)?.diffuseMapUrl" @click="async()=>{ const songId=(route.params.songId as string)||''; const d=(sceneParams as any)?.diffuseMapUrl; if(d){ const name=d.split('/').pop()||''; await SongService.deleteAsset(songId, name); emit('update:sceneParams', { ...(sceneParams||{}), diffuseMapUrl: undefined }); } }">Delete diffuse</button>
+                    <button :disabled="uploading || !(sceneParams as any)?.normalMapUrl" @click="async()=>{ const songId=(route.params.songId as string)||''; const n=(sceneParams as any)?.normalMapUrl; if(n){ const name=n.split('/').pop()||''; await SongService.deleteAsset(songId, name); emit('update:sceneParams', { ...(sceneParams||{}), normalMapUrl: undefined }); } }">Delete normal</button>
+                    <button :disabled="uploading || (!((sceneParams as any)?.modelObjUrl || (sceneParams as any)?.diffuseMapUrl || (sceneParams as any)?.normalMapUrl))" @click="async()=>{ const songId=(route.params.songId as string)||''; const paths=[(sceneParams as any)?.modelObjUrl,(sceneParams as any)?.diffuseMapUrl,(sceneParams as any)?.normalMapUrl].filter(Boolean) as string[]; for(const p of paths){ const name=p.split('/').pop()||''; await SongService.deleteAsset(songId, name); } emit('update:sceneParams', { ...(sceneParams||{}), modelObjUrl: undefined, diffuseMapUrl: undefined, normalMapUrl: undefined }); }">Clear all</button>
+                </div>
+                <div v-if="!(sceneParams as any)?.modelObjUrl" style="padding:8px; border:1px dashed #555; background:#1a1a1a;">Upload model first</div>
+                <div v-if="uploadError" style="color:#e66;">{{ uploadError }}</div>
+                <label>
+                    Model scale
+                    <input type="number" step="0.1" min="0.1" :value="Number((sceneParams && (sceneParams as any).modelScale) ?? 1)"
+                        @input="(e:any)=>{ const v=Math.max(0.001, Number(e.target.value)||1); emit('update:sceneParams', { ...(sceneParams||{}), modelScale: v }); }" />
+                </label>
+                <label>
+                    Rotation (RPM)
+                    <input type="number" step="0.1" min="0" :value="Number((sceneParams && (sceneParams as any).rotationRpm) ?? 3)"
+                        @input="(e:any)=>{ const v=Math.max(0, Number(e.target.value)||0); emit('update:sceneParams', { ...(sceneParams||{}), rotationRpm: v }); }" />
+                </label>
+                <div style="font-size:12px; opacity:0.8;">
+                    Current: OBJ {{ (sceneParams as any)?.modelObjUrl || '—' }}, MTL {{ (sceneParams as any)?.modelMtlUrl || '—' }},
+                    Diffuse {{ (sceneParams as any)?.diffuseMapUrl || '—' }}, Normal {{ (sceneParams as any)?.normalMapUrl || '—' }}
+                </div>
             </div>
         </div>
 

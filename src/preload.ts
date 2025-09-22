@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         list: () => ipcRenderer.invoke('songs:list'),
         uploadCover: (songId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('songs:uploadCover', songId, fileData, originalFileName),
         uploadAudio: (songId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('songs:uploadAudio', songId, fileData, originalFileName),
+            uploadAsset: (songId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => ipcRenderer.invoke('songs:uploadAsset', songId, fileData, originalFileName, preferredFileName),
+            deleteAsset: (songId: string, fileName: string) => ipcRenderer.invoke('songs:deleteAsset', songId, fileName),
     },
     timeline: {
         createOrLoad: (songId: string) => ipcRenderer.invoke('timeline:createOrLoad', songId),

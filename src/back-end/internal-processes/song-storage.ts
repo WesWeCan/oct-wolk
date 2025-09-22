@@ -169,3 +169,41 @@ export const saveSongAudio = (songId: string, fileData: ArrayBuffer, originalFil
 };
 
 
+export const saveSongAsset = (songId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string): { url: string; fileName: string } => {
+    const dir = getSongDir(songId);
+    const assetsDir = path.join(dir, 'assets');
+    try { fs.mkdirSync(assetsDir, { recursive: true }); } catch {}
+    const baseRequested = String(preferredFileName || originalFileName || 'asset').replace(/[^a-zA-Z0-9-_\.]/g, '_');
+    const ext = path.extname(baseRequested) || path.extname(String(originalFileName || '')) || '';
+    const baseNoExt = path.basename(baseRequested, ext) || 'asset';
+    let candidate = `${baseNoExt}${ext}`;
+    let targetPath = path.join(assetsDir, candidate);
+    // ensure unique file name if collision
+    let counter = 1;
+    while (fs.existsSync(targetPath)) {
+        candidate = `${baseNoExt}_${counter}${ext}`;
+        targetPath = path.join(assetsDir, candidate);
+        counter++;
+    }
+    const buffer = Buffer.from(fileData);
+    fs.writeFileSync(targetPath, buffer);
+    return { url: `wolk://${songId}/assets/${path.basename(targetPath)}`, fileName: path.basename(targetPath) };
+};
+
+export const deleteSongAsset = (songId: string, fileName: string): boolean => {
+    try {
+        if (!fileName) return false;
+        const dir = getSongDir(songId);
+        const assetsDir = path.join(dir, 'assets');
+        const targetPath = path.join(assetsDir, path.basename(fileName));
+        if (fs.existsSync(targetPath)) {
+            fs.unlinkSync(targetPath);
+            return true;
+        }
+    } catch {
+        // ignore
+    }
+    return false;
+};
+
+

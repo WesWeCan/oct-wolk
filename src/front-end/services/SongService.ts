@@ -30,6 +30,15 @@ export const SongService = {
         const updated = await window.electronAPI.songs.uploadAudio(songId, arrayBuffer, file.name);
         return updated as Song;
     },
+    async uploadAsset(songId: string, file: File, preferredFileName?: string): Promise<{ url: string; fileName: string }> {
+        const arrayBuffer = await file.arrayBuffer();
+        const res = await window.electronAPI.songs.uploadAsset(songId, arrayBuffer, file.name, preferredFileName);
+        return res as { url: string; fileName: string };
+    },
+    async deleteAsset(songId: string, fileName: string): Promise<boolean> {
+        const ok = await window.electronAPI.songs.deleteAsset(songId, fileName);
+        return !!ok;
+    },
 };
 
 

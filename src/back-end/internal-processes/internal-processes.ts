@@ -3,7 +3,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { getInternalStoragePath } from './internal-storage';
 import { createOrLoadTimeline, saveTimeline, listScenes as listSceneFiles, saveScene, loadScene, resetTimeline } from './timeline-storage';
 import { listSystemFonts } from './fonts';
-import { createSong, loadSong, saveSong, listSongs, saveSongCover, saveSongAudio } from './song-storage';
+import { createSong, loadSong, saveSong, listSongs, saveSongCover, saveSongAudio, saveSongAsset, deleteSongAsset } from './song-storage';
 import fs from 'fs';
 import path from 'path';
 import { getDocStoragePath } from './internal-storage';
@@ -49,6 +49,12 @@ export const registerInternalProcesses = async () => {
     });
     ipcMain.handle('songs:uploadAudio', (_event, songId: string, fileData: ArrayBuffer, originalFileName: string) => {
         return saveSongAudio(songId, fileData, originalFileName);
+    });
+    ipcMain.handle('songs:uploadAsset', (_event, songId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => {
+        return saveSongAsset(songId, fileData, originalFileName, preferredFileName);
+    });
+    ipcMain.handle('songs:deleteAsset', (_event, songId: string, fileName: string) => {
+        return deleteSongAsset(songId, fileName);
     });
 
     // Timeline API
