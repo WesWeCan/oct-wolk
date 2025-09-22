@@ -33,24 +33,42 @@ export class SceneEngine {
     }
 
     configure(cfg: EngineConfig) {
-        this.seedStr = String(cfg.seed || 'seed');
-        this.seedBase = hashStringToUint32(this.seedStr);
-        this.rng = createMulberry32(this.seedBase);
-        this.width = cfg.resolution.width | 0;
-        this.height = cfg.resolution.height | 0;
-        this.fps = Math.max(1, cfg.fps | 0);
-        this.fontFamilyChain = cfg.fontFamilyChain;
-        this.analysis = cfg.analysis;
-        this.sceneTypeA = cfg.sceneType;
-        this.paramsA = cfg.params || {};
+        const nextSeedStr = String(cfg.seed || 'seed');
+        const nextSeedBase = hashStringToUint32(nextSeedStr);
+        const nextWidth = cfg.resolution.width | 0;
+        const nextHeight = cfg.resolution.height | 0;
+        const nextFps = Math.max(1, cfg.fps | 0);
+        const nextFontFamilyChain = cfg.fontFamilyChain;
+        const nextAnalysis = cfg.analysis;
+        const nextSceneType = cfg.sceneType;
+        const nextParams = cfg.params || {};
 
-        // Recreate scenes
-        try { this.sceneA?.dispose(); } catch {}
-        this.sceneA = createScene(this.sceneTypeA);
-        this.sceneB = null;
-        if (!this.sceneA || !this.target) return;
-        this.sceneA.initialize(this.buildContext(0, 0, {}));
-        this.sceneA.configure(this.paramsA);
+        const typeChanged = this.sceneTypeA !== nextSceneType;
+        const sizeChanged = this.width !== nextWidth || this.height !== nextHeight;
+
+        // Apply engine-wide state
+        this.seedStr = nextSeedStr;
+        this.seedBase = nextSeedBase;
+        this.rng = createMulberry32(this.seedBase);
+        this.width = nextWidth;
+        this.height = nextHeight;
+        this.fps = nextFps;
+        this.fontFamilyChain = nextFontFamilyChain;
+        this.analysis = nextAnalysis;
+        this.sceneTypeA = nextSceneType;
+        this.paramsA = nextParams;
+
+        // If type or render size changed, recreate; otherwise hot-apply params
+        if (!this.sceneA || !this.target || typeChanged || sizeChanged) {
+            try { this.sceneA?.dispose(); } catch {}
+            this.sceneA = createScene(this.sceneTypeA);
+            this.sceneB = null;
+            if (!this.sceneA || !this.target) return;
+            this.sceneA.initialize(this.buildContext(0, 0, {}));
+            this.sceneA.configure(this.paramsA);
+        } else {
+            this.sceneA.configure(this.paramsA);
+        }
     }
 
     update(frame: number, dt: number, extras?: SceneContext['extras']) {
@@ -87,21 +105,50 @@ export class SceneEngine {
     }
 
     configureMix(a: { type: SceneType; params: Record<string, any> }, b?: { type: SceneType; params: Record<string, any> }) {
-        this.sceneTypeA = a.type;
-        this.paramsA = a.params || {};
-        this.sceneTypeB = b ? b.type : null;
-        this.paramsB = b ? (b.params || {}) : null;
-        try { this.sceneA?.dispose(); } catch {}
-        try { this.sceneB?.dispose(); } catch {}
-        this.sceneA = createScene(this.sceneTypeA);
-        this.sceneB = this.sceneTypeB ? createScene(this.sceneTypeB as SceneType) : null;
-        if (this.sceneA && this.target) {
-            this.sceneA.initialize(this.buildContext(0, 0, {}));
+        const nextTypeA = a.type;
+        const nextParamsA = a.params || {};
+        const nextTypeB = b ? b.type : null;
+        const nextParamsB = b ? (b.params || {}) : null;
+
+        // Handle scene A
+        const aTypeChanged = this.sceneTypeA !== nextTypeA;
+        this.sceneTypeA = nextTypeA;
+        this.paramsA = nextParamsA;
+        if (!this.sceneA || !this.target || aTypeChanged) {
+            try { this.sceneA?.dispose(); } catch {}
+            this.sceneA = createScene(this.sceneTypeA);
+            if (this.sceneA && this.target) {
+                this.sceneA.initialize(this.buildContext(0, 0, {}));
+                this.sceneA.configure(this.paramsA);
+            }
+        } else {
             this.sceneA.configure(this.paramsA);
         }
-        if (this.sceneB && this.target) {
-            this.sceneB.initialize(this.buildContext(0, 0, {}));
-            this.sceneB.configure(this.paramsB || {});
+
+        // Handle scene B (optional)
+        const hadB = !!this.sceneTypeB;
+        const willHaveB = !!nextTypeB;
+        const bTypeChanged = this.sceneTypeB !== nextTypeB;
+        this.sceneTypeB = nextTypeB;
+        this.paramsB = nextParamsB;
+
+        if (!willHaveB) {
+            // Dispose existing B if it existed
+            if (hadB) {
+                try { this.sceneB?.dispose(); } catch {}
+                this.sceneB = null;
+            }
+        } else {
+            if (!this.sceneB || !this.target || bTypeChanged) {
+                try { this.sceneB?.dispose(); } catch {}
+                this.sceneB = createScene(this.sceneTypeB as SceneType);
+                if (this.sceneB && this.target) {
+                    this.sceneB.initialize(this.buildContext(0, 0, {}));
+                    this.sceneB.configure(this.paramsB || {});
+                }
+            } else {
+                this.sceneB.configure(this.paramsB || {});
+            }
         }
     }
 

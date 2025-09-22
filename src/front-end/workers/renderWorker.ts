@@ -30,7 +30,7 @@ export interface RenderConfigureMessage {
     type: 'configure';
     seed: string;
     words: string[];
-    sceneType: 'wordcloud' | 'singleWord';
+    sceneType: 'wordcloud' | 'singleWord' | 'wordSphere';
     fontFamilyChain?: string;
     fps?: number;
 }
@@ -38,8 +38,8 @@ export interface RenderConfigureMessage {
 export interface RenderConfigureMixMessage {
     type: 'configureMix';
     seed: string;
-    a: { sceneType: 'wordcloud' | 'singleWord'; params: Record<string, any> };
-    b?: { sceneType: 'wordcloud' | 'singleWord'; params: Record<string, any> };
+    a: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere'; params: Record<string, any> };
+    b?: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere'; params: Record<string, any> };
     fontFamilyChain?: string;
     fps?: number;
 }
@@ -49,7 +49,7 @@ type WorkerMessage = RenderInitMessage | RenderFrameMessage | RenderDisposeMessa
 let ctx2d: OffscreenCanvasRenderingContext2D | null = null;
 let canvasRef: OffscreenCanvas | null = null;
 let configured = false;
-let sceneType: 'wordcloud' | 'singleWord' = 'wordcloud';
+let sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' = 'wordcloud';
 let words: string[] = [];
 let canvasWidth = 0;
 let canvasHeight = 0;
@@ -62,10 +62,12 @@ import { registerScene } from './engine/SceneRegistry';
 import type { SceneType } from './engine/types';
 import { WordCloudScene } from './scenes/WordCloudScene';
 import { SingleWordScene } from './scenes/SingleWordScene';
+import { WordSphereScene } from './scenes/WordSphereScene';
 
 // register scenes
 registerScene('wordcloud', () => new WordCloudScene());
 registerScene('singleWord', () => new SingleWordScene());
+registerScene('wordSphere', () => new WordSphereScene());
 
 const engine = new SceneEngine();
 
@@ -103,9 +105,8 @@ const handleFrame = (msg: RenderFrameMessage) => {
     if (!ctx2d) return;
     const { frame } = msg;
     const { width, height } = ctx2d.canvas as OffscreenCanvas;
+    // Do not prefill background here; scenes will render their own background
     ctx2d.clearRect(0, 0, width, height);
-    ctx2d.fillStyle = '#111';
-    ctx2d.fillRect(0, 0, width, height);
     if (!configured) {
         ctx2d.fillStyle = '#0f0';
         ctx2d.font = '20px sans-serif';

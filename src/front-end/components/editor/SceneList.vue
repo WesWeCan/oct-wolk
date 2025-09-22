@@ -18,6 +18,7 @@ const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleW
             <h3>Scenes</h3>
             <div style="display:flex; gap:6px;">
                 <button @click="handleAdd('wordcloud')">+ WordCloud</button>
+                <button @click="handleAdd('wordSphere')">+ 3D Word Sphere</button>
                 <button @click="handleAdd('singleWord')">+ Single Word</button>
             </div>
         </div>

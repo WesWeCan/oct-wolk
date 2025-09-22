@@ -33,7 +33,7 @@ export interface WorkerScene {
     deserialize(data: any): void;
 }
 
-export type SceneType = 'wordcloud' | 'singleWord';
+export type SceneType = 'wordcloud' | 'singleWord' | 'wordSphere';
 
 export type SceneFactory = (args: { type: SceneType }) => WorkerScene;
 

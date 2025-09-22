@@ -253,6 +253,31 @@ const highlightWordSearch = (e: Event) => {
                     <input type="number" min="0" max="1" step="0.01" :value="Number((sceneParams && (sceneParams as any).beatThreshold) ?? 0.07)" @input="(e:any)=>{ const v=Math.min(1,Math.max(0,Number(e.target.value)||0)); emit('update:sceneParams', { ...(sceneParams||{}), beatThreshold: v }); }" />
                 </label>
             </div>
+
+            <div v-if="selectedScene.type === 'wordSphere'" style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" :checked="!!(sceneParams && (sceneParams as any).showSphere !== false)" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), showSphere: !!e.target.checked })" />
+                    Show sphere
+                </label>
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" :checked="!!(sceneParams && (sceneParams as any).sphereWireframe)" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), sphereWireframe: !!e.target.checked })" />
+                    Wireframe
+                </label>
+                <label>
+                    Rotation (RPM)
+                    <input type="number" min="0" step="0.1"
+                        :value="Number(((((sceneParams && (sceneParams as any).rotationRpm) != null)
+                            ? (sceneParams as any).rotationRpm
+                            : ((((sceneParams && (sceneParams as any).rotationSpeed) != null)
+                                ? (sceneParams as any).rotationSpeed
+                                : 0.2) * 60 / (Math.PI * 2))) as number).toFixed(2))"
+                        @input="(e:any)=>{ const rpm = Math.max(0, Number(e.target.value)||0); emit('update:sceneParams', { ...(sceneParams||{}), rotationRpm: rpm }); }" />
+                </label>
+                <label>
+                    Energy response (0..1)
+                    <input type="number" min="0" max="1" step="0.05" :value="Number((sceneParams && (sceneParams as any).energyResponse) ?? 0.25)" @input="(e:any)=>{ const v=Math.min(1,Math.max(0,Number(e.target.value)||0)); emit('update:sceneParams', { ...(sceneParams||{}), energyResponse: v }); }" />
+                </label>
+            </div>
         </div>
 
         <details style="margin-top:12px;">

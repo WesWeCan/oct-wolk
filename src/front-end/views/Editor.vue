@@ -227,12 +227,36 @@ const hashWords = (arr: string[]) => {
     }
     return String(h >>> 0);
 };
+const stableStringify = (obj: any, excludeKeys?: Set<string>) => {
+    const seen = new WeakSet();
+    const toJSON = (value: any): any => {
+        if (value && typeof value === 'object') {
+            if (seen.has(value)) return undefined;
+            seen.add(value);
+            if (Array.isArray(value)) return value.map(v => toJSON(v));
+            const keys = Object.keys(value).filter(k => !(excludeKeys && excludeKeys.has(k))).sort();
+            const out: any = {};
+            for (const k of keys) out[k] = toJSON(value[k]);
+            return out;
+        }
+        if (typeof value === 'number' && !Number.isFinite(value)) return String(value);
+        return value;
+    };
+    try { return JSON.stringify(toJSON(obj)); } catch { return ''; }
+};
 const computeConfigKeyForFrame = (f: number) => {
     const mix = computeActiveScenesForFrame(f);
     const pairKey = (mix.a?.id || 'none') + '|' + (mix.b?.id || '');
     const pool = evalGlobalWordPoolAtFrame(f);
     const wordsKey = 'pool:' + hashWords(pool);
-    return pairKey + '|' + wordsKey;
+    // Include params hash so toggling inspector controls reconfigures worker
+    const aParams = mix.a && mix.a.id !== 'none' ? (sceneDocs.value[mix.a.id]?.params || {}) : {};
+    const bParams = mix.b && (mix.b as any).id !== 'none' ? (sceneDocs.value[(mix.b as any).id!]?.params || {}) : {};
+    const exclude = new Set<string>(['words']);
+    const aKey = stableStringify(aParams, exclude);
+    const bKey = stableStringify(bParams, exclude);
+    const paramsKey = `a:${aKey}|b:${bKey}`;
+    return pairKey + '|' + wordsKey + '|' + paramsKey;
 };
 // Move a marker at index to a new frame and persist wordsPoolTrack
 const moveGlobalPoolMarker = (index: number, newFrame: number, originalFrame?: number) => {
@@ -767,11 +791,17 @@ const configureWorkerScene = async () => {
     const pool = evalGlobalWordPoolAtFrame(frame.value);
     const wordsA = (active.a && active.a.id !== 'none') ? pool : [];
     const wordsB = (active.b && (active.b as any).id !== 'none') ? pool : [];
-    const aParams = active.a && active.a.id !== 'none' ? { ...(sceneDocs.value[active.a.id]?.params || {}), words: wordsA, fontFamilyChain } : null;
-    const bParams = active.b && (active.b as any).id !== 'none' ? { ...(sceneDocs.value[(active.b as any).id!]?.params || {}), words: wordsB, fontFamilyChain } : null;
+    const aParamsBase = active.a && active.a.id !== 'none' ? (sceneDocs.value[active.a.id]?.params || {}) : null;
+    const bParamsBase = active.b && (active.b as any).id !== 'none' ? (sceneDocs.value[(active.b as any).id!]?.params || {}) : null;
+    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain } : null;
+    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain } : null;
     const pairKey = (active.a?.id || 'none') + '|' + (active.b?.id || '');
     const wordsKey = 'pool:' + hashWords(pool);
-    const configKey = pairKey + '|' + wordsKey;
+    const exclude = new Set<string>(['words']);
+    const aKey = aParamsBase ? stableStringify(aParamsBase, exclude) : '';
+    const bKey = bParamsBase ? stableStringify(bParamsBase, exclude) : '';
+    const paramsKey = `a:${aKey}|b:${bKey}`;
+    const configKey = pairKey + '|' + wordsKey + '|' + paramsKey;
     lastConfiguredPair = pairKey;
     if (active.a.id === 'none' && !active.b) { lastConfiguredKey = configKey; return; }
     if (configKey === lastConfiguredKey) return;
