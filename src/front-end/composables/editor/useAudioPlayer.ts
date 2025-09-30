@@ -42,12 +42,7 @@ export function useAudioPlayer() {
         
         // Setup event listeners
         audioEl.value.addEventListener('canplay', () => {
-            console.log('[useAudioPlayer] canplay event fired, duration:', audioEl.value?.duration);
             audioReady.value = true;
-        });
-        
-        audioEl.value.addEventListener('loadedmetadata', () => {
-            console.log('[useAudioPlayer] loadedmetadata event fired, duration:', audioEl.value?.duration);
         });
         
         audioEl.value.addEventListener('timeupdate', () => {
@@ -58,6 +53,10 @@ export function useAudioPlayer() {
         
         audioEl.value.addEventListener('ended', () => {
             // Audio playback ended naturally
+        });
+        
+        audioEl.value.addEventListener('error', (e) => {
+            console.error('[useAudioPlayer] Audio error:', e, audioEl.value?.error);
         });
     };
     
@@ -92,16 +91,100 @@ export function useAudioPlayer() {
     
     /**
      * Seeks to a specific time in the audio.
+     * 
+     * IMPORTANT: For custom protocols (like wolk://), audio elements may ignore
+     * seek attempts while paused. This function temporarily unpauses the audio,
+     * performs the seek, then re-pauses it if it was originally paused.
+     * 
      * @param seconds - Target time in seconds
+     * @returns Promise that resolves when seek completes
      */
-    const seekTo = (seconds: number) => {
-        if (!audioEl.value || !Number.isFinite(seconds)) return;
-        
-        try {
-            audioEl.value.currentTime = Math.max(0, seconds);
-        } catch (e) {
-            console.warn('Seek failed:', e);
+    const seekTo = (seconds: number): Promise<void> => {
+        if (!audioEl.value || !Number.isFinite(seconds)) {
+            return Promise.resolve();
         }
+        
+        return new Promise((resolve) => {
+            const el = audioEl.value!;
+            const targetTime = Math.max(0, seconds);
+            
+            // If already at target, resolve immediately
+            if (Math.abs(el.currentTime - targetTime) < 0.001) {
+                resolve();
+                return;
+            }
+            
+            // Wait for audio to be seekable (readyState >= 2)
+            const attemptSeek = () => {
+                try {
+                    // Check if audio has enough data to seek
+                    // readyState: 0=HAVE_NOTHING, 1=HAVE_METADATA, 2=HAVE_CURRENT_DATA, 3=HAVE_FUTURE_DATA, 4=HAVE_ENOUGH_DATA
+                    if (el.readyState < 2) {
+                        // Wait for loadeddata event
+                        const onLoadedData = () => {
+                            el.removeEventListener('loadeddata', onLoadedData);
+                            performSeek();
+                        };
+                        el.addEventListener('loadeddata', onLoadedData);
+                        return;
+                    }
+                    
+                    performSeek();
+                } catch (e) {
+                    console.warn('[useAudioPlayer] Seek failed:', e);
+                    resolve();
+                }
+            };
+            
+            const performSeek = async () => {
+                let resolved = false;
+                const wasPaused = el.paused;
+                
+                // Timeout fallback in case seeked event doesn't fire
+                const timeout = setTimeout(() => {
+                    if (!resolved) {
+                        resolved = true;
+                        el.removeEventListener('seeked', onSeeked);
+                        if (wasPaused) {
+                            el.pause();
+                        }
+                        resolve();
+                    }
+                }, 1000);
+                
+                // Listen for seeked event
+                const onSeeked = () => {
+                    if (!resolved) {
+                        resolved = true;
+                        clearTimeout(timeout);
+                        el.removeEventListener('seeked', onSeeked);
+                        // Restore paused state if it was paused before
+                        if (wasPaused) {
+                            el.pause();
+                        }
+                        resolve();
+                    }
+                };
+                
+                el.addEventListener('seeked', onSeeked);
+                
+                // CRITICAL: Some browsers/protocols require audio to be playing to accept seeks
+                // Temporarily unpause if needed, then restore pause state after seek
+                if (wasPaused) {
+                    try {
+                        await el.play();
+                    } catch (e) {
+                        // Play may fail (autoplay policy, etc.) - that's ok, seek might still work
+                    }
+                    // Give the audio a moment to start playing
+                    await new Promise(r => setTimeout(r, 50));
+                }
+                
+                el.currentTime = targetTime;
+            };
+            
+            attemptSeek();
+        });
     };
     
     /**
@@ -109,9 +192,7 @@ export function useAudioPlayer() {
      */
     const duration = computed(() => {
         const dur = audioEl.value?.duration;
-        const result = Number.isFinite(dur) ? dur! : 0;
-        console.log('[useAudioPlayer] duration computed:', result, 'audioEl exists?', !!audioEl.value, 'raw duration:', dur);
-        return result;
+        return Number.isFinite(dur) ? dur! : 0;
     });
     
     /**

@@ -50,7 +50,6 @@ const vp = useTimelineViewport({ fps: props.fps, durationSec: Math.min(30, Math.
 watch(() => props.fps, (f) => { vp.viewport.value = { ...vp.viewport.value, fps: Math.max(1, f || 60) }; });
 watch(() => props.durationSec, (d) => { if (typeof d === 'number' && d > 0) { vp.setTotal(d); if (vp.viewport.value.durationSec > d) vp.setDuration(Math.max(0.1, Math.min(30, d))); vp.setStart(Math.min(vp.viewport.value.startSec, Math.max(0, d - vp.viewport.value.durationSec))); } });
 watch(() => props.currentFrame, (f) => { 
-    console.log('[TimelineRoot] currentFrame prop changed to:', f);
     vp.setPlayhead(f); 
 });
 

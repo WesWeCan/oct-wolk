@@ -50,18 +50,15 @@ export function useTimelinePlayback(
         
         // Advance frame
         frame.value += Math.max(1, Math.round(dt * fps.value));
-        console.log('[useTimelinePlayback] Frame updated to:', frame.value, 'dt:', dt, 'fps:', fps.value, 'maxFrame:', maxFrame.value);
         
         // Check if we've reached the end
         if (frame.value >= maxFrame.value) {
-            console.log('[useTimelinePlayback] Reached end! Pausing at end. frame:', frame.value, 'maxFrame:', maxFrame.value);
             frame.value = maxFrame.value;
             pause();
             return;
         }
         
         // Invoke tick callback
-        console.log('[useTimelinePlayback] About to invoke callback, tickCallback is:', tickCallback ? 'defined' : 'null');
         tickCallback?.(frame.value, dt);
         
         // Continue loop
@@ -74,7 +71,6 @@ export function useTimelinePlayback(
     const play = () => {
         if (playing.value) return;
         
-        console.log('[useTimelinePlayback] Starting playback from frame:', frame.value);
         playing.value = true;
         lastTime = 0;
         rafId = requestAnimationFrame(tick);
@@ -105,14 +101,12 @@ export function useTimelinePlayback(
      */
     const scrubToFrame = (targetFrame: number) => {
         frame.value = Math.max(0, Math.min(maxFrame.value, Math.floor(targetFrame)));
-        console.log('[useTimelinePlayback] Scrubbed to frame:', frame.value, 'from target:', targetFrame);
     };
     
     /**
      * Sets callback for each frame tick.
      */
     const onTick = (callback: (frame: number, dt: number) => void) => {
-        console.log('[useTimelinePlayback] onTick called, registering callback');
         tickCallback = callback;
     };
     

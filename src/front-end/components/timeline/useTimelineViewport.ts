@@ -59,7 +59,6 @@ export function useTimelineViewport(initial: Partial<TimelineViewport> = {}) {
     };
     const setPlayhead = (frame: number) => { 
         const newFrame = Math.max(0, Math.floor(frame));
-        console.log('[useTimelineViewport] setPlayhead called with:', frame, 'setting to:', newFrame);
         playhead.value = { frame: newFrame }; 
         emit('playhead', playhead.value); 
     };

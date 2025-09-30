@@ -1,5 +1,6 @@
 import { app, BrowserWindow, systemPreferences, protocol, net } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import started from 'electron-squirrel-startup';
 import { getInternalStoragePath, initStorage } from './back-end/internal-processes/internal-storage';
 import { registerInternalProcesses } from './back-end/internal-processes/internal-processes';
@@ -63,14 +64,97 @@ protocol.registerSchemesAsPrivileged([
 
 const setProtocols = async () => {
 
+  /**
+   * Custom protocol handler for wolk:// URLs.
+   * 
+   * CRITICAL: This handler supports HTTP Range requests, which are essential for:
+   * - Audio/video seeking: When you scrub to a position in the timeline, the HTMLAudioElement
+   *   or HTMLVideoElement sends a Range request (e.g., "Range: bytes=1000000-2000000") to
+   *   fetch only the data needed for that position, rather than re-downloading the entire file.
+   * - Memory efficiency: Large media files don't need to be fully loaded into memory.
+   * - Fast seeking: The browser can jump to any position instantly without buffering the whole file.
+   * 
+   * Without Range support, setting currentTime on an audio/video element would be ignored,
+   * causing playback to always start from position 0.
+   * 
+   * How Range requests work:
+   * 1. Browser requests: "Range: bytes=5000000-6000000"
+   * 2. Server responds with: "206 Partial Content" + the requested byte range
+   * 3. Browser can now play from that position
+   * 
+   * This is standard HTTP behavior that browsers expect when working with media files.
+   */
   protocol.handle('wolk', async (request) => {
     const fileName = decodeURIComponent(request.url.slice('wolk://'.length));
-      // Map wolk://songs/... to the internal docStorage songs folder
-      const songsRoot = path.join(getInternalStoragePath(), 'docStorage', 'songs');
-      const fullPath = path.join(songsRoot, fileName);
-    return net.fetch('file://' + encodeURI(fullPath));
+    // Map wolk://songId/file.mp3 to the internal docStorage songs folder
+    const songsRoot = path.join(getInternalStoragePath(), 'docStorage', 'songs');
+    const fullPath = path.join(songsRoot, fileName);
+    
+    try {
+      // Get file stats to know the total size
+      const stats = await fs.stat(fullPath);
+      const fileSize = stats.size;
+      
+      // Check for Range header (sent by audio/video elements when seeking)
+      const rangeHeader = request.headers.get('range');
+      
+      if (rangeHeader) {
+        // Parse range header format: "bytes=start-end" or "bytes=start-" (to end of file)
+        const parts = rangeHeader.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = (end - start) + 1;
+        
+        // Read only the requested byte range from disk
+        const fileHandle = await fs.open(fullPath, 'r');
+        const buffer = Buffer.alloc(chunkSize);
+        await fileHandle.read(buffer, 0, chunkSize, start);
+        await fileHandle.close();
+        
+        // Return 206 Partial Content response with proper headers
+        // This tells the browser "here's the chunk you asked for"
+        return new Response(buffer, {
+          status: 206, // 206 = Partial Content (standard for Range responses)
+          headers: {
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`, // "I'm sending bytes X-Y of total Z"
+            'Accept-Ranges': 'bytes',                              // "I support range requests"
+            'Content-Length': chunkSize.toString(),                // Size of this chunk
+            'Content-Type': getContentType(fullPath),              // MIME type
+          }
+        });
+      } else {
+        // No range request - return full file (initial load or small files)
+        return net.fetch('file://' + encodeURI(fullPath));
+      }
+    } catch (error) {
+      console.error('[wolk protocol] Error:', error);
+      return new Response('File not found', { status: 404 });
+    }
   })
 
+}
+
+/**
+ * Maps file extensions to their correct MIME types.
+ * Important for browsers to handle files correctly.
+ */
+function getContentType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  const types: Record<string, string> = {
+    '.mp3': 'audio/mpeg',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.ogg': 'audio/ogg',
+    '.wav': 'audio/wav',
+    '.m4a': 'audio/mp4',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.json': 'application/json',
+  };
+  return types[ext] || 'application/octet-stream';
 }
 
 

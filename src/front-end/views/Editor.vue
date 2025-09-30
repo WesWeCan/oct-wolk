@@ -60,9 +60,7 @@ const renderWorker = useRenderWorker(renderCanvas, targetWidth, targetHeight);
 const maxFrame = computed(() => {
     // Use audio element duration if available, otherwise use stored buffer duration
     const dur = audioPlayer.duration.value > 0 ? audioPlayer.duration.value : audioDurationSec.value;
-    const result = Math.max(0, Math.floor(dur * fps.value));
-    console.log('[Editor] maxFrame computed:', result, 'from duration:', dur, 'audioDurationSec:', audioDurationSec.value, 'audioPlayer.duration:', audioPlayer.duration.value, 'fps:', fps.value);
-    return result;
+    return Math.max(0, Math.floor(dur * fps.value));
 });
 const playback = useTimelinePlayback(fps, maxFrame);
 
@@ -221,9 +219,7 @@ const SYNC_DRIFT_FRAMES = 2;  // only resync if off by > 2 frames
 /**
  * Playback tick callback - sends frame data to worker.
  */
-console.log('[Editor] Registering playback.onTick callback, playback is:', playback, 'onTick exists?', typeof playback.onTick);
 playback.onTick((frame, dt) => {
-    console.log('[Editor] playback tick - frame:', frame, 'playback.frame.value:', playback.frame.value);
     // Hard-sync timeline frame to audio element time to avoid drift
     if (audioPlayer.isPlaying.value && audioPlayer.audioEl.value) {
         const now = performance.now();
@@ -275,27 +271,19 @@ renderWorker.onRenderComplete(() => {
 });
 
 const play = async () => {
-    console.log('[Editor] play() called. audioReady:', audioPlayer.audioReady.value, 'duration:', audioPlayer.duration.value, 'maxFrame:', maxFrame.value, 'worker.isReady:', renderWorker.isReady.value);
+    if (!renderWorker.isReady.value) return;
+    if (maxFrame.value <= 0) return;
     
-    if (!renderWorker.isReady.value) {
-        console.log('[Editor] Worker not ready, aborting play');
-        return;
-    }
-    
-    if (maxFrame.value <= 0) {
-        console.log('[Editor] maxFrame is 0, aborting play');
-        return;
+    // Sync audio
+    if (audioPlayer.audioReady.value) {
+        const timeSec = playback.frame.value / Math.max(1, fps.value);
+        await audioPlayer.seekTo(timeSec);
+        await audioPlayer.play();
     }
     
     // Record play start for sync suppression window
     lastPlayStartAtFrame = playback.frame.value;
     lastPlayStartTs = performance.now();
-    // Sync audio
-    if (audioPlayer.audioReady.value) {
-        const timeSec = playback.frame.value / Math.max(1, fps.value);
-        audioPlayer.seekTo(timeSec);
-        await audioPlayer.play();
-    }
     
     playback.play();
 };
@@ -331,7 +319,7 @@ const stop = () => {
 // ===== TIMELINE HANDLERS =====
 
 const onScrub = async (payload: { timeSec: number; frame: number }) => {
-    audioPlayer.seekTo(payload.timeSec);
+    await audioPlayer.seekTo(payload.timeSec);
     playback.scrubToFrame(payload.frame);
     
     // Update preview immediately
@@ -454,7 +442,7 @@ const initForSong = async (id: string) => {
             
             // Store buffer duration as fallback (for custom protocols where audio element might not get metadata)
             audioDurationSec.value = buffer.duration;
-            console.log('[Editor] Stored audio buffer duration:', buffer.duration);
+            // Stored audio buffer duration
             
             // Run analysis
             await audioAnalysis.analyzeBuffer(buffer);
@@ -466,7 +454,7 @@ const initForSong = async (id: string) => {
             
             // Store buffer duration as fallback
             audioDurationSec.value = buffer.duration;
-            console.log('[Editor] Stored audio buffer duration:', buffer.duration);
+            // Stored audio buffer duration
             
             await audioAnalysis.analyzeBuffer(buffer);
         }
@@ -515,10 +503,10 @@ const reanalyze = async () => {
 };
 
 const exportWithOptions = async () => {
-    await videoExport.startExport(() => {
-        audioPlayer.seekTo(0);
+    await videoExport.startExport(async () => {
+        await audioPlayer.seekTo(0);
         playback.scrubToFrame(0);
-        play();
+        await play();
     });
 };
 
