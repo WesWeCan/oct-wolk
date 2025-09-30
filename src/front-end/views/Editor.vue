@@ -1,1009 +1,636 @@
 <script setup lang="ts">
-import { onMounted, ref, shallowRef, computed, nextTick, watch, onUnmounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { onMounted, ref, computed, nextTick, watch, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
+import axios from 'axios';
+
+// Services
 import { TimelineService } from '@/front-end/services/TimelineService';
 import { SongService } from '@/front-end/services/SongService';
-import type { TimelineDocument, SceneRef, SceneDocumentBase, ActionItem, TransitionEasing, PropertyTrack } from '@/types/timeline_types';
+
+// Types
+import type { TimelineDocument } from '@/types/timeline_types';
+
+// Components
 import SceneList from '@/front-end/components/editor/SceneList.vue';
 import Inspector from '@/front-end/components/editor/Inspector.vue';
 import TimelineRoot from '@/front-end/components/timeline/TimelineRoot.vue';
-import axios from 'axios';
-import Meyda from 'meyda';
-import { AnalysisService } from '@/front-end/services/AnalysisService';
-import type { AnalysisCache } from '@/types/analysis_types';
-const handleReset = async () => {
-    try {
-        const res = await (window as any).electronAPI.timeline.reset(songId.value as string);
-        if (res?.ok && res?.doc) {
-            timeline.value = res.doc as any;
-            selectedSceneId.value = null;
-            sceneDocs.value = {} as any;
-            await configureWorkerScene();
-        }
-    } catch {}
-};
 
-// Import dialog state and actions
-const showImportDialog = ref(false);
-const importStrategy = ref<'copy' | 'override'>('copy');
-const importFile = ref<File | null>(null);
-const isImporting = ref(false);
-const importError = ref<string | null>(null);
+// Composables
+import { useAudioPlayer } from '@/front-end/composables/editor/useAudioPlayer';
+import { useAudioAnalysis } from '@/front-end/composables/editor/useAudioAnalysis';
+import { useRenderWorker } from '@/front-end/composables/editor/useRenderWorker';
+import { useTimelinePlayback } from '@/front-end/composables/editor/useTimelinePlayback';
+import { useSceneManagement } from '@/front-end/composables/editor/useSceneManagement';
+import { useFrameEvaluation } from '@/front-end/composables/editor/useFrameEvaluation';
+import { useVideoExport } from '@/front-end/composables/editor/useVideoExport';
+import { useWolkImport } from '@/front-end/composables/editor/useWolkImport';
+
+// Utils
+import { hashWords } from '@/front-end/utils/hash/hashWords';
+import { stableStringify } from '@/front-end/utils/hash/stableStringify';
+
+// ===== ROUTE & CORE STATE =====
 
 const route = useRoute();
-const router = useRouter();
-const handleOpenImportDialog = () => {
-    showImportDialog.value = true;
-    importStrategy.value = 'copy';
-    importFile.value = null;
-    importError.value = null;
-};
-const handleCancelImport = () => {
-    showImportDialog.value = false;
-    importFile.value = null;
-    importError.value = null;
-};
-const handlePickImportFile = (e: Event) => {
-    const files = (e.target as HTMLInputElement).files;
-    importFile.value = files && files[0] ? files[0] : null;
-};
-const handleDoImport = async () => {
-    if (!importFile.value) { importError.value = 'Choose a .wolk file'; return; }
-    try {
-        isImporting.value = true; importError.value = null;
-        const arrayBuffer = await importFile.value.arrayBuffer();
-        const res = await (window as any).electronAPI.export.importWolkBytes(arrayBuffer, importStrategy.value);
-        if (res?.songId) {
-            showImportDialog.value = false;
-            await router.push({ name: 'Editor', params: { songId: res.songId } });
-        } else {
-            importError.value = String(res?.error || 'Import failed. Please check the file.');
-        }
-    } catch (e: any) {
-        importError.value = String(e?.message || 'Import error');
-    } finally {
-        isImporting.value = false;
-    }
-};
-const props = defineProps<{ songId?: string }>();
-const songId = computed(() => String(props.songId || (route.params.songId as string) || ''));
+const songId = computed(() => String(route.params.songId || ''));
 
 const timeline = ref<TimelineDocument | null>(null);
 const song = ref<import('@/types/song_types').Song | null>(null);
-const playing = ref(false);
-const frame = ref(0);
 const fps = ref(60);
+const audioDurationSec = ref(0); // Store audio buffer duration as fallback
+
+// ===== CANVAS REFS =====
 
 const renderCanvas = ref<HTMLCanvasElement | null>(null);
 const previewCanvas = ref<HTMLCanvasElement | null>(null);
 const previewOverlay = ref<HTMLCanvasElement | null>(null);
-const workerRef = shallowRef<Worker | null>(null);
-let lastTime = 0;
-
-// Export state
-let mediaRecorder: MediaRecorder | null = null;
-let recordedChunks: BlobPart[] = [];
-const isRecording = ref(false);
-const ffmpegAvailable = ref<boolean | null>(null);
-
-const checkFfmpeg = async () => {
-    try {
-        const ok = await (window as any).electronAPI.export.ffmpegAvailable();
-        ffmpegAvailable.value = !!ok;
-    } catch {
-        ffmpegAvailable.value = false;
-    }
-};
 
 const targetWidth = computed(() => timeline.value?.settings.renderWidth || 1920);
 const targetHeight = computed(() => timeline.value?.settings.renderHeight || 1080);
 const aspectRatio = computed(() => `${targetWidth.value} / ${targetHeight.value}`);
 
-// Scene selection
-const selectedSceneId = ref<string | null>(null);
-const selectedScene = computed(() => (timeline.value?.scenes || []).find(s => s.id === selectedSceneId.value) || null);
-const isSingleWordScene = computed(() => ((selectedScene.value?.type || '') === 'singleWord'));
-// Keyframe selection state (global opacity track)
-const selectedKfIndex = ref<number | null>(null);
+// ===== COMPOSABLES =====
 
-// Audio state
-let audioEl: HTMLAudioElement | null = null;
-let audioCtx: AudioContext | null = null;
-let sourceNode: MediaElementAudioSourceNode | null = null;
-let meydaAnalyzer: any | null = null;
-const waveform = ref<number[] | null>(null);
-const beatEnvelope = ref<number>(0);
-const beatTimesSec = ref<number[] | null>(null);
-const audioReady = ref(false);
-const analysisCache = ref<AnalysisCache | null>(null);
-const overlayOpts = ref<{ showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }>({ showEnergy: true, showOnsets: true, showBeats: false });
-// Precomputed beat envelope samples (~60Hz) for deterministic scrubbing
-const beatEnv = ref<number[] | null>(null);
-// Additional precomputed per-frame features
-const bandsLowPerFrame = ref<number[] | null>(null);
-const bandsMidPerFrame = ref<number[] | null>(null);
-const bandsHighPerFrame = ref<number[] | null>(null);
-const beatStrengthPerFrame = ref<number[] | null>(null);
-// Per-scene documents cache (lazy-loaded)
-const sceneDocs = ref<Record<string, SceneDocumentBase>>({});
-const sceneParamsView = computed<Record<string, any>>(() => {
-    const id = selectedSceneId.value || '';
-    return (id && sceneDocs.value[id]?.params) ? (sceneDocs.value[id].params as any) : {};
-});
-// Word keyframe marker frames for the selected scene
-const selectedSceneWordKeyframes = computed<number[]>(() => {
-    const id = selectedSceneId.value || '';
-    if (!id) return [];
-    const doc = sceneDocs.value[id];
-    const tracks = Array.isArray(doc?.tracks) ? doc!.tracks : [];
-    const track = tracks.find(t => t.propertyPath === 'words.allowed') as PropertyTrack<string[]> | undefined;
-    if (!track || !Array.isArray(track.keyframes)) return [];
-    return track.keyframes.map(k => Math.max(0, (k.frame as any) | 0)).sort((a, b) => a - b);
-});
+// Audio
+const audioPlayer = useAudioPlayer();
+const audioAnalysis = useAudioAnalysis(fps);
 
-// Global word pool keyframe markers (timeline-level)
-const allScenesWordKeyframes = computed<number[]>(() => {
-    const track = timeline.value?.wordsPoolTrack;
-    if (!track || !Array.isArray(track.keyframes)) return [];
-    return track.keyframes.map(k => Math.max(0, (k.frame as any) | 0)).sort((a, b) => a - b);
+// Worker & Playback
+const renderWorker = useRenderWorker(renderCanvas, targetWidth, targetHeight);
+const maxFrame = computed(() => {
+    // Use audio element duration if available, otherwise use stored buffer duration
+    const dur = audioPlayer.duration.value > 0 ? audioPlayer.duration.value : audioDurationSec.value;
+    const result = Math.max(0, Math.floor(dur * fps.value));
+    console.log('[Editor] maxFrame computed:', result, 'from duration:', dur, 'audioDurationSec:', audioDurationSec.value, 'audioPlayer.duration:', audioPlayer.duration.value, 'fps:', fps.value);
+    return result;
 });
+const playback = useTimelinePlayback(fps, maxFrame);
 
-// Debug instrumentation for keyframes/sceneDocs flow
-watch(allScenesWordKeyframes, (m) => {
-    console.debug('[Editor] allScenesWordKeyframes changed:', { count: m.length, sample: m.slice(0, 12) });
-}, { immediate: true });
-watch(selectedSceneWordKeyframes, (m) => {
-    console.debug('[Editor] selectedSceneWordKeyframes changed:', { count: m.length, sample: m.slice(0, 12), selectedSceneId: selectedSceneId.value });
-}, { immediate: true });
-watch(sceneDocs, (docs) => {
-    const ids = Object.keys(docs || {});
-    console.debug('[Editor] sceneDocs updated:', { count: ids.length, ids: ids.slice(0, 8) });
-}, { deep: true });
-// Derived onsets per frame (optionally using per-scene threshold)
-const derivedOnsetPerFrame = computed<boolean[] | undefined>(() => {
-    const cache = analysisCache.value;
-    const t = timeline.value;
-    if (!cache) return undefined;
-    const base = Array.isArray(cache.isOnsetPerFrame) ? cache.isOnsetPerFrame.slice() : new Array(cache.totalFrames).fill(false);
-    if (!t || !Array.isArray(t.scenes) || !t.scenes.length) return base;
-    const e = cache.energyPerFrame || [];
-    for (const s of t.scenes) {
-        if ((s as any).type !== 'singleWord') continue;
-        const params = sceneDocs.value[s.id]?.params || {};
-        const thr = Number((params as any).beatThreshold);
-        if (!Number.isFinite(thr)) continue;
-        const startF = Math.max(0, s.startFrame | 0);
-        const endF = Math.min(cache.totalFrames - 1, (s.startFrame + s.durationFrames - 1) | 0);
-        let lastAbove = (e[Math.max(0, startF - 1)] || 0) > thr;
-        for (let f = startF; f <= endF && f < e.length; f++) {
-            const above = (e[f] || 0) > thr;
-            const onset = above && !lastAbove;
-            base[f] = onset;
-            lastAbove = above;
-        }
-    }
-    return base;
+// Scenes
+const wordBank = computed(() => song.value?.wordBank || []);
+const scenes = useSceneManagement(timeline, songId);
+
+// Frame Evaluation
+const frameEval = useFrameEvaluation(
+    audioAnalysis.analysisCache,
+    timeline,
+    scenes.sceneDocs,
+    fps,
+    audioAnalysis.beatTimesSec,
+    wordBank
+);
+
+// Export/Import
+const videoExport = useVideoExport(
+    renderCanvas,
+    audioPlayer.audioEl,
+    timeline,
+    songId
+);
+const wolkImport = useWolkImport();
+
+// ===== UI STATE =====
+
+const overlayOpts = ref<{ showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }>({
+    showEnergy: true,
+    showOnsets: true,
+    showBeats: false
 });
 
-const derivedOnsetIndexPerFrame = computed<number[] | undefined>(() => {
-    const cache = analysisCache.value;
-    const on = derivedOnsetPerFrame.value || cache?.isOnsetPerFrame;
-    if (!on || !on.length) return undefined;
-    const out: number[] = new Array(on.length);
-    let c = 0;
-    for (let i = 0; i < on.length; i++) {
-        if (on[i]) c++;
-        out[i] = c;
-    }
-    return out;
-});
+// ===== WORKER CONFIGURATION =====
 
-// Beat-based cumulative index per frame (monotonic, increments on each beat time)
-const derivedBeatIndexPerFrame = computed<number[] | undefined>(() => {
-    const beats = beatTimesSec.value;
-    const cache = analysisCache.value;
-    if (!Array.isArray(beats) || !cache) return undefined;
-    const totalFrames = Math.max(1, cache.totalFrames);
-    const fpsVal = Math.max(1, fps.value);
-    const out: number[] = new Array(totalFrames);
-    const sorted = beats.slice().sort((a, b) => a - b);
-    let count = 0;
-    let bi = 0;
-    for (let f = 0; f < totalFrames; f++) {
-        const t = f / fpsVal;
-        while (bi < sorted.length && sorted[bi] <= t) { count++; bi++; }
-        out[f] = count;
-    }
-    return out;
-});
-let lastConfiguredPair = '';
 let lastConfiguredKey = '';
 
-const hashWords = (arr: string[]) => {
-    let h = 2166136261 >>> 0;
-    for (let i = 0; i < arr.length; i++) {
-        const s = arr[i];
-        for (let j = 0; j < s.length; j++) { h ^= s.charCodeAt(j); h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24); }
-    }
-    return String(h >>> 0);
-};
-const stableStringify = (obj: any, excludeKeys?: Set<string>) => {
-    const seen = new WeakSet();
-    const toJSON = (value: any): any => {
-        if (value && typeof value === 'object') {
-            if (seen.has(value)) return undefined;
-            seen.add(value);
-            if (Array.isArray(value)) return value.map(v => toJSON(v));
-            const keys = Object.keys(value).filter(k => !(excludeKeys && excludeKeys.has(k))).sort();
-            const out: any = {};
-            for (const k of keys) out[k] = toJSON(value[k]);
-            return out;
-        }
-        if (typeof value === 'number' && !Number.isFinite(value)) return String(value);
-        return value;
-    };
-    try { return JSON.stringify(toJSON(obj)); } catch { return ''; }
-};
-const computeConfigKeyForFrame = (f: number) => {
-    const mix = computeActiveScenesForFrame(f);
+/**
+ * Computes a configuration key to detect when worker needs reconfiguration.
+ */
+const computeConfigKeyForFrame = (f: number): string => {
+    const mix = frameEval.getActiveScenesAtFrame(f);
     const pairKey = (mix.a?.id || 'none') + '|' + (mix.b?.id || '');
-    const pool = evalGlobalWordPoolAtFrame(f);
+    
+    const pool = frameEval.getWordPoolAtFrame(f);
     const wordsKey = 'pool:' + hashWords(pool);
-    // Include params hash so toggling inspector controls reconfigures worker
-    const aParams = mix.a && mix.a.id !== 'none' ? (sceneDocs.value[mix.a.id]?.params || {}) : {};
-    const bParams = mix.b && (mix.b as any).id !== 'none' ? (sceneDocs.value[(mix.b as any).id!]?.params || {}) : {};
+    
+    // Include params hash so inspector changes trigger reconfiguration
+    const aParams = mix.a && mix.a.id !== 'none' ? (scenes.sceneDocs.value[mix.a.id]?.params || {}) : {};
+    const bParams = mix.b && mix.b.id !== 'none' ? (scenes.sceneDocs.value[mix.b.id]?.params || {}) : {};
+    
     const exclude = new Set<string>(['words']);
     const aKey = stableStringify(aParams, exclude);
     const bKey = stableStringify(bParams, exclude);
     const paramsKey = `a:${aKey}|b:${bKey}`;
+    
     return pairKey + '|' + wordsKey + '|' + paramsKey;
 };
-// Move a marker at index to a new frame and persist wordsPoolTrack
-const moveGlobalPoolMarker = (index: number, newFrame: number, originalFrame?: number) => {
+
+/**
+ * Configures the worker with current scene mix and word pool.
+ */
+const configureWorkerScene = async () => {
     if (!timeline.value) return;
-    const track = timeline.value.wordsPoolTrack || { propertyPath: 'timeline.words.pool', keyframes: [] } as any;
-    const frames = (track.keyframes || []).slice();
-    // Identify the logical marker by its original frame if provided to avoid reordering issues
-    let targetIdx = index;
-    if (typeof originalFrame === 'number') {
-        const cand = frames.findIndex((k: any) => (k.frame | 0) === (originalFrame | 0));
-        if (cand >= 0) targetIdx = cand;
+    
+    const seed = String(timeline.value.settings.seed || 'seed');
+    
+    // Build font family chain
+    const primary = String(timeline.value.settings.fontFamily || 'system-ui');
+    const fallbacks = Array.isArray(timeline.value.settings.fontFallbacks)
+        ? timeline.value.settings.fontFallbacks as string[]
+        : [];
+    const names = [primary, ...fallbacks].filter(Boolean);
+    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? `"${s.replace(/"/g, '"')}"` : s;
+    const fontFamilyChain = names.map(quote).join(', ');
+    
+    const frame = playback.frame.value;
+    const active = frameEval.getActiveScenesAtFrame(frame);
+    
+    // Ensure scene docs are loaded
+    if (active.a && active.a.id !== 'none') await scenes.ensureSceneDoc(active.a.id);
+    if (active.b && active.b.id !== 'none') await scenes.ensureSceneDoc(active.b.id);
+    
+    const pool = frameEval.getWordPoolAtFrame(frame);
+    const wordsA = (active.a && active.a.id !== 'none') ? pool : [];
+    const wordsB = (active.b && active.b.id !== 'none') ? pool : [];
+    
+    const aParamsBase = active.a && active.a.id !== 'none' ? (scenes.sceneDocs.value[active.a.id]?.params || {}) : null;
+    const bParamsBase = active.b && active.b.id !== 'none' ? (scenes.sceneDocs.value[active.b.id]?.params || {}) : null;
+    
+    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain } : null;
+    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain } : null;
+    
+    const configKey = computeConfigKeyForFrame(frame);
+    
+    if (active.a.id === 'none' && !active.b) {
+        lastConfiguredKey = configKey;
+        return;
     }
-    if (targetIdx < 0 || targetIdx >= frames.length) return;
-    const updated = frames.slice();
-    const target = updated[targetIdx];
-    updated.splice(targetIdx, 1);
-    // Insert without colliding with other frames: allow duplicates in list but we'll merge by unique frames later if needed
-    const next = { frame: Math.max(0, newFrame | 0), value: Array.isArray(target.value) ? target.value : [] } as any;
-    updated.push(next);
-    updated.sort((a: any, b: any) => (a.frame | 0) - (b.frame | 0));
-    const nextDoc: TimelineDocument = { ...(timeline.value as any), wordsPoolTrack: { propertyPath: 'timeline.words.pool', keyframes: updated } } as any;
-    onTimelineUpdated(nextDoc);
-};
-// Evaluate global word pool at frame (defaults to full word bank when no keyframes)
-const evalGlobalWordPoolAtFrame = (f: number): string[] => {
-    const bank = Array.isArray(song.value?.wordBank) ? song.value!.wordBank!.map(w => String(w)) : [];
-    const track = timeline.value?.wordsPoolTrack;
-    if (!track || !Array.isArray(track.keyframes) || !track.keyframes.length) return bank;
-    const sorted = track.keyframes.slice().sort((a: any, b: any) => (a.frame|0) - (b.frame|0));
-    let last = sorted[0];
-    for (const k of sorted) { if ((k.frame|0) <= (f|0)) last = k; else break; }
-    const val = Array.isArray((last as any).value) ? (last as any).value.map((w: any) => String(w)) : bank;
-    return val;
+    
+    if (configKey === lastConfiguredKey) return;
+    
+    lastConfiguredKey = configKey;
+    
+    renderWorker.configureScene({
+        seed,
+        fontFamilyChain,
+        a: {
+            sceneType: active.a.type,
+            params: aParams || {}
+        },
+        b: bParams && active.b ? {
+            sceneType: active.b.type,
+            params: bParams
+        } : null
+    });
 };
 
-const applySceneParams = async (p: Record<string, any>) => {
-    const id = selectedSceneId.value || null;
-    if (!id) return;
-    const baseDoc: SceneDocumentBase = sceneDocs.value[id] || {
-        id: (selectedScene.value as any)?.id,
-        type: (selectedScene.value as any)?.type,
-        name: (selectedScene.value as any)?.name,
-        seed: String(timeline.value?.settings.seed || 'seed'),
-        params: {},
-        tracks: [] as any,
-    } as any;
-    baseDoc.params = { ...(baseDoc.params || {}), ...(p || {}) };
-    sceneDocs.value[id] = baseDoc as any;
-    try { await TimelineService.saveScene(songId.value as any, baseDoc as any); } catch {}
-    await configureWorkerScene();
-    // Push a new frame immediately so preview updates without needing to scrub/play
-    const be = evalBeatForFrame(frame.value);
-    const wi = evalWordIndexForFrame(frame.value);
-    const mix = computeActiveScenesForFrame(frame.value);
-    const wov = evalWordOverrideForFrame(frame.value);
-    try { workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat: be, wordIndex: wi, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride: wov } as any); } catch {}
+// ===== PREVIEW RENDERING =====
+
+/**
+ * Draws the preview canvas from the render canvas.
+ */
+const drawPreview = () => {
+    const src = renderCanvas.value;
+    const dst = previewCanvas.value;
+    if (!src || !dst) return;
+    
+    const ctx = dst.getContext('2d');
+    if (!ctx) return;
+    
+    const w = dst.width = dst.clientWidth;
+    const h = dst.height = dst.clientHeight;
+    const rw = targetWidth.value;
+    const rh = targetHeight.value;
+    
+    const scale = Math.min(w / Math.max(1, rw), h / Math.max(1, rh));
+    const dw = Math.floor(rw * scale);
+    const dh = Math.floor(rh * scale);
+    const dx = Math.floor((w - dw) / 2);
+    const dy = Math.floor((h - dh) / 2);
+    
+    ctx.clearRect(0, 0, w, h);
+    try {
+        ctx.drawImage(src, 0, 0, src.width, src.height, dx, dy, dw, dh);
+    } catch {}
 };
 
-const computeWaveform = (buffer: AudioBuffer, buckets = 1000): number[] => {
-    const channelData = buffer.getChannelData(0);
-    const samplesPerBucket = Math.max(1, Math.floor(channelData.length / buckets));
-    const peaks: number[] = [];
-    for (let i = 0; i < buckets; i++) {
-        const start = i * samplesPerBucket;
-        let min = 1, max = -1;
-        for (let j = 0; j < samplesPerBucket && start + j < channelData.length; j++) {
-            const v = channelData[start + j];
-            if (v < min) min = v;
-            if (v > max) max = v;
+// ===== PLAYBACK CONTROL =====
+let lastPlayStartAtFrame = 0;
+let lastPlayStartTs = 0;
+const SYNC_SUPPRESS_MS = 300; // allow audio currentTime to advance before enforcing sync
+const SYNC_DRIFT_FRAMES = 2;  // only resync if off by > 2 frames
+
+/**
+ * Playback tick callback - sends frame data to worker.
+ */
+console.log('[Editor] Registering playback.onTick callback, playback is:', playback, 'onTick exists?', typeof playback.onTick);
+playback.onTick((frame, dt) => {
+    console.log('[Editor] playback tick - frame:', frame, 'playback.frame.value:', playback.frame.value);
+    // Hard-sync timeline frame to audio element time to avoid drift
+    if (audioPlayer.isPlaying.value && audioPlayer.audioEl.value) {
+        const now = performance.now();
+        const t = audioPlayer.audioEl.value.currentTime;
+        const fFromAudio = Math.max(0, Math.round(t * Math.max(1, fps.value)));
+        const drift = Math.abs(fFromAudio - playback.frame.value);
+        // Suppress early snaps right after play to avoid snapping to 0 while audio time warms up
+        const withinSuppress = (now - lastPlayStartTs) < SYNC_SUPPRESS_MS;
+        // Only sync forward; never snap backward to earlier frames
+        const shouldSyncForward = fFromAudio > playback.frame.value && drift > SYNC_DRIFT_FRAMES;
+        if (!withinSuppress && shouldSyncForward) {
+            playback.scrubToFrame(fFromAudio);
         }
-        peaks.push(max, min);
     }
-    return peaks;
-};
-
-const disposeWorker = () => {
-    try {
-        workerRef.value?.postMessage({ type: 'dispose' });
-        workerRef.value?.terminate();
-    } catch {}
-    workerRef.value = null;
-};
-
-const startWorker = async () => {
-    if (!renderCanvas.value) return;
-    // Ensure the visible canvas has the correct bitmap size for preview copy
-    try {
-        renderCanvas.value.width = targetWidth.value;
-        renderCanvas.value.height = targetHeight.value;
-    } catch {}
-    const canvas = renderCanvas.value.transferControlToOffscreen();
-    const worker = new Worker(new URL('../workers/renderWorker.ts', import.meta.url), { type: 'module' });
-    worker.postMessage({ type: 'init', canvas, width: targetWidth.value, height: targetHeight.value }, [canvas]);
-    try {
-        worker.addEventListener('message', (e: MessageEvent) => {
-            const data: any = e.data;
-            if (data && data.type === 'rendered') {
-                drawPreview();
-            }
-        });
-    } catch {}
-    workerRef.value = worker;
-};
-
-const tick = (now: number) => {
-    if (!playing.value) return;
-    const dt = lastTime ? (now - lastTime) / 1000 : 0;
-    lastTime = now;
-    if (audioEl) {
-        const dur = Number.isFinite(audioEl.duration) ? (audioEl.duration || 0) : 0;
-        if (!audioEl.paused) {
-            frame.value = Math.max(0, Math.floor((audioEl.currentTime || 0) * fps.value));
-        } else {
-            frame.value += Math.max(1, Math.round(dt * fps.value));
-        }
-        if (dur > 0) {
-            const maxFrame = Math.max(0, Math.floor(dur * fps.value));
-            if (frame.value >= maxFrame) {
-                frame.value = maxFrame;
-                pause();
-                return;
-            }
-        }
-    } else {
-        frame.value += Math.max(1, Math.round(dt * fps.value));
-    }
-    const beat = evalBeatForFrame(frame.value);
-    const wordIndex = evalWordIndexForFrame(frame.value);
-    const lowB = (bandsLowPerFrame.value && analysisCache.value) ? (bandsLowPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
-    const midB = (bandsMidPerFrame.value && analysisCache.value) ? (bandsMidPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
-    const highB = (bandsHighPerFrame.value && analysisCache.value) ? (bandsHighPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
-    const cfgKey = computeConfigKeyForFrame(frame.value);
+    const beat = frameEval.getBeatAtFrame(frame);
+    const wordIndex = frameEval.getWordIndexAtFrame(frame);
+    const mix = frameEval.getActiveScenesAtFrame(frame);
+    const wordOverride = frameEval.getWordOverrideAtFrame(frame);
+    
+    // Get spectral bands
+    const cache = audioAnalysis.analysisCache.value;
+    const lowBand = audioAnalysis.bandsLowPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, frame))] || 0;
+    const midBand = audioAnalysis.bandsMidPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, frame))] || 0;
+    const highBand = audioAnalysis.bandsHighPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, frame))] || 0;
+    
+    // Check if reconfiguration needed
+    const cfgKey = computeConfigKeyForFrame(frame);
     if (cfgKey !== lastConfiguredKey) {
         configureWorkerScene();
     }
-    const wordOverride = evalWordOverrideForFrame(frame.value);
-    const mix = computeActiveScenesForFrame(frame.value);
-    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride, lowBand: lowB, midBand: midB, highBand: highB } as any);
+    
+    renderWorker.sendFrame({
+        frame,
+        dt,
+        beat,
+        wordIndex,
+        alphaA: mix.alphaA,
+        alphaB: mix.alphaB,
+        wordOverride,
+        lowBand,
+        midBand,
+        highBand
+    });
+});
+
+// Render completion callback
+renderWorker.onRenderComplete(() => {
     drawPreview();
-    requestAnimationFrame(tick);
-};
+});
 
-// global opacity track deprecated (M2 moves to scene property tracks). Keep stub for compatibility, return 1.
-const evalGlobalOpacityForFrame = (_f: number): number => 1;
-
-const play = () => {
-    if (!workerRef.value) return;
-    playing.value = true;
-    lastTime = 0;
-    if (audioEl && audioReady.value) {
-        // Ensure playback resumes from the current scrubbed frame
-        try {
-            const t = Math.max(0, (frame.value || 0) / Math.max(1, fps.value));
-            if (Number.isFinite(t)) {
-                audioEl.currentTime = t;
-            }
-        } catch {}
-        audioEl.play().catch(() => {});
-        try { audioCtx?.resume(); } catch {}
-        try { meydaAnalyzer?.start(); } catch {}
+const play = async () => {
+    console.log('[Editor] play() called. audioReady:', audioPlayer.audioReady.value, 'duration:', audioPlayer.duration.value, 'maxFrame:', maxFrame.value, 'worker.isReady:', renderWorker.isReady.value);
+    
+    if (!renderWorker.isReady.value) {
+        console.log('[Editor] Worker not ready, aborting play');
+        return;
     }
-    requestAnimationFrame(tick);
+    
+    if (maxFrame.value <= 0) {
+        console.log('[Editor] maxFrame is 0, aborting play');
+        return;
+    }
+    
+    // Record play start for sync suppression window
+    lastPlayStartAtFrame = playback.frame.value;
+    lastPlayStartTs = performance.now();
+    // Sync audio
+    if (audioPlayer.audioReady.value) {
+        const timeSec = playback.frame.value / Math.max(1, fps.value);
+        audioPlayer.seekTo(timeSec);
+        await audioPlayer.play();
+    }
+    
+    playback.play();
 };
 
 const pause = () => {
-    playing.value = false;
-    if (audioEl) audioEl.pause();
-    try { meydaAnalyzer?.stop(); } catch {}
+    playback.pause();
+    audioPlayer.pause();
 };
 
 const stop = () => {
-    // Stop playback and reset to start
-    pause();
-    frame.value = 0;
-    try { if (audioEl) audioEl.currentTime = 0; } catch {}
-    // Update preview immediately
-    const beat0 = evalBeatForFrame(0);
-    const wordIndex0 = evalWordIndexForFrame(0);
-    const mix0 = computeActiveScenesForFrame(0);
-    const wordOverride0 = evalWordOverrideForFrame(0);
-    workerRef.value?.postMessage({ type: 'frame', frame: 0, dt: 0, beat: beat0, wordIndex: wordIndex0, alphaA: mix0.alphaA, alphaB: mix0.alphaB, wordOverride: wordOverride0 });
+    playback.stop();
+    audioPlayer.stop();
+    
+    // Update preview for frame 0
+    const beat0 = frameEval.getBeatAtFrame(0);
+    const wordIndex0 = frameEval.getWordIndexAtFrame(0);
+    const mix0 = frameEval.getActiveScenesAtFrame(0);
+    const wordOverride0 = frameEval.getWordOverrideAtFrame(0);
+    
+    renderWorker.sendFrame({
+        frame: 0,
+        dt: 0,
+        beat: beat0,
+        wordIndex: wordIndex0,
+        alphaA: mix0.alphaA,
+        alphaB: mix0.alphaB,
+        wordOverride: wordOverride0
+    });
+    
     requestAnimationFrame(() => drawPreview());
 };
 
-const reanalyze = async () => {
-    try {
-        const bytes = await (async () => {
-            if (song.value?.audioSrc?.startsWith('wolk://')) {
-                const r = await fetch(song.value.audioSrc);
-                return await r.arrayBuffer();
-            }
-            const resp = await axios.get<ArrayBuffer>(song.value?.audioSrc || '', { responseType: 'arraybuffer' });
-            return resp.data;
-        })();
-        if (!bytes) return;
-        if (!audioCtx) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const buf = await audioCtx.decodeAudioData(bytes.slice(0));
-        analysisCache.value = await AnalysisService.analyzeBufferToCache(buf, fps.value);
-        // Force a deterministic frame refresh
-        const be = evalBeatForFrame(frame.value);
-        const wi = evalWordIndexForFrame(frame.value);
-        const mixR = computeActiveScenesForFrame(frame.value);
-        const wov = evalWordOverrideForFrame(frame.value);
-        workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat: be, wordIndex: wi, alphaA: mixR.alphaA, alphaB: mixR.alphaB, wordOverride: wov });
-        requestAnimationFrame(() => drawPreview());
-    } catch {}
+// ===== TIMELINE HANDLERS =====
+
+const onScrub = async (payload: { timeSec: number; frame: number }) => {
+    audioPlayer.seekTo(payload.timeSec);
+    playback.scrubToFrame(payload.frame);
+    
+    // Update preview immediately
+    const beat = frameEval.getBeatAtFrame(payload.frame);
+    const wordIndex = frameEval.getWordIndexAtFrame(payload.frame);
+    const mix = frameEval.getActiveScenesAtFrame(payload.frame);
+    const wordOverride = frameEval.getWordOverrideAtFrame(payload.frame);
+    
+    const cfgKey = computeConfigKeyForFrame(payload.frame);
+    if (cfgKey !== lastConfiguredKey) {
+        await configureWorkerScene();
+    }
+    
+    const cache = audioAnalysis.analysisCache.value;
+    const lowBand = audioAnalysis.bandsLowPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, payload.frame))] || 0;
+    const midBand = audioAnalysis.bandsMidPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, payload.frame))] || 0;
+    const highBand = audioAnalysis.bandsHighPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, payload.frame))] || 0;
+    
+    renderWorker.sendFrame({
+        frame: payload.frame,
+        dt: 0,
+        beat,
+        wordIndex,
+        alphaA: mix.alphaA,
+        alphaB: mix.alphaB,
+        wordOverride,
+        lowBand,
+        midBand,
+        highBand
+    });
+    
+    requestAnimationFrame(() => drawPreview());
 };
 
-const exportWithOptions = async () => {
-    if (!renderCanvas.value) return;
-    // Pre-export missing fonts check: warn and copy suggested fonts
-    try {
-        const primary = String(timeline.value?.settings.fontFamily || '');
-        const fallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value!.settings.fontFallbacks as string[]) : [];
-        const families = [primary, ...fallbacks].filter(Boolean).map(s => s.toLowerCase());
-        const fonts = await (window as any).electronAPI.fonts.list();
-        const matched = (fonts || []).filter((f: any) => families.includes(String(f.familyGuess || '').toLowerCase()));
-        const missingFamilies = families.filter(ff => !matched.find((m: any) => String(m.familyGuess||'').toLowerCase() === ff));
-        if (missingFamilies.length) {
-            const proceed = globalThis.confirm(`Some fonts may be missing: ${missingFamilies.join(', ')}. Continue anyway?`);
-            if (!proceed) return;
-        }
-        const files = (matched || []).map((f: any) => f.filePath);
-        if (files.length) {
-            await (window as any).electronAPI.export.copyFontsForExport(songId.value as string, files);
-        }
-    } catch {}
-    // Copy fonts on export (best-effort based on family names)
-    try {
-        const primary = String(timeline.value?.settings.fontFamily || '');
-        const fallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value!.settings.fontFallbacks as string[]) : [];
-        const families = [primary, ...fallbacks].filter(Boolean).map(s => s.toLowerCase());
-        if (families.length) {
-            try {
-                const fonts = await (window as any).electronAPI.fonts.list();
-                const files = (fonts || []).filter((f: any) => families.includes(String(f.familyGuess || '').toLowerCase())).map((f: any) => f.filePath);
-                if (files.length) {
-                    await (window as any).electronAPI.export.copyFontsForExport(songId.value as string, files);
-                }
-            } catch {}
-        }
-    } catch {}
+const onTimelineUpdated = async (t: TimelineDocument) => {
+    timeline.value = t;
+    await TimelineService.save(songId.value, t);
+    await scenes.preloadAllSceneDocs();
+    await configureWorkerScene();
+};
 
-    const fpsValue = timeline.value?.settings.fps || 60;
-    const stream = (renderCanvas.value as HTMLCanvasElement).captureStream(fpsValue);
-    // If audio element exists, add audio track
-    try {
-        if (audioEl && (timeline.value?.settings.includeAudio ?? true)) {
-            const audioStream = (audioEl as any).captureStream ? (audioEl as any).captureStream() : null;
-            if (audioStream) {
-                const audioTracks = audioStream.getAudioTracks();
-                for (const t of audioTracks) stream.addTrack(t);
-            }
-        }
-    } catch {}
-    recordedChunks = [];
-    const mime = 'video/webm;codecs=vp9,opus';
-    const bitrate = Math.max(1, Number(timeline.value?.settings.exportBitrateMbps || 8));
-    mediaRecorder = new MediaRecorder(stream as MediaStream, { mimeType: mime, videoBitsPerSecond: bitrate * 1_000_000 } as any);
-    mediaRecorder.ondataavailable = (e: BlobEvent) => {
-        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
-    };
-    mediaRecorder.onstop = async () => {
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        const buf = await blob.arrayBuffer();
-        const name = `export_${Date.now()}.webm`;
-        const res = await (window as any).electronAPI.export.saveWebM(songId.value as string, buf, name);
-        recordedChunks = [];
-        isRecording.value = false;
-        try {
-            const ok = await (window as any).electronAPI.export.ffmpegAvailable();
-            if (ok && res?.filePath && res?.rootDir) {
-                const mp4Out = res.rootDir + '/export.mp4';
-                await (window as any).electronAPI.export.encodeMp4FromWebM(res.filePath, mp4Out);
-            }
-        } catch {}
-    };
-    mediaRecorder.start();
-    isRecording.value = true;
-    // Record for full song duration if available
-    const durSec = Number.isFinite(audioEl?.duration || 0) ? (audioEl?.duration || 0) : 0;
-    if (durSec > 0) {
-        // Play from start
-        try { if (audioEl) { audioEl.currentTime = 0; audioEl.play(); } } catch {}
-        playing.value = true; lastTime = 0; requestAnimationFrame(tick);
-        setTimeout(() => { try { mediaRecorder?.stop(); pause(); } catch {} }, Math.ceil(durSec * 1000) + 250);
-    } else {
-        // Fallback: record 5 seconds
-        playing.value = true; lastTime = 0; requestAnimationFrame(tick);
-        setTimeout(() => { try { mediaRecorder?.stop(); pause(); } catch {} }, 5000);
+const onSceneUpdated = async (s: any) => {
+    if (!timeline.value) return;
+    
+    const idx = timeline.value.scenes.findIndex(x => x.id === s.id);
+    if (idx >= 0) {
+        timeline.value.scenes[idx] = s;
+        await TimelineService.save(songId.value, timeline.value);
     }
 };
 
-const exportWolk = async () => {
-    // Ask backend to zip the song folder and save to Downloads as {title}.wolk
-    try {
-        const s = song.value;
-        if (!s) return;
-        const safeTitle = (s.title || 'project').replace(/[^a-zA-Z0-9-_\.]+/g, '_');
-        await (window as any).electronAPI.export.packageWolk(s.id, `${safeTitle}.wolk`);
-    } catch {}
+// ===== SCENE HANDLERS =====
+
+const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d') => {
+    await scenes.addScene(type, audioPlayer.audioEl.value, fps.value);
+    await TimelineService.save(songId.value, timeline.value!);
+    await configureWorkerScene();
 };
 
-const stopExport = () => {
-    try { mediaRecorder?.stop(); } catch {}
+const selectScene = async (id: string) => {
+    await scenes.selectScene(id);
+    await configureWorkerScene();
 };
 
+const applySceneParams = async (p: Record<string, any>) => {
+    await scenes.updateSceneParams(p);
+    await configureWorkerScene();
+    
+    // Push immediate frame update
+    const f = playback.frame.value;
+    const beat = frameEval.getBeatAtFrame(f);
+    const wordIndex = frameEval.getWordIndexAtFrame(f);
+    const mix = frameEval.getActiveScenesAtFrame(f);
+    const wordOverride = frameEval.getWordOverrideAtFrame(f);
+    
+    renderWorker.sendFrame({
+        frame: f,
+        dt: 0,
+        beat,
+        wordIndex,
+        alphaA: mix.alphaA,
+        alphaB: mix.alphaB,
+        wordOverride
+    });
+};
+
+// ===== INITIALIZATION =====
+
+/**
+ * Initializes editor for a song.
+ */
 const initForSong = async (id: string) => {
     pause();
-    disposeWorker();
-    frame.value = 0;
+    renderWorker.dispose();
+    playback.scrubToFrame(0);
+    
+    // Load timeline
     timeline.value = await TimelineService.createOrLoad(id);
     fps.value = timeline.value.settings.fps;
-    // Preload all scene documents so keyframe markers can be aggregated
-    try { await preloadAllSceneDocs(); } catch {}
-    // Load song for audio and words
+    
+    // Preload scene documents
+    await scenes.preloadAllSceneDocs();
+    
+    // Load song
     song.value = await SongService.load(id);
-    audioReady.value = false;
-    waveform.value = null;
+    
+    // Load audio
     if (song.value?.audioSrc) {
-        try {
-            // Playback element
-            audioEl = new Audio(song.value.audioSrc);
-            audioEl.preload = 'auto';
-            audioEl.addEventListener('canplay', () => { audioReady.value = true; });
-            audioEl.addEventListener('loadedmetadata', () => {
-                // ensure timeline updates duration via prop binding
-            });
-            audioEl.addEventListener('ended', () => { pause(); });
-        } catch {}
-        try {
-            // Decode for waveform (handle custom wolk:// scheme via fetch)
-            let audioArrayBuffer: ArrayBuffer | null = null;
-            try {
-                if (song.value.audioSrc?.startsWith('wolk://')) {
-                    const r = await fetch(song.value.audioSrc);
-                    audioArrayBuffer = await r.arrayBuffer();
-                } else {
-                    const resp = await axios.get<ArrayBuffer>(song.value.audioSrc, { responseType: 'arraybuffer' });
-                    audioArrayBuffer = resp.data;
-                }
-            } catch {}
-            if (!audioArrayBuffer) throw new Error('Failed to load audio bytes');
-            audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-            if (!sourceNode && audioEl) {
-                try {
-                    sourceNode = audioCtx.createMediaElementSource(audioEl);
-                    // connect to destination so we can hear it
-                    sourceNode.connect(audioCtx.destination);
-                } catch {}
-            }
-            const buf = await audioCtx.decodeAudioData(audioArrayBuffer.slice(0));
-            waveform.value = computeWaveform(buf, 1200);
-            // Build per-frame analysis cache aligned to timeline fps
-            analysisCache.value = await AnalysisService.analyzeBufferToCache(buf, fps.value);
-            // Precompute spectral centroid and 3-band energies at fixed rate, then map to per-frame
-            try {
-                const N = 1024;
-                const featureRate = 60; // Hz
-                const totalSteps = Math.max(1, Math.ceil(buf.duration * featureRate));
-                const ch = buf.getChannelData(0);
-                const windowed = new Float32Array(N);
-                const centEnv: number[] = new Array(totalSteps);
-                const lowEnv: number[] = new Array(totalSteps);
-                const midEnv: number[] = new Array(totalSteps);
-                const highEnv: number[] = new Array(totalSteps);
-                const nyquist = buf.sampleRate / 2;
-                for (let i = 0; i < totalSteps; i++) {
-                    const t = i / featureRate;
-                    const center = Math.floor(t * buf.sampleRate);
-                    const half = Math.floor(N / 2);
-                    const start = Math.max(0, center - half);
-                    const end = Math.min(ch.length, start + N);
-                    for (let j = 0; j < N; j++) windowed[j] = 0;
-                    for (let j = start, k = 0; j < end && k < N; j++, k++) {
-                        const w = 0.5 * (1 - Math.cos((2 * Math.PI * k) / Math.max(1, N - 1)));
-                        windowed[k] = ch[j] * w;
-                    }
-                    const spec: number[] = (Meyda as any).extract('amplitudeSpectrum', windowed, { bufferSize: N, sampleRate: buf.sampleRate }) || [];
-                    const centroidHz: number = (Meyda as any).extract('spectralCentroid', windowed, { sampleRate: buf.sampleRate }) || 0;
-                    centEnv[i] = Math.min(1, Math.max(0, centroidHz / Math.max(1, nyquist)));
-                    // 3 bands integration
-                    const bins = spec.length;
-                    const hzPerBin = nyquist / Math.max(1, bins);
-                    let l = 0, m = 0, h = 0;
-                    for (let b = 0; b < bins; b++) {
-                        const f = (b + 0.5) * hzPerBin;
-                        const v = spec[b] || 0;
-                        if (f < 200) l += v; else if (f < 2000) m += v; else h += v;
-                    }
-                    // log-compress and normalize per-step
-                    const lz = Math.log1p(l), mz = Math.log1p(m), hzv = Math.log1p(h);
-                    const maxz = Math.max(1e-6, Math.max(lz, Math.max(mz, hzv)));
-                    lowEnv[i] = lz / maxz;
-                    midEnv[i] = mz / maxz;
-                    highEnv[i] = hzv / maxz;
-                }
-                // Map to per-frame arrays
-                const totalFrames = Math.max(1, Math.floor(buf.duration * Math.max(1, fps.value)));
-                const cpf: number[] = new Array(totalFrames);
-                const lpf: number[] = new Array(totalFrames);
-                const mpf: number[] = new Array(totalFrames);
-                const hpf: number[] = new Array(totalFrames);
-                for (let f = 0; f < totalFrames; f++) {
-                    const t = f / Math.max(1, fps.value);
-                    const idx = Math.min(centEnv.length - 1, Math.floor(t * featureRate));
-                    cpf[f] = centEnv[idx] || 0;
-                    lpf[f] = lowEnv[idx] || 0;
-                    mpf[f] = midEnv[idx] || 0;
-                    hpf[f] = highEnv[idx] || 0;
-                }
-                bandsLowPerFrame.value = lpf;
-                bandsMidPerFrame.value = mpf;
-                bandsHighPerFrame.value = hpf;
-            } catch {}
-            // Precompute beat strength per frame (pulse based on beats list, weighted by energy)
-            try {
-                const cache = analysisCache.value!;
-                const e = cache.energyPerFrame || [];
-                const totalFrames = cache.totalFrames;
-                const fpsVal = Math.max(1, fps.value);
-                const beats = Array.isArray(beatTimesSec.value) ? beatTimesSec.value.slice().sort((a,b)=>a-b) : [];
-                const out: number[] = new Array(totalFrames).fill(0);
-                let bi = 0;
-                for (let f = 0; f < totalFrames; f++) {
-                    const t = f / fpsVal;
-                    while (bi < beats.length && beats[bi] < t - (0.5 / fpsVal)) bi++;
-                    const isBeat = (bi < beats.length) && Math.abs(beats[bi] - t) <= (0.5 / fpsVal);
-                    out[f] = isBeat ? (e[f] || 1) : 0;
-                }
-                beatStrengthPerFrame.value = out;
-            } catch {}
-            // Compute simple envelope ahead of time for beat pulsing
-            const signal = buf.getChannelData(0);
-            const hop = Math.max(1, Math.floor(buf.sampleRate / 60));
-            const win = Math.max(1, Math.floor(buf.sampleRate * 0.05)); // 50ms RMS
-            const env: number[] = [];
-            for (let i = 0; i < signal.length; i += hop) {
-                const start = Math.max(0, i - Math.floor(win / 2));
-                const end = Math.min(signal.length, start + win);
-                let sum = 0;
-                for (let j = start; j < end; j++) sum += signal[j] * signal[j];
-                const rms = Math.sqrt(sum / (end - start + 1));
-                env.push(rms);
-            }
-            // Normalize envelope to 0..1
-            const max = env.reduce((a, b) => Math.max(a, b), 1e-6);
-            for (let i = 0; i < env.length; i++) env[i] = env[i] / max;
-            // save for deterministic scrubbing
-            beatEnv.value = env.slice();
-            // naive beat times by threshold + peak picking
-            const beats: number[] = [];
-            const threshold = 0.6;
-            for (let i = 1; i < env.length - 1; i++) {
-                if (env[i] > threshold && env[i] > env[i - 1] && env[i] >= env[i + 1]) {
-                    const timeSec = i * (hop / buf.sampleRate);
-                    beats.push(timeSec);
-                }
-
-            }
-            beatTimesSec.value = beats;
-
-            // Meyda analyzer for better onsets (spectralFlux + rms)
-            try {
-                if (sourceNode && audioCtx) {
-                    // Remove spectralFlux to avoid deprecation/TypeError in Meyda on some builds
-                    meydaAnalyzer = Meyda.createMeydaAnalyzer({
-                        audioContext: audioCtx,
-                        source: sourceNode,
-                        bufferSize: 1024,
-                        hopSize: 512,
-                        featureExtractors: ['rms'],
-                        callback: (features: any) => {
-                            const rms = features.rms || 0;
-                            beatEnvelope.value = Math.min(1, Math.max(0, rms));
-                            // Optional: simple peak detection on RMS for beatTimes
-                            if (!beatTimesSec.value) beatTimesSec.value = [];
-                            const t = audioEl?.currentTime || 0;
-                            const last = beatTimesSec.value[beatTimesSec.value.length - 1] || -999;
-                            // naive threshold on rms
-                            if (rms > 0.15 && t - last > 0.25) beatTimesSec.value.push(t);
-                        }
-                    });
-                }
-            } catch {}
-        } catch {}
+        // Handle custom wolk:// protocol
+        let audioSrc = song.value.audioSrc;
+        
+        if (audioSrc.startsWith('wolk://')) {
+            // For analysis, we need ArrayBuffer
+            const response = await fetch(audioSrc);
+            const arrayBuffer = await response.arrayBuffer();
+            
+            // Decode for analysis
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const buffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+            
+            // Store buffer duration as fallback (for custom protocols where audio element might not get metadata)
+            audioDurationSec.value = buffer.duration;
+            console.log('[Editor] Stored audio buffer duration:', buffer.duration);
+            
+            // Run analysis
+            await audioAnalysis.analyzeBuffer(buffer);
+        } else {
+            // Regular URL
+            const response = await axios.get<ArrayBuffer>(audioSrc, { responseType: 'arraybuffer' });
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const buffer = await audioCtx.decodeAudioData(response.data.slice(0));
+            
+            // Store buffer duration as fallback
+            audioDurationSec.value = buffer.duration;
+            console.log('[Editor] Stored audio buffer duration:', buffer.duration);
+            
+            await audioAnalysis.analyzeBuffer(buffer);
+        }
+        
+        // Load audio element
+        await audioPlayer.load(song.value.audioSrc);
     }
+    
     await nextTick();
-    await startWorker();
-    // Configure worker with scene + word bank
-    configureWorkerScene();
+    await renderWorker.start();
+    await configureWorkerScene();
 };
 
+// Watch song ID changes
 watch(songId, async (id) => {
     if (id) {
         await initForSong(id);
     }
 }, { immediate: true });
 
-onMounted(async () => {
-    document.title = 'Editor - Words On Live Kanvas - Open Culture Tech';
-    await checkFfmpeg();
-    // Listen for worker render-complete to draw preview exactly after frame is ready
+// ===== EXPORT/IMPORT HANDLERS =====
+
+const reanalyze = async () => {
+    if (!song.value?.audioSrc) return;
+    
     try {
-        if (workerRef.value) {
-            workerRef.value.addEventListener('message', (e: MessageEvent) => {
-                const data: any = e.data;
-                if (data && data.type === 'rendered') {
-                    drawPreview();
-                }
-            });
+        const arrayBuffer = song.value.audioSrc.startsWith('wolk://')
+            ? await (await fetch(song.value.audioSrc)).arrayBuffer()
+            : (await axios.get<ArrayBuffer>(song.value.audioSrc, { responseType: 'arraybuffer' })).data;
+        
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const buffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+        
+        await audioAnalysis.analyzeBuffer(buffer);
+        
+        // Refresh current frame
+        const f = playback.frame.value;
+        const beat = frameEval.getBeatAtFrame(f);
+        const wordIndex = frameEval.getWordIndexAtFrame(f);
+        const mix = frameEval.getActiveScenesAtFrame(f);
+        const wordOverride = frameEval.getWordOverrideAtFrame(f);
+        
+        renderWorker.sendFrame({ frame: f, dt: 0, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride });
+        requestAnimationFrame(() => drawPreview());
+    } catch {}
+};
+
+const exportWithOptions = async () => {
+    await videoExport.startExport(() => {
+        audioPlayer.seekTo(0);
+        playback.scrubToFrame(0);
+        play();
+    });
+};
+
+const exportWolk = async () => {
+    if (song.value) {
+        await videoExport.exportWolk(song.value);
+    }
+};
+
+const handleReset = async () => {
+    try {
+        const res = await (window as any).electronAPI.timeline.reset(songId.value);
+        if (res?.ok && res?.doc) {
+            timeline.value = res.doc;
+            scenes.selectedSceneId.value = null;
+            await configureWorkerScene();
         }
     } catch {}
+};
+
+const genId = () => crypto.randomUUID();
+
+// Move global pool marker
+const moveGlobalPoolMarker = (index: number, newFrame: number, originalFrame?: number) => {
+    if (!timeline.value) return;
+    
+    const track = timeline.value.wordsPoolTrack || { propertyPath: 'timeline.words.pool', keyframes: [] } as any;
+    const frames = (track.keyframes || []).slice();
+    
+    let targetIdx = index;
+    if (typeof originalFrame === 'number') {
+        const cand = frames.findIndex((k: any) => (k.frame | 0) === (originalFrame | 0));
+        if (cand >= 0) targetIdx = cand;
+    }
+    
+    if (targetIdx < 0 || targetIdx >= frames.length) return;
+    
+    const updated = frames.slice();
+    const target = updated[targetIdx];
+    updated.splice(targetIdx, 1);
+    
+    const next = { frame: Math.max(0, newFrame | 0), value: Array.isArray(target.value) ? target.value : [] };
+    updated.push(next);
+    updated.sort((a: any, b: any) => (a.frame | 0) - (b.frame | 0));
+    
+    const nextDoc: TimelineDocument = {
+        ...(timeline.value as any),
+        wordsPoolTrack: { propertyPath: 'timeline.words.pool', keyframes: updated }
+    };
+    
+    onTimelineUpdated(nextDoc);
+};
+
+// ===== LIFECYCLE =====
+
+onMounted(async () => {
+    document.title = 'Editor - Words On Live Kanvas - Open Culture Tech';
+    await videoExport.checkFfmpegAvailable();
 });
 
 onUnmounted(() => {
-    disposeWorker();
+    renderWorker.dispose();
+    audioPlayer.dispose();
 });
-
-const configureWorkerScene = async () => {
-    const seed = String(timeline.value?.settings.seed || 'seed');
-    // Build font-family chain from settings
-    const primary = String(timeline.value?.settings.fontFamily || 'system-ui');
-    const fallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value!.settings.fontFallbacks as string[]) : [];
-    const names = [primary, ...fallbacks].filter(Boolean);
-    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\"') + '"' : s;
-    const fontFamilyChain = names.map(quote).join(', ');
-    const active = computeActiveScenesForFrame(frame.value);
-    // Ensure docs are loaded
-    if (active.a && active.a.id !== 'none') await ensureSceneDoc(active.a.id, active.a);
-    if (active.b && active.b.id !== 'none') await ensureSceneDoc(active.b.id, active.b);
-    const pool = evalGlobalWordPoolAtFrame(frame.value);
-    const wordsA = (active.a && active.a.id !== 'none') ? pool : [];
-    const wordsB = (active.b && (active.b as any).id !== 'none') ? pool : [];
-    const aParamsBase = active.a && active.a.id !== 'none' ? (sceneDocs.value[active.a.id]?.params || {}) : null;
-    const bParamsBase = active.b && (active.b as any).id !== 'none' ? (sceneDocs.value[(active.b as any).id!]?.params || {}) : null;
-    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain } : null;
-    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain } : null;
-    const pairKey = (active.a?.id || 'none') + '|' + (active.b?.id || '');
-    const wordsKey = 'pool:' + hashWords(pool);
-    const exclude = new Set<string>(['words']);
-    const aKey = aParamsBase ? stableStringify(aParamsBase, exclude) : '';
-    const bKey = bParamsBase ? stableStringify(bParamsBase, exclude) : '';
-    const paramsKey = `a:${aKey}|b:${bKey}`;
-    const configKey = pairKey + '|' + wordsKey + '|' + paramsKey;
-    lastConfiguredPair = pairKey;
-    if (active.a.id === 'none' && !active.b) { lastConfiguredKey = configKey; return; }
-    if (configKey === lastConfiguredKey) return;
-    lastConfiguredKey = configKey;
-    const payload: any = { type: 'configureMix', seed, a: { sceneType: active.a.type, params: aParams || {} }, fontFamilyChain };
-    if (bParams && active.b) payload.b = { sceneType: active.b.type, params: bParams };
-    workerRef.value?.postMessage(JSON.parse(JSON.stringify(payload)));
-};
-
-const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d') => {
-    if (!timeline.value) return;
-    const id = (window.crypto && typeof window.crypto.randomUUID === 'function') ? window.crypto.randomUUID() : Math.random().toString(36).slice(2);
-    const last = timeline.value.scenes.at(-1);
-    const totalFrames = Math.max(1, Math.floor(((audioEl?.duration || 0) * Math.max(1, fps.value)) | 0));
-    const isFirst = timeline.value.scenes.length === 0;
-    const start = isFirst ? 0 : (last ? last.startFrame + last.durationFrames : 0);
-    const dur = isFirst && totalFrames > 0 ? totalFrames : 300;
-    const scene = { id, type: (type as any), name: `${type} ${timeline.value.scenes.length + 1}`, startFrame: start, durationFrames: dur } as any;
-    timeline.value.scenes.push(scene);
-    // create minimal per-scene document
-    const doc: SceneDocumentBase = { id, type, name: scene.name, seed: String(timeline.value.settings.seed || 'seed'), params: {}, tracks: [] } as any;
-    try { const saved = await TimelineService.saveScene(songId.value as string, doc); sceneDocs.value[id] = saved; } catch {}
-    selectedSceneId.value = id;
-    await TimelineService.save(songId.value as string, timeline.value);
-    await configureWorkerScene();
-};
-
-const selectScene = async (id: string) => {
-    selectedSceneId.value = id;
-    await ensureSceneDoc(id, (timeline.value?.scenes || []).find(s => s.id === id) || null);
-    await configureWorkerScene();
-};
-
-const onTimelineUpdated = async (t: TimelineDocument) => {
-    timeline.value = t;
-    await TimelineService.save(songId.value as string, t);
-    // Ensure scene docs are loaded for updated scenes list
-    try { await preloadAllSceneDocs(); } catch {}
-    await configureWorkerScene();
-};
-
-const onSceneUpdated = async (s: any) => {
-    if (!timeline.value) return;
-    const idx = timeline.value.scenes.findIndex(x => x.id === s.id);
-    if (idx >= 0) {
-        timeline.value.scenes[idx] = s;
-        await TimelineService.save(songId.value as string, timeline.value);
-    }
-};
-
-const onScrub = async (payload: { timeSec: number; frame: number }) => {
-    try { if (audioCtx?.state === 'suspended') audioCtx.resume(); } catch {}
-    if (audioEl && Number.isFinite(payload.timeSec)) {
-        try { audioEl.currentTime = Math.max(0, payload.timeSec); } catch {}
-    }
-    frame.value = Math.max(0, payload.frame | 0);
-    // Immediately update preview during scrubbing (paused or playing)
-    const beat = evalBeatForFrame(frame.value);
-    const wordIndex = evalWordIndexForFrame(frame.value);
-    const cfgKey = computeConfigKeyForFrame(frame.value);
-    if (cfgKey !== lastConfiguredKey) {
-        await configureWorkerScene();
-    }
-    const wordOverride = evalWordOverrideForFrame(frame.value);
-    const lowB0 = (bandsLowPerFrame.value && analysisCache.value) ? (bandsLowPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
-    const midB0 = (bandsMidPerFrame.value && analysisCache.value) ? (bandsMidPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
-    const highB0 = (bandsHighPerFrame.value && analysisCache.value) ? (bandsHighPerFrame.value[Math.min(analysisCache.value.totalFrames - 1, Math.max(0, frame.value))] || 0) : undefined;
-    const mix = computeActiveScenesForFrame(frame.value);
-    workerRef.value?.postMessage({ type: 'frame', frame: frame.value, dt: 0, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride, lowBand: lowB0, midBand: midB0, highBand: highB0 } as any);
-    // Defer preview draw to next frame so worker has time to render
-    requestAnimationFrame(() => drawPreview());
-};
-
-// Deterministic beat evaluation mapping frame -> precomputed env
-const evalBeatForFrame = (f: number): number => {
-    const cache = analysisCache.value;
-    if (!cache) return beatEnvelope.value || 0;
-    const idx = Math.min(cache.totalFrames - 1, Math.max(0, f | 0));
-    return Math.min(1, Math.max(0, cache.energyPerFrame[idx] || 0));
-};
-
-// Deterministic word index per frame based on precomputed beat crossings
-const evalWordIndexForFrame = (f: number): number => {
-    const cache = analysisCache.value;
-    if (!cache) return Math.floor(f / Math.max(1, Math.floor(fps.value / 2)));
-    const idx = Math.min(cache.totalFrames - 1, Math.max(0, f | 0));
-    const beatIdx = derivedBeatIndexPerFrame.value;
-    if (beatIdx && beatIdx.length > idx) return beatIdx[idx] || 0;
-    const derivedIdx = derivedOnsetIndexPerFrame.value;
-    if (derivedIdx && derivedIdx.length > idx) return derivedIdx[idx] || 0;
-    return cache.onsetIndexPerFrame[idx] || 0;
-};
-
-const drawPreview = () => {
-    const src = renderCanvas.value as HTMLCanvasElement | null;
-    const dst = previewCanvas.value as HTMLCanvasElement | null;
-    if (!src || !dst) return;
-    const ctx = dst.getContext('2d');
-    if (!ctx) return;
-    const w = dst.width = dst.clientWidth;
-    const h = dst.height = dst.clientHeight;
-    const rw = targetWidth.value;
-    const rh = targetHeight.value;
-    const scale = Math.min(w / Math.max(1, rw), h / Math.max(1, rh));
-    const dw = Math.floor(rw * scale);
-    const dh = Math.floor(rh * scale);
-    const dx = Math.floor((w - dw) / 2);
-    const dy = Math.floor((h - dh) / 2);
-    ctx.clearRect(0, 0, w, h);
-    try { ctx.drawImage(src, 0, 0, src.width, src.height, dx, dy, dw, dh); } catch {}
-};
-
-const genId = () => (globalThis.crypto && 'randomUUID' in globalThis.crypto) ? (globalThis.crypto as any).randomUUID() : Math.random().toString(36).slice(2);
-
-const evalWordOverrideForFrame = (f: number): string | undefined => {
-    const acts = (timeline.value?.actionTracks || []) as ActionItem[];
-    if (!acts || !acts.length) return undefined;
-    const hit = acts.find(a => a.frame === f && a.actionType === 'wordOverride');
-    return hit?.payload?.word ? String(hit.payload.word) : undefined;
-};
-
-const ease = (t: number, type: TransitionEasing | undefined): number => {
-    const x = Math.min(1, Math.max(0, t));
-    switch (type) {
-        case 'easeIn': return x * x;
-        case 'easeOut': return 1 - (1 - x) * (1 - x);
-        case 'easeInOut': return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
-        default: return x;
-    }
-};
-
-const computeActiveScenesForFrame = (f: number): { a: SceneRef; b?: SceneRef | null; alphaA: number; alphaB: number } => {
-    const scenes = (timeline.value?.scenes || []) as SceneRef[];
-    const dummy: any = { id: 'none', type: 'wordcloud', name: 'None', startFrame: 0, durationFrames: 1 };
-    if (!scenes.length) {
-        return { a: dummy, b: null, alphaA: 0, alphaB: 0 };
-    }
-    const hit = scenes.find(s => f >= s.startFrame && f < s.startFrame + s.durationFrames) || null;
-    if (!hit) return { a: dummy, b: null, alphaA: 0, alphaB: 0 };
-    return { a: hit, b: null, alphaA: 1, alphaB: 0 };
-};
-
-const ensureSceneDoc = async (id: string, ref: SceneRef | null) => {
-    if (!id) return;
-    if (sceneDocs.value[id]) return;
-    try {
-        const doc = await TimelineService.loadScene(songId.value as string, id);
-        if (doc) { sceneDocs.value[id] = doc; return; }
-    } catch {}
-    if (ref) {
-        const doc: SceneDocumentBase = { id: ref.id, type: ref.type, name: ref.name, seed: String(timeline.value?.settings.seed || 'seed'), params: {}, tracks: [] } as any;
-        try { const saved = await TimelineService.saveScene(songId.value as string, doc); sceneDocs.value[id] = saved; } catch {}
-    }
-};
-
-// Load all scene documents referenced by the current timeline
-const preloadAllSceneDocs = async () => {
-    const list = (timeline.value?.scenes || []) as SceneRef[];
-    for (const s of list) {
-        try { await ensureSceneDoc(s.id, s); } catch {}
-    }
-};
-
 </script>
 
 <template>
+    <div class="editor-root">
     <div class="editor">
         <div class="editor__toolbar">
-            <button @click="play" :disabled="playing">Play</button>
-            <button @click="pause" :disabled="!playing">Pause</button>
-            <button @click="stop" :disabled="!playing && frame === 0">Stop</button>
-            <button @click="reanalyze" :disabled="!audioReady">Reanalyze</button>
-            <span>Frame: {{ frame }}</span>
+            <button @click="play" :disabled="playback.playing.value">Play</button>
+            <button @click="pause" :disabled="!playback.playing.value">Pause</button>
+            <button @click="stop" :disabled="!playback.playing.value && playback.frame.value === 0">Stop</button>
+            <button @click="reanalyze" :disabled="!audioPlayer.audioReady.value">Reanalyze</button>
+            <span>Frame: {{ playback.frame.value }}</span>
             <button @click="exportWithOptions" style="margin-left:8px;">Export</button>
             <button @click="exportWolk" style="margin-left:8px;">Export .wolk</button>
-            <button @click="stopExport" style="margin-left:8px;" :disabled="!isRecording">Stop Export</button>
-            <span v-if="ffmpegAvailable === false" class="toolbar__notice">ffmpeg not found. On macOS: install with <code>brew install ffmpeg</code>. Only WebM will be produced.</span>
+            <button @click="videoExport.stopExport" style="margin-left:8px;" :disabled="!videoExport.isRecording.value">Stop Export</button>
+            <span v-if="videoExport.ffmpegAvailable.value === false" class="toolbar__notice">
+                ffmpeg not found. On macOS: install with <code>brew install ffmpeg</code>. Only WebM will be produced.
+            </span>
         </div>
+
         <div class="editor__sidebar">
-            <SceneList :scenes="timeline?.scenes || []" :selected-id="selectedSceneId || undefined" :current-frame="frame" :fps="fps" @select="selectScene" @add="addScene" @delete="(id:string)=>{
-                if(!timeline?.scenes) return; const list = [...timeline.scenes]; const i = list.findIndex(s=>s.id===id); if(i>=0){ list.splice(i,1); onTimelineUpdated({ ...(timeline as any), scenes: list } as any); if(selectedSceneId===id) selectedSceneId=null; }
-            }" @switchHere="({ frame }) => {
-                const scenes = [...(timeline?.scenes||[])];
-                if (!scenes.length) return;
-                // find current scene index
-                const idx = scenes.findIndex(s => frame >= s.startFrame && frame < s.startFrame + s.durationFrames);
-                if (idx < 0 || idx+1 >= scenes.length) return; // nothing to switch to
-                const a = { ...scenes[idx] } as any;
-                const b = { ...scenes[idx+1] } as any;
-                // split A at frame and start B at frame
-                const leftDur = Math.max(1, frame - a.startFrame);
-                const rightDur = Math.max(0, (a.startFrame + a.durationFrames) - frame);
-                a.durationFrames = leftDur;
-                b.startFrame = frame;
-                if (rightDur <= 0) {
-                    // shrink A fully before B
-                }
-                scenes[idx] = a;
-                scenes[idx+1] = b;
-                onTimelineUpdated({ ...(timeline as any), scenes } as any);
-            }" />
+            <SceneList
+                :scenes="timeline?.scenes || []"
+                :selected-id="scenes.selectedSceneId.value || undefined"
+                :current-frame="playback.frame.value"
+                :fps="fps"
+                @select="selectScene"
+                @add="addScene"
+                @delete="(id: string) => {
+                    scenes.deleteScene(id);
+                    if (timeline) TimelineService.save(songId, timeline);
+                }"
+                @switchHere="({ frame }) => {
+                    const scenesList = [...(timeline?.scenes || [])];
+                    if (!scenesList.length) return;
+                    const idx = scenesList.findIndex(s => frame >= s.startFrame && frame < s.startFrame + s.durationFrames);
+                    if (idx < 0 || idx + 1 >= scenesList.length) return;
+                    const a = { ...scenesList[idx] } as any;
+                    const b = { ...scenesList[idx + 1] } as any;
+                    const leftDur = Math.max(1, frame - a.startFrame);
+                    a.durationFrames = leftDur;
+                    b.startFrame = frame;
+                    scenesList[idx] = a;
+                    scenesList[idx + 1] = b;
+                    if (timeline) onTimelineUpdated({ ...(timeline as any), scenes: scenesList });
+                }"
+            />
         </div>
+
         <div class="editor__preview" :style="{ aspectRatio }">
             <div class="preview__canvas-wrapper">
                 <canvas ref="renderCanvas" class="preview__canvas"></canvas>
@@ -1011,68 +638,151 @@ const preloadAllSceneDocs = async () => {
                 <canvas ref="previewOverlay" class="preview__overlay"></canvas>
             </div>
         </div>
+
         <div class="editor__inspector">
             <Inspector
                 :timeline="timeline"
-                :selected-scene="selectedScene"
-                :scene-params="sceneParamsView"
+                :selected-scene="scenes.selectedScene.value"
+                :scene-params="scenes.selectedSceneParams.value"
                 :overlay-opts="overlayOpts"
-                :current-frame="frame"
+                :current-frame="playback.frame.value"
                 :word-bank="song?.wordBank || []"
                 :word-groups="song?.wordGroups || []"
-                :allowed-track="(() => { const id = selectedSceneId || null; if (!id) return null; const doc = id ? (sceneDocs as any).value?.[id] : null; const tracks = Array.isArray(doc?.tracks) ? doc.tracks : []; return (tracks.find((t:any)=>t.propertyPath==='words.allowed') || null) as any; })()"
+                :allowed-track="(() => {
+                    const id = scenes.selectedSceneId.value;
+                    if (!id) return null;
+                    const doc = scenes.sceneDocs.value?.[id];
+                    const tracks = Array.isArray(doc?.tracks) ? doc.tracks : [];
+                    return tracks.find((t: any) => t.propertyPath === 'words.allowed') || null;
+                })()"
                 @update:overlayOpts="v => overlayOpts = v"
                 @update:timeline="onTimelineUpdated"
                 @update:scene="onSceneUpdated"
-                @update:sceneParams="(p:any)=> applySceneParams(p)"
-                @update:sceneTracks="(payload:any) => { try { const sid = String((payload && payload.sceneId) || ''); const incoming: any[] = Array.isArray(payload && payload.tracks) ? payload.tracks : []; if (!sid) return; const doc = (sceneDocs.value as any)[sid] as any; if (!doc) return; const existing: any[] = Array.isArray(doc.tracks) ? doc.tracks : []; const merged: any[] = (() => { const map: Record<string, any> = {}; existing.forEach((t:any)=>{ map[t.propertyPath]=t; }); incoming.forEach((t:any)=>{ map[t.propertyPath]=t; }); return Object.values(map); })(); const updated: any = { ...(doc || {}), tracks: merged }; (sceneDocs.value as any)[sid] = updated; TimelineService.saveScene(String(songId || ''), updated as any); configureWorkerScene(); } catch {} }"
-                @navigate="({ dir }) => { try { const track = timeline?.wordsPoolTrack; const kf: number[] = Array.isArray(track?.keyframes) ? (track as any).keyframes.map((k:any)=>Math.max(0,(k.frame as any)|0)).sort((a:number,b:number)=>a-b) : []; const beats: number[] = Array.isArray(beatTimesSec) ? (beatTimesSec as any).slice() : []; const fpsVal = Math.max(1, fps as any); const cur = frame as any; const secs = (f:number)=> f/Math.max(1,fpsVal); const toFrame = (t:number)=> Math.max(0, Math.round(t*Math.max(1,fpsVal))); if (dir==='nextKf' && kf.length){ const n = kf.find((f:number)=>f>cur); if (typeof n==='number'){ onScrub({ timeSec: secs(n), frame: n }); return; } } if (dir==='prevKf' && kf.length){ const p = [...kf].reverse().find((f:number)=>f<cur); if (typeof p==='number'){ onScrub({ timeSec: secs(p), frame: p }); return; } } if ((dir==='nextBeat'||dir==='prevBeat') && beats.length){ const curT = secs(cur); const sorted = beats.slice().sort((a:number,b:number)=>a-b); if (dir==='nextBeat'){ const nb = sorted.find((b:number)=>b>curT); if (typeof nb==='number'){ onScrub({ timeSec: nb, frame: toFrame(nb) }); return; } } else { const pb = [...sorted].reverse().find((b:number)=>b<curT); if (typeof pb==='number'){ onScrub({ timeSec: pb, frame: toFrame(pb) }); return; } } } } catch {} }"
+                @update:sceneParams="applySceneParams"
+                @update:sceneTracks="(payload: any) => {
+                    const sid = String(payload?.sceneId || '');
+                    const incoming: any[] = Array.isArray(payload?.tracks) ? payload.tracks : [];
+                    if (!sid) return;
+                    const doc = scenes.sceneDocs.value?.[sid];
+                    if (!doc) return;
+                    const existing: any[] = Array.isArray(doc.tracks) ? doc.tracks : [];
+                    const map: Record<string, any> = {};
+                    existing.forEach((t: any) => { map[t.propertyPath] = t; });
+                    incoming.forEach((t: any) => { map[t.propertyPath] = t; });
+                    const merged = Object.values(map);
+                    const updated = { ...doc, tracks: merged };
+                    (scenes.sceneDocs.value as any)[sid] = updated;
+                    TimelineService.saveScene(songId, updated);
+                    configureWorkerScene();
+                }"
+                @navigate="({ dir }) => {
+                    const track = timeline?.wordsPoolTrack;
+                    const kf: number[] = Array.isArray(track?.keyframes)
+                        ? (track as any).keyframes.map((k: any) => Math.max(0, (k.frame | 0))).sort((a: number, b: number) => a - b)
+                        : [];
+                    const beats = audioAnalysis.beatTimesSec.value;
+                    const cur = playback.frame.value;
+                    const secs = (f: number) => f / Math.max(1, fps);
+                    const toFrame = (t: number) => Math.max(0, Math.round(t * Math.max(1, fps)));
+                    
+                    if (dir === 'nextKf' && kf.length) {
+                        const n = kf.find((f: number) => f > cur);
+                        if (typeof n === 'number') { onScrub({ timeSec: secs(n), frame: n }); return; }
+                    }
+                    if (dir === 'prevKf' && kf.length) {
+                        const p = [...kf].reverse().find((f: number) => f < cur);
+                        if (typeof p === 'number') { onScrub({ timeSec: secs(p), frame: p }); return; }
+                    }
+                    if ((dir === 'nextBeat' || dir === 'prevBeat') && beats.length) {
+                        const curT = secs(cur);
+                        const sorted = beats.slice().sort((a: number, b: number) => a - b);
+                        if (dir === 'nextBeat') {
+                            const nb = sorted.find((b: number) => b > curT);
+                            if (typeof nb === 'number') { onScrub({ timeSec: nb, frame: toFrame(nb) }); return; }
+                        } else {
+                            const pb = [...sorted].reverse().find((b: number) => b < curT);
+                            if (typeof pb === 'number') { onScrub({ timeSec: pb, frame: toFrame(pb) }); return; }
+                        }
+                    }
+                }"
                 @resetProject="handleReset"
-                @importWolk="handleOpenImportDialog"
+                @importWolk="wolkImport.openDialog"
             />
         </div>
+
         <div class="editor__timeline timeline-host">
             <TimelineRoot
                 :fps="fps"
-                :current-frame="frame"
-                :duration-sec="(audioEl?.duration || 0) || undefined"
-                :beats="beatTimesSec || undefined"
-                :waveform="waveform || []"
-                :energy-per-frame="analysisCache?.energyPerFrame"
-                :bands-low-per-frame="bandsLowPerFrame || undefined"
-                :bands-mid-per-frame="bandsMidPerFrame || undefined"
-                :bands-high-per-frame="bandsHighPerFrame || undefined"
-                :beat-strength-per-frame="beatStrengthPerFrame || undefined"
-                :is-onset-per-frame="derivedOnsetPerFrame || analysisCache?.isOnsetPerFrame"
+                :current-frame="playback.frame.value"
+                :duration-sec="audioPlayer.duration.value || audioDurationSec"
+                :beats="audioAnalysis.beatTimesSec.value || undefined"
+                :waveform="(audioAnalysis.waveform.value || []) as any"
+                :energy-per-frame="audioAnalysis.analysisCache.value?.energyPerFrame as any"
+                :bands-low-per-frame="audioAnalysis.bandsLowPerFrame.value || undefined"
+                :bands-mid-per-frame="audioAnalysis.bandsMidPerFrame.value || undefined"
+                :bands-high-per-frame="audioAnalysis.bandsHighPerFrame.value || undefined"
+                :beat-strength-per-frame="audioAnalysis.beatStrengthPerFrame.value || undefined"
+                :is-onset-per-frame="frameEval.derivedOnsetPerFrame.value || audioAnalysis.analysisCache.value?.isOnsetPerFrame"
                 :show-energy="overlayOpts.showEnergy"
-                :show-onsets="overlayOpts.showOnsets && isSingleWordScene"
+                :show-onsets="overlayOpts.showOnsets && scenes.selectedScene.value?.type === 'singleWord'"
                 :scenes="timeline?.scenes || []"
-                :selected-scene-id="selectedSceneId || undefined"
+                :selected-scene-id="scenes.selectedSceneId.value || undefined"
                 :action-items="(timeline?.actionTracks || []) as any"
-                :word-keyframes="allScenesWordKeyframes"
-                @scrub="(p: any) => onScrub(p)"
+                :word-keyframes="timeline?.wordsPoolTrack?.keyframes?.map((k: any) => k.frame) || []"
+                @scrub="onScrub"
                 @dragGlobalPoolMarker="({ index, frame, originalFrame }) => moveGlobalPoolMarker(index, frame, originalFrame)"
-                @sceneUpdate="(s:any) => { const list = [...(timeline?.scenes||[])]; const i = list.findIndex(x=>x.id===s.id); if(i>=0){ list[i] = s; onTimelineUpdated({ ...(timeline as any), scenes: list } as TimelineDocument); } }"
-                @sceneSelect="({id}) => selectScene(id)"
-                @actionToggle="({frame}) => { const acts = Array.isArray(timeline?.actionTracks)? [...(timeline as any).actionTracks] : []; const idx = acts.findIndex((a:any)=>a.frame===frame && a.actionType==='wordOverride'); if(idx>=0){ acts.splice(idx,1);} else { acts.push({ id: genId(), frame, actionType: 'wordOverride', payload: { word: 'WOLK' } }); } onTimelineUpdated({ ...(timeline as any), actionTracks: acts } as TimelineDocument); }"
+                @sceneUpdate="(s: any) => {
+                    const list = [...(timeline?.scenes || [])];
+                    const i = list.findIndex(x => x.id === s.id);
+                    if (i >= 0) {
+                        list[i] = s;
+                        if (timeline) onTimelineUpdated({ ...(timeline as any), scenes: list });
+                    }
+                }"
+                @sceneSelect="({ id }) => selectScene(id)"
+                @actionToggle="({ frame }) => {
+                    const acts = Array.isArray(timeline?.actionTracks) ? [...(timeline as any).actionTracks] : [];
+                    const idx = acts.findIndex((a: any) => a.frame === frame && a.actionType === 'wordOverride');
+                    if (idx >= 0) {
+                        acts.splice(idx, 1);
+                    } else {
+                        acts.push({ id: genId(), frame, actionType: 'wordOverride', payload: { word: 'WOLK' } });
+                    }
+                    if (timeline) onTimelineUpdated({ ...(timeline as any), actionTracks: acts });
+                }"
             />
         </div>
     </div>
-    <div v-if="showImportDialog" class="modal-backdrop">
+
+    <!-- Import Dialog -->
+    <div v-if="wolkImport.showDialog.value" class="modal-backdrop">
         <div class="modal">
             <h3>Import .wolk</h3>
             <div style="margin:8px 0;">
-                <input type="file" accept=".wolk,application/zip,application/gzip" @change="handlePickImportFile" />
+                <input
+                    type="file"
+                    accept=".wolk,application/zip,application/gzip"
+                    @change="wolkImport.pickFile"
+                />
             </div>
             <div style="margin:8px 0; display:flex; gap:12px; align-items:center;">
-                <label><input type="radio" value="copy" v-model="importStrategy" /> Copy (create new project)</label>
-                <label><input type="radio" value="override" v-model="importStrategy" /> Override (replace if same ID)</label>
+                <label>
+                    <input type="radio" value="copy" v-model="wolkImport.strategy.value" />
+                    Copy (create new project)
+                </label>
+                <label>
+                    <input type="radio" value="override" v-model="wolkImport.strategy.value" />
+                    Override (replace if same ID)
+                </label>
             </div>
-            <div v-if="importError" style="color:#e66;">{{ importError }}</div>
+            <div v-if="wolkImport.error.value" style="color:#e66;">{{ wolkImport.error.value }}</div>
             <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-                <button @click="handleCancelImport" :disabled="isImporting">Cancel</button>
-                <button @click="handleDoImport" :disabled="isImporting || !importFile">{{ isImporting ? 'Importing…' : 'Import' }}</button>
+                <button @click="wolkImport.closeDialog" :disabled="wolkImport.isImporting.value">Cancel</button>
+                <button @click="wolkImport.doImport" :disabled="wolkImport.isImporting.value || !wolkImport.file.value">
+                    {{ wolkImport.isImporting.value ? 'Importing…' : 'Import' }}
+                </button>
             </div>
         </div>
+    </div>
     </div>
 </template>

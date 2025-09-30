@@ -28,7 +28,7 @@ onMounted(() => {
    <nav>
     <RouterLink to="/song-bank">Song Bank</RouterLink>
     <RouterLink to="/editor">Editor</RouterLink>
-    <RouterLink to="/player">Live Player</RouterLink>
+    <!-- <RouterLink to="/player">Live Player</RouterLink> -->
    </nav>
 
    <footer>

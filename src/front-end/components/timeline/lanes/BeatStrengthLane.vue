@@ -27,14 +27,20 @@ const draw = () => {
     const startF = Math.max(0, Math.floor(props.viewport.startSec * fps));
     const endF = Math.max(startF + 1, Math.floor((props.viewport.startSec + props.viewport.durationSec) * fps));
     ctx.fillStyle = 'rgba(0, 200, 255, 0.6)';
-    const framesVisible = Math.max(1, endF - startF + 1);
-    const barW = Math.max(1, Math.floor(wCss / framesVisible));
-    for (let f = startF, i = 0; f <= endF && f < arr.length; f++, i++) {
+    const startSec = props.viewport.startSec;
+    const durSec = Math.max(1e-6, props.viewport.durationSec);
+    for (let f = startF; f <= endF && f < arr.length; f++) {
         const v = Math.min(1, Math.max(0, arr[f] || 0));
-        const h = Math.floor(v * hCss);
-        const x = i * barW;
-        const y = hCss - h;
-        ctx.fillRect(x, y, Math.max(1, barW - 1), h);
+        const barH = v * hCss;
+        const t0 = f / fps;
+        const t1 = (f + 1) / fps;
+        const x1 = (t0 - startSec) / durSec * wCss;
+        const x2 = (t1 - startSec) / durSec * wCss;
+        const w = Math.max(0.5, x2 - x1);
+        const y = hCss - barH;
+        // Clip to canvas bounds defensively
+        const clampedX = Math.max(-wCss, Math.min(wCss * 2, x1));
+        ctx.fillRect(clampedX, y, w, barH);
     }
 };
 

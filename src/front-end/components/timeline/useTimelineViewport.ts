@@ -1,4 +1,4 @@
-import { shallowRef, watch, toRaw } from 'vue';
+import { ref, shallowRef, watch, toRaw } from 'vue';
 
 export interface TimelineViewport {
     startSec: number;        // left of view window (seconds)
@@ -25,7 +25,7 @@ export function useTimelineViewport(initial: Partial<TimelineViewport> = {}) {
         totalSec: (initial as any).totalSec ?? Math.max(30, initial.durationSec || 30),
         fps: initial.fps ?? 60,
     });
-    const playhead = shallowRef<TimelinePlayhead>({ frame: 0 });
+    const playhead = ref<TimelinePlayhead>({ frame: 0 });
     const interaction = shallowRef<InteractionState>({ mode: 'idle', dragState: null });
 
     const listeners = new Set<Listener>();
@@ -57,7 +57,12 @@ export function useTimelineViewport(initial: Partial<TimelineViewport> = {}) {
         clamp();
         emit('viewport', toRaw(viewport.value));
     };
-    const setPlayhead = (frame: number) => { playhead.value = { frame: Math.max(0, Math.floor(frame)) }; emit('playhead', playhead.value); };
+    const setPlayhead = (frame: number) => { 
+        const newFrame = Math.max(0, Math.floor(frame));
+        console.log('[useTimelineViewport] setPlayhead called with:', frame, 'setting to:', newFrame);
+        playhead.value = { frame: newFrame }; 
+        emit('playhead', playhead.value); 
+    };
     const panBy = (secDelta: number) => {
         const v = viewport.value;
         const total = Math.max(0.1, v.totalSec);
