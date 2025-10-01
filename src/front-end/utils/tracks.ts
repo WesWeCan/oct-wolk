@@ -1,4 +1,5 @@
 import type { Keyframe, PropertyTrack } from '@/types/timeline_types';
+import { ease } from '@/front-end/utils/easing';
 
 export function sortKeyframes<T>(keyframes: Keyframe<T>[]): Keyframe<T>[] {
     return keyframes.slice().sort((a, b) => ((a.frame | 0) - (b.frame | 0)));
@@ -43,6 +44,67 @@ export function hashWords(list: string[]): string {
         }
     }
     return String(h >>> 0);
+}
+
+/**
+ * Interpolates between two values (number or tuple-like array of numbers).
+ */
+function lerpValue(a: any, b: any, t: number): any {
+    const u = Math.min(1, Math.max(0, t));
+    if (typeof a === 'number' && typeof b === 'number') {
+        return a + (b - a) * u;
+    }
+    if (Array.isArray(a) && Array.isArray(b)) {
+        const n = Math.min(a.length, b.length);
+        const out = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const av = Number(a[i]);
+            const bv = Number(b[i]);
+            out[i] = av + (bv - av) * u;
+        }
+        return out;
+    }
+    // Fallback: if types mismatch, prefer b
+    return b;
+}
+
+/**
+ * Apply interpolation mode to normalized t
+ */
+function applyInterpolation(t: number, interpolation?: Keyframe['interpolation']): number {
+    if (!interpolation) return t;
+    if (typeof interpolation === 'string') {
+        return ease(t, interpolation as any);
+    }
+    // cubic with handles not yet implemented: linear fallback
+    return t;
+}
+
+/**
+ * Evaluate a property track at a specific frame with step/linear/ease interpolation.
+ * Supports both numbers and tuple-like arrays of numbers.
+ */
+export function evalInterpolatedAtFrame<T>(
+    track: PropertyTrack<T> | null | undefined,
+    frame: number,
+    fallback: T
+): T {
+    if (!track || !Array.isArray(track.keyframes) || track.keyframes.length === 0) return fallback;
+    const list = sortKeyframes(track.keyframes);
+    const f = frame | 0;
+    // Find index of keyframe at or before f
+    let i = -1;
+    for (let k = 0; k < list.length; k++) {
+        if ((list[k].frame | 0) <= f) i = k; else break;
+    }
+    if (i < 0) return (list[0].value as T);
+    if (i >= list.length - 1) return (list[i].value as T);
+    const a = list[i];
+    const b = list[i + 1];
+    if ((b.frame | 0) === (a.frame | 0)) return (b.value as T);
+    const rawT = (f - (a.frame | 0)) / Math.max(1, (b.frame | 0) - (a.frame | 0));
+    const interpT = applyInterpolation(rawT, a.interpolation || 'linear');
+    return lerpValue(a.value as any, b.value as any, interpT) as T;
 }
 
 

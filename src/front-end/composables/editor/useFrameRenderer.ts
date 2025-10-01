@@ -3,6 +3,9 @@ import type { useRenderWorker } from './useRenderWorker';
 import type { useFrameEvaluation } from './useFrameEvaluation';
 import type { useAudioAnalysis } from './useAudioAnalysis';
 import { getSpectralBandsAtFrame } from '@/front-end/utils/audio/spectralBands';
+import type { SceneDocumentBase, PropertyTrack } from '@/types/timeline_types';
+import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
+import { SCENE_ANIMATABLES } from '@/front-end/workers/scenes/animatables';
 
 /**
  * Composable for rendering frames to the worker
@@ -17,7 +20,8 @@ import { getSpectralBandsAtFrame } from '@/front-end/utils/audio/spectralBands';
 export function useFrameRenderer(
   renderWorker: ReturnType<typeof useRenderWorker>,
   frameEval: ReturnType<typeof useFrameEvaluation>,
-  audioAnalysis: ReturnType<typeof useAudioAnalysis>
+  audioAnalysis: ReturnType<typeof useAudioAnalysis>,
+  getSceneDocById: (id: string) => SceneDocumentBase | undefined
 ) {
   /**
    * Sends a complete frame data packet to the render worker
@@ -43,6 +47,23 @@ export function useFrameRenderer(
       totalFrames
     );
     
+    // Compute animated properties for active scene A only (extend to B later if needed)
+    const activeSceneA = mix.a && mix.a.id !== 'none' ? getSceneDocById(mix.a.id) : undefined;
+    let animated: Record<string, any> | undefined = undefined;
+    if (activeSceneA && Array.isArray(activeSceneA.tracks)) {
+      animated = {};
+      const tracks = (activeSceneA.tracks as PropertyTrack<any>[]);
+      const sceneType = activeSceneA.type;
+      const animatableMetas = (SCENE_ANIMATABLES as any)[sceneType] || [];
+      
+      for (const t of tracks) {
+        const meta = animatableMetas.find((m: any) => m.propertyPath === t.propertyPath);
+        const fallback = meta ? meta.default : 0;
+        const val = evalInterpolatedAtFrame(t, frame, fallback, meta);
+        if (val !== undefined) animated[t.propertyPath] = val;
+      }
+    }
+
     renderWorker.sendFrame({
       frame,
       dt,
@@ -53,7 +74,8 @@ export function useFrameRenderer(
       wordOverride,
       lowBand: bands.lowBand,
       midBand: bands.midBand,
-      highBand: bands.highBand
+      highBand: bands.highBand,
+      animated
     });
   };
   

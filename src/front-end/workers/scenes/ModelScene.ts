@@ -3,6 +3,11 @@ import * as THREE from 'three';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
+export const MODEL_SCENE_ANIMATABLES = [
+    { path: 'model.scale', label: 'Scale', type: 'number', min: 0.001, max: 10, default: 1 },
+    { path: 'model.rotationRPM', label: 'Rotation RPM', type: 'vec3', default: [0, 15, 0], perAxis: true }
+];
+
 export class ModelScene implements WorkerScene {
     private width = 0;
     private height = 0;
@@ -24,7 +29,7 @@ export class ModelScene implements WorkerScene {
     private diffuseMapUrl: string | null = null;
     private normalMapUrl: string | null = null;
     private rotationRpm: number = 3; // default gentle spin
-    private modelScale: number = 1; // user scale multiplier
+    private modelScale: number = 10; // user scale multiplier
     private words: string[] = [];
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
     private connectToModelOnBeat = false;
@@ -112,7 +117,15 @@ export class ModelScene implements WorkerScene {
         const f = Math.max(0, (context.time?.frame as number) | 0);
         const fps = Math.max(1, (context.time?.fps as number) | 0) || 60;
         const t = f / fps;
-        const omega = (this.rotationRpm * Math.PI * 2) / 60; // rad/s
+        // Allow animated overrides from timeline tracks (deterministic evaluation)
+        const animated = (context.extras && (context.extras as any).animated) ? (context.extras as any).animated : undefined;
+        
+        // Priority: 1) animated keyframe value, 2) inspector param (this.rotationRpm), 3) registry default
+        const rotationRpmVal = (animated && Number.isFinite(animated['model.rotationRPM'])) 
+            ? Number(animated['model.rotationRPM']) 
+            : this.rotationRpm; // Falls back to class property (set by configure() from inspector)
+
+        const omega = (rotationRpmVal * Math.PI * 2) / 60; // rad/s
         const angle = omega * t;
         const twoPi = Math.PI * 2;
         if (this.rootGroup) {
@@ -185,11 +198,24 @@ export class ModelScene implements WorkerScene {
             }
         }
 
-        // Subtle model pulse
+        // Model scale with subtle pulse
         try {
             if (this.modelGroup) {
-                const s = this.modelScale * (1 + 0.03 * (0.6 * this.smLow + 0.4 * beat));
+                // Priority: 1) animated keyframe value, 2) inspector param (this.modelScale), 3) registry default
+                const baseScale = (animated && Number.isFinite(animated['model.scale'])) 
+                    ? Math.max(0.001, Number(animated['model.scale'])) 
+                    : this.modelScale; // Falls back to class property (set by configure() from inspector)
+                const s = baseScale * (1 + 0.03 * (0.6 * this.smLow + 0.4 * beat));
                 this.modelGroup.scale.set(s, s, s);
+                
+                // Scale overlay group (labels, plexus, spokes) to match model scale and radius multiplier
+                const radiusMultiplier = (animated && Number.isFinite(animated['labels.radiusMultiplier'])) 
+                    ? Number(animated['labels.radiusMultiplier']) 
+                    : 0.5; // Default radius multiplier
+                if (this.overlayGroup) {
+                    const overlayScale = baseScale * radiusMultiplier;
+                    this.overlayGroup.scale.set(overlayScale, overlayScale, overlayScale);
+                }
             }
         } catch {}
     }

@@ -20,7 +20,7 @@ export interface SceneContext {
     fontFamilyChain?: string;
     analysis?: AnalysisContext;
     time: TimeContext;
-    extras?: { wordIndex?: number; beat?: number; globalAlpha?: number; wordOverride?: string; lowBand?: number; midBand?: number; highBand?: number };
+    extras?: { wordIndex?: number; beat?: number; globalAlpha?: number; wordOverride?: string; lowBand?: number; midBand?: number; highBand?: number; animated?: Record<string, any> };
 }
 
 export interface WorkerScene {

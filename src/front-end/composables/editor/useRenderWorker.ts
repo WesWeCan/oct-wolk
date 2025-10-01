@@ -22,6 +22,7 @@ interface WorkerFrameMessage {
     lowBand?: number;
     midBand?: number;
     highBand?: number;
+    animated?: Record<string, any>;
 }
 
 interface WorkerConfigureMessage {
@@ -167,6 +168,7 @@ export function useRenderWorker(
         lowBand?: number;
         midBand?: number;
         highBand?: number;
+        animated?: Record<string, any>;
     }) => {
         if (!workerRef.value) return;
         

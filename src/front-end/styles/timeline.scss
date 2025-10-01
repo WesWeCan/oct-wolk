@@ -49,6 +49,53 @@
     background: rgba(255, 255, 255, 0.06);
 }
 
+// Property controls in left column
+.prop-row {
+    margin-bottom: 6px;
+}
+
+.prop-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+    font-size: 11px;
+}
+
+.prop-label {
+    font-weight: 500;
+    color: #ccc;
+}
+
+.prop-value-display {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: #6c6;
+    background: rgba(0, 255, 0, 0.08);
+    padding: 2px 4px;
+    border-radius: 2px;
+    min-width: 40px;
+    text-align: right;
+}
+
+.prop-controls {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    
+    button {
+        padding: 2px 4px;
+        font-size: 10px;
+        min-width: 20px;
+    }
+    
+    input[type="number"] {
+        width: 60px;
+        font-size: 10px;
+        padding: 2px 4px;
+    }
+}
+
 .lane__header {
     height: 20px;
     display: flex;

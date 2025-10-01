@@ -29,6 +29,7 @@ import { useSceneActions } from '@/front-end/composables/editor/useSceneActions'
 import { useTimelineNavigation } from '@/front-end/composables/editor/useTimelineNavigation';
 import { useActionTracks } from '@/front-end/composables/editor/useActionTracks';
 import { useWordPoolMarkers } from '@/front-end/composables/editor/useWordPoolMarkers';
+import { SCENE_ANIMATABLES } from '@/front-end/workers/scenes/animatables';
 
 // Utils
 import { hashWords } from '@/front-end/utils/hash/hashWords';
@@ -84,7 +85,12 @@ const frameEval = useFrameEvaluation(
 );
 
 // Frame Rendering (eliminates 4x duplication)
-const frameRenderer = useFrameRenderer(renderWorker, frameEval, audioAnalysis);
+const frameRenderer = useFrameRenderer(
+    renderWorker,
+    frameEval,
+    audioAnalysis,
+    (id: string) => scenes.sceneDocs.value?.[id]
+);
 
 // Export/Import
 const videoExport = useVideoExport(
@@ -530,6 +536,153 @@ const handleSceneTracksUpdate = async (payload: any) => {
     await configureWorkerScene();
 };
 
+// ===== PROPERTY TRACK HANDLERS (timeline) =====
+
+const handlePropAddKf = (payload: { propertyPath: string; frame: number; value: any }) => {
+    const id = scenes.selectedSceneId.value; if (!id) return;
+    const doc = scenes.sceneDocs.value[id]; if (!doc) return;
+    const tracks = Array.isArray(doc.tracks) ? doc.tracks.slice() : [];
+    const idx = tracks.findIndex((t: any) => t.propertyPath === payload.propertyPath);
+    if (idx >= 0) {
+        const list = Array.isArray(tracks[idx].keyframes) ? tracks[idx].keyframes.slice() : [];
+        list.push({ frame: Math.max(0, payload.frame|0), value: payload.value });
+        list.sort((a:any,b:any)=> (a.frame|0)-(b.frame|0));
+        tracks[idx] = { ...tracks[idx], keyframes: list };
+    } else {
+        tracks.push({ propertyPath: payload.propertyPath, keyframes: [{ frame: Math.max(0, payload.frame|0), value: payload.value }] });
+    }
+    (scenes.sceneDocs.value as any)[id] = { ...doc, tracks };
+    TimelineService.saveScene(songId.value, (scenes.sceneDocs.value as any)[id]);
+};
+
+const handlePropMoveKf = (payload: { propertyPath: string; index: number; frame: number }) => {
+    console.log('[Editor] handlePropMoveKf:', payload);
+    const id = scenes.selectedSceneId.value; 
+    if (!id) {
+        console.warn('[Editor] No selected scene id');
+        return;
+    }
+    const doc = scenes.sceneDocs.value[id]; 
+    if (!doc) {
+        console.warn('[Editor] No scene doc found for id:', id);
+        return;
+    }
+    const tracks = Array.isArray(doc.tracks) ? doc.tracks.slice() : [];
+    console.log('[Editor] Current tracks:', tracks);
+    const tIdx = tracks.findIndex((t: any) => t.propertyPath === payload.propertyPath);
+    console.log('[Editor] Track index:', tIdx);
+    if (tIdx >= 0) {
+        const list = Array.isArray(tracks[tIdx].keyframes) ? tracks[tIdx].keyframes.slice() : [];
+        console.log('[Editor] Keyframes in track:', list);
+        if (payload.index >= 0 && payload.index < list.length) {
+            const k = { ...list[payload.index], frame: Math.max(0, payload.frame|0) };
+            console.log('[Editor] Updating keyframe:', payload.index, 'to frame:', payload.frame);
+            list[payload.index] = k;
+            list.sort((a:any,b:any)=> (a.frame|0)-(b.frame|0));
+            tracks[tIdx] = { ...tracks[tIdx], keyframes: list };
+            (scenes.sceneDocs.value as any)[id] = { ...doc, tracks };
+            TimelineService.saveScene(songId.value, (scenes.sceneDocs.value as any)[id]);
+            console.log('[Editor] Keyframe updated and saved');
+        } else {
+            console.warn('[Editor] Invalid keyframe index:', payload.index, 'list length:', list.length);
+        }
+    } else {
+        console.warn('[Editor] Track not found for propertyPath:', payload.propertyPath);
+    }
+};
+
+// ===== TIMELINE PROPERTY TRACKS (UI computation) =====
+const scenePropertyTracksForUI = computed<any[]>(() => {
+    const id = scenes.selectedSceneId.value; if (!id) return [];
+    const doc = (scenes.sceneDocs.value as any)[String(id)];
+    const tracks = Array.isArray(doc?.tracks) ? doc.tracks : [];
+    if (tracks.length) return tracks;
+    const sc = (timeline.value?.scenes || []).find((x: any) => x.id === id);
+    const type = sc?.type as any;
+    const props = type ? (SCENE_ANIMATABLES as any)[String(type)] || [] : [];
+    return props.map((p: any) => ({ propertyPath: p.propertyPath, keyframes: [] as any[] }));
+});
+
+const handleDeleteKeyframe = (payload: { propertyPath: string; index: number }) => {
+    console.log('[Editor] handleDeleteKeyframe called:', payload);
+    const id = scenes.selectedSceneId.value; 
+    if (!id) {
+        console.log('[Editor] No selected scene ID');
+        return;
+    }
+    const doc = scenes.sceneDocs.value[id]; 
+    if (!doc) {
+        console.log('[Editor] No document found for scene:', id);
+        return;
+    }
+    const tracks = Array.isArray(doc.tracks) ? doc.tracks.slice() : [];
+    console.log('[Editor] Current tracks:', tracks);
+    const tIdx = tracks.findIndex((t: any) => t.propertyPath === payload.propertyPath);
+    console.log('[Editor] Track index:', tIdx);
+    if (tIdx >= 0) {
+        const list = Array.isArray(tracks[tIdx].keyframes) ? tracks[tIdx].keyframes.slice() : [];
+        console.log('[Editor] Keyframes before delete:', list);
+        if (payload.index >= 0 && payload.index < list.length) {
+            list.splice(payload.index, 1);
+            console.log('[Editor] Keyframes after delete:', list);
+            tracks[tIdx] = { ...tracks[tIdx], keyframes: list };
+            (scenes.sceneDocs.value as any)[id] = { ...doc, tracks };
+            TimelineService.saveScene(songId.value, (scenes.sceneDocs.value as any)[id]);
+            console.log('[Editor] Saved scene');
+        } else {
+            console.log('[Editor] Index out of range:', { index: payload.index, length: list.length });
+        }
+    } else {
+        console.log('[Editor] Track not found for property:', payload.propertyPath);
+    }
+};
+
+const scenePropertyMetas = computed<any[]>(() => {
+    const id = scenes.selectedSceneId.value; if (!id) return [] as any[];
+    const tlAny: any = timeline.value as any;
+    const scenesArr: any[] = Array.isArray(tlAny?.scenes) ? tlAny.scenes : [];
+    const sc = scenesArr.find((x: any) => x && x.id === id);
+    const type = sc?.type as any;
+    return type ? (SCENE_ANIMATABLES as any)[String(type)] || [] : [];
+});
+
+const handlePropChangeValue = (payload: { propertyPath: string; value: any }) => {
+    console.log('[Editor] handlePropChangeValue:', payload);
+    const id = scenes.selectedSceneId.value; if (!id) return;
+    const doc = scenes.sceneDocs.value[id]; if (!doc) return;
+    const frame = playback.frame.value | 0;
+    const tracks = Array.isArray(doc.tracks) ? doc.tracks.slice() : [];
+    let idx = tracks.findIndex((t: any) => t.propertyPath === payload.propertyPath);
+    
+    if (idx < 0) {
+        // No track exists - create one with keyframe at current frame
+        console.log('[Editor] Creating new track with keyframe at frame', frame);
+        tracks.push({ propertyPath: payload.propertyPath, keyframes: [{ frame, value: payload.value }] });
+    } else {
+        // Track exists - check if keyframe exists at current frame
+        const list = Array.isArray(tracks[idx].keyframes) ? tracks[idx].keyframes.slice() : [];
+        const kfIdx = list.findIndex((k: any) => (k.frame|0) === frame);
+        
+        if (kfIdx >= 0) {
+            // Keyframe exists at current frame - update its value
+            console.log('[Editor] Updating existing keyframe at frame', frame);
+            list[kfIdx] = { ...list[kfIdx], value: payload.value };
+        } else {
+            // No keyframe at current frame - create one
+            console.log('[Editor] Creating new keyframe at frame', frame);
+            list.push({ frame, value: payload.value });
+        }
+        
+        tracks[idx] = { ...tracks[idx], keyframes: list.sort((a:any,b:any)=> (a.frame|0)-(b.frame|0)) };
+    }
+    
+    (scenes.sceneDocs.value as any)[id] = { ...doc, tracks };
+    TimelineService.saveScene(songId.value, (scenes.sceneDocs.value as any)[id]);
+    
+    // Force a frame update to reflect the change immediately
+    frameRenderer.sendFrameToWorker(frame, 0);
+};
+
 // ===== LIFECYCLE =====
 
 onMounted(async () => {
@@ -586,6 +739,7 @@ onUnmounted(() => {
                 :timeline="timeline"
                 :selected-scene="scenes.selectedScene.value"
                 :scene-params="scenes.selectedSceneParams.value"
+                :scene-tracks="scenePropertyTracksForUI"
                 :overlay-opts="overlayOpts"
                 :current-frame="playback.frame.value"
                 :word-bank="song?.wordBank || []"
@@ -596,6 +750,7 @@ onUnmounted(() => {
                 @update:scene="onSceneUpdated"
                 @update:sceneParams="applySceneParams"
                 @update:sceneTracks="handleSceneTracksUpdate"
+                @propChangeValue="handlePropChangeValue"
                 @navigate="({ dir }) => timelineNavigation.navigateTo(dir)"
                 @resetProject="handleReset"
                 @importWolk="wolkImport.openDialog"
@@ -621,11 +776,18 @@ onUnmounted(() => {
                 :selected-scene-id="scenes.selectedSceneId.value || undefined"
                 :action-items="(timeline?.actionTracks || []) as any"
                 :word-keyframes="timeline?.wordsPoolTrack?.keyframes?.map((k: any) => k.frame) || []"
+                :scene-property-tracks="scenePropertyTracksForUI as any"
+                :scene-property-metas="scenePropertyMetas as any[]"
+                :scene-param-snapshot="(scenes.selectedSceneParams.value || {}) as any"
                 @scrub="onScrub"
                 @dragGlobalPoolMarker="({ index, frame, originalFrame }) => wordPoolMarkers.moveMarker(index, frame, originalFrame)"
                 @sceneUpdate="sceneActions.handleSceneUpdate"
                 @sceneSelect="({ id }) => selectScene(id)"
                 @actionToggle="actionTracks.toggleWordOverride"
+                @propAddKf="handlePropAddKf"
+                @propMoveKf="handlePropMoveKf"
+                @propDeleteKf="handleDeleteKeyframe"
+                @propChangeValue="handlePropChangeValue"
             />
         </div>
     </div>

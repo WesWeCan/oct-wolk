@@ -6,14 +6,38 @@ import type { WordGroup } from '@/types/song_types';
 import InspectorAllowedWords from './InspectorAllowedWords.vue';
 import { FontsService } from '@/front-end/services/FontsService';
 import { SongService } from '@/front-end/services/SongService';
+import { SCENE_ANIMATABLES } from '@/front-end/workers/scenes/animatables';
+import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 
 interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; }
 
-const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; sceneParams?: Record<string, any> | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }; currentFrame?: number; wordBank?: string[]; wordGroups?: WordGroup[]; allowedTrack?: PropertyTrack<string[]> | null }>();
-const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:sceneParams', value: Record<string, any>): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void; (e: 'resetProject'): void; (e: 'importWolk'): void; (e: 'update:sceneTracks', value: { sceneId: string; tracks: PropertyTrack[] }): void; (e: 'navigate', value: { dir: 'prevKf' | 'nextKf' | 'prevBeat' | 'nextBeat' }): void }>();
+const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; sceneParams?: Record<string, any> | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }; currentFrame?: number; wordBank?: string[]; wordGroups?: WordGroup[]; allowedTrack?: PropertyTrack<string[]> | null; sceneTracks?: PropertyTrack<any>[] | null }>();
+const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:sceneParams', value: Record<string, any>): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void; (e: 'resetProject'): void; (e: 'importWolk'): void; (e: 'update:sceneTracks', value: { sceneId: string; tracks: PropertyTrack[] }): void; (e: 'navigate', value: { dir: 'prevKf' | 'nextKf' | 'prevBeat' | 'nextBeat' }): void; (e: 'propChangeValue', payload: { propertyPath: string; value: any }): void }>();
 // Capture route in setup to avoid calling useRoute() later in event handlers
 const route = useRoute();
 const isModel3DScene = computed(() => ((props.selectedScene as any)?.type === 'model3d'));
+
+// Get interpolated value for a property at current frame
+const getAnimatedValue = (propertyPath: string) => {
+    const sceneType = props.selectedScene?.type;
+    if (!sceneType) return null;
+    
+    const animatableMetas = (SCENE_ANIMATABLES as any)[sceneType] || [];
+    const meta = animatableMetas.find((m: any) => m.propertyPath === propertyPath);
+    if (!meta) return null;
+    
+    const track = (props.sceneTracks || []).find((t: any) => t.propertyPath === propertyPath);
+    const frame = props.currentFrame || 0;
+    
+    return evalInterpolatedAtFrame(track, frame, meta.default);
+};
+
+// Get all animatable properties for current scene type
+const sceneAnimatables = computed(() => {
+    const sceneType = props.selectedScene?.type;
+    if (!sceneType) return [];
+    return (SCENE_ANIMATABLES as any)[sceneType] || [];
+});
 // Helpers for model3d asset uploads
 const uploading = ref(false);
 const uploadError = ref<string | null>(null);
@@ -333,20 +357,32 @@ const highlightWordSearch = (e: Event) => {
                 
                 <div v-if="!(sceneParams as any)?.modelObjUrl" style="padding:8px; border:1px dashed #555; background:#1a1a1a;">Upload model first</div>
                 <div v-if="uploadError" style="color:#e66;">{{ uploadError }}</div>
-                <label>
-                    Model scale
-                    <input type="number" step="0.1" min="0.1" :value="Number((sceneParams && (sceneParams as any).modelScale) ?? 1)"
-                        @input="(e:any)=>{ const v=Math.max(0.001, Number(e.target.value)||1); emit('update:sceneParams', { ...(sceneParams||{}), modelScale: v }); }" />
-                </label>
-                <label>
-                    Rotation (RPM)
-                    <input type="number" step="0.1" min="0" :value="Number((sceneParams && (sceneParams as any).rotationRpm) ?? 3)"
-                        @input="(e:any)=>{ const v=Math.max(0, Number(e.target.value)||0); emit('update:sceneParams', { ...(sceneParams||{}), rotationRpm: v }); }" />
-                </label>
                 <div style="font-size:12px; opacity:0.8;">
                     Current: OBJ {{ (sceneParams as any)?.modelObjUrl || '—' }}, MTL {{ (sceneParams as any)?.modelMtlUrl || '—' }},
                     Diffuse {{ (sceneParams as any)?.diffuseMapUrl || '—' }}, Normal {{ (sceneParams as any)?.normalMapUrl || '—' }}
                 </div>
+            </div>
+
+            <!-- Generic animatable properties for current scene type -->
+            <div v-if="sceneAnimatables.length > 0" style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+                <div style="font-weight:600; font-size:14px; margin-bottom:4px;">Animatable Properties</div>
+                <label v-for="meta in sceneAnimatables" :key="meta.propertyPath" style="display: flex; flex-direction: column; gap: 2px;">
+                    <span style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>{{ meta.label || meta.propertyPath }}</span>
+                        <span style="font-family: 'Courier New', monospace; font-size: 10px; color: #6c6; background: rgba(0, 255, 0, 0.08); padding: 2px 4px; border-radius: 2px;">
+                            {{ typeof getAnimatedValue(meta.propertyPath) === 'number' ? getAnimatedValue(meta.propertyPath).toFixed(3) : '—' }}
+                        </span>
+                    </span>
+                    <input 
+                        v-if="meta.type === 'number' || !meta.type"
+                        type="number" 
+                        :step="meta.step ?? 0.1" 
+                        :min="meta.min ?? undefined" 
+                        :max="meta.max ?? undefined"
+                        :value="typeof getAnimatedValue(meta.propertyPath) === 'number' ? getAnimatedValue(meta.propertyPath).toFixed(3) : meta.default"
+                        @input="(e:any)=>{ const v=Number(e.target.value) ?? meta.default; emit('propChangeValue', { propertyPath: meta.propertyPath, value: v }); }" 
+                    />
+                </label>
             </div>
         </div>
 
