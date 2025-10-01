@@ -24,6 +24,11 @@ import { useSceneManagement } from '@/front-end/composables/editor/useSceneManag
 import { useFrameEvaluation } from '@/front-end/composables/editor/useFrameEvaluation';
 import { useVideoExport } from '@/front-end/composables/editor/useVideoExport';
 import { useWolkImport } from '@/front-end/composables/editor/useWolkImport';
+import { useFrameRenderer } from '@/front-end/composables/editor/useFrameRenderer';
+import { useSceneActions } from '@/front-end/composables/editor/useSceneActions';
+import { useTimelineNavigation } from '@/front-end/composables/editor/useTimelineNavigation';
+import { useActionTracks } from '@/front-end/composables/editor/useActionTracks';
+import { useWordPoolMarkers } from '@/front-end/composables/editor/useWordPoolMarkers';
 
 // Utils
 import { hashWords } from '@/front-end/utils/hash/hashWords';
@@ -78,6 +83,9 @@ const frameEval = useFrameEvaluation(
     wordBank
 );
 
+// Frame Rendering (eliminates 4x duplication)
+const frameRenderer = useFrameRenderer(renderWorker, frameEval, audioAnalysis);
+
 // Export/Import
 const videoExport = useVideoExport(
     renderCanvas,
@@ -86,6 +94,9 @@ const videoExport = useVideoExport(
     songId
 );
 const wolkImport = useWolkImport();
+
+// Scene Actions
+const sceneActions = useSceneActions(timeline, scenes, songId);
 
 // ===== UI STATE =====
 
@@ -234,16 +245,6 @@ playback.onTick((frame, dt) => {
             playback.scrubToFrame(fFromAudio);
         }
     }
-    const beat = frameEval.getBeatAtFrame(frame);
-    const wordIndex = frameEval.getWordIndexAtFrame(frame);
-    const mix = frameEval.getActiveScenesAtFrame(frame);
-    const wordOverride = frameEval.getWordOverrideAtFrame(frame);
-    
-    // Get spectral bands
-    const cache = audioAnalysis.analysisCache.value;
-    const lowBand = audioAnalysis.bandsLowPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, frame))] || 0;
-    const midBand = audioAnalysis.bandsMidPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, frame))] || 0;
-    const highBand = audioAnalysis.bandsHighPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, frame))] || 0;
     
     // Check if reconfiguration needed
     const cfgKey = computeConfigKeyForFrame(frame);
@@ -251,18 +252,8 @@ playback.onTick((frame, dt) => {
         configureWorkerScene();
     }
     
-    renderWorker.sendFrame({
-        frame,
-        dt,
-        beat,
-        wordIndex,
-        alphaA: mix.alphaA,
-        alphaB: mix.alphaB,
-        wordOverride,
-        lowBand,
-        midBand,
-        highBand
-    });
+    // Send frame to worker (consolidated logic)
+    frameRenderer.sendFrameToWorker(frame, dt);
 });
 
 // Render completion callback
@@ -298,20 +289,7 @@ const stop = () => {
     audioPlayer.stop();
     
     // Update preview for frame 0
-    const beat0 = frameEval.getBeatAtFrame(0);
-    const wordIndex0 = frameEval.getWordIndexAtFrame(0);
-    const mix0 = frameEval.getActiveScenesAtFrame(0);
-    const wordOverride0 = frameEval.getWordOverrideAtFrame(0);
-    
-    renderWorker.sendFrame({
-        frame: 0,
-        dt: 0,
-        beat: beat0,
-        wordIndex: wordIndex0,
-        alphaA: mix0.alphaA,
-        alphaB: mix0.alphaB,
-        wordOverride: wordOverride0
-    });
+    frameRenderer.sendFrameToWorker(0, 0);
     
     requestAnimationFrame(() => drawPreview());
 };
@@ -322,34 +300,14 @@ const onScrub = async (payload: { timeSec: number; frame: number }) => {
     await audioPlayer.seekTo(payload.timeSec);
     playback.scrubToFrame(payload.frame);
     
-    // Update preview immediately
-    const beat = frameEval.getBeatAtFrame(payload.frame);
-    const wordIndex = frameEval.getWordIndexAtFrame(payload.frame);
-    const mix = frameEval.getActiveScenesAtFrame(payload.frame);
-    const wordOverride = frameEval.getWordOverrideAtFrame(payload.frame);
-    
+    // Check if reconfiguration needed
     const cfgKey = computeConfigKeyForFrame(payload.frame);
     if (cfgKey !== lastConfiguredKey) {
         await configureWorkerScene();
     }
     
-    const cache = audioAnalysis.analysisCache.value;
-    const lowBand = audioAnalysis.bandsLowPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, payload.frame))] || 0;
-    const midBand = audioAnalysis.bandsMidPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, payload.frame))] || 0;
-    const highBand = audioAnalysis.bandsHighPerFrame.value[Math.min(cache?.totalFrames || 0 - 1, Math.max(0, payload.frame))] || 0;
-    
-    renderWorker.sendFrame({
-        frame: payload.frame,
-        dt: 0,
-        beat,
-        wordIndex,
-        alphaA: mix.alphaA,
-        alphaB: mix.alphaB,
-        wordOverride,
-        lowBand,
-        midBand,
-        highBand
-    });
+    // Update preview immediately
+    frameRenderer.sendFrameToWorker(payload.frame, 0);
     
     requestAnimationFrame(() => drawPreview());
 };
@@ -371,6 +329,23 @@ const onSceneUpdated = async (s: any) => {
     }
 };
 
+// ===== ADDITIONAL COMPOSABLES (after handlers defined) =====
+
+// Timeline Navigation (depends on onScrub)
+const timelineNavigation = useTimelineNavigation(
+    timeline,
+    playback,
+    audioAnalysis,
+    fps,
+    onScrub
+);
+
+// Action Tracks (depends on onTimelineUpdated)
+const actionTracks = useActionTracks(timeline, onTimelineUpdated);
+
+// Word Pool Markers (depends on onTimelineUpdated)
+const wordPoolMarkers = useWordPoolMarkers(timeline, onTimelineUpdated);
+
 // ===== SCENE HANDLERS =====
 
 const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d') => {
@@ -389,21 +364,7 @@ const applySceneParams = async (p: Record<string, any>) => {
     await configureWorkerScene();
     
     // Push immediate frame update
-    const f = playback.frame.value;
-    const beat = frameEval.getBeatAtFrame(f);
-    const wordIndex = frameEval.getWordIndexAtFrame(f);
-    const mix = frameEval.getActiveScenesAtFrame(f);
-    const wordOverride = frameEval.getWordOverrideAtFrame(f);
-    
-    renderWorker.sendFrame({
-        frame: f,
-        dt: 0,
-        beat,
-        wordIndex,
-        alphaA: mix.alphaA,
-        alphaB: mix.alphaB,
-        wordOverride
-    });
+    frameRenderer.sendFrameToWorker(playback.frame.value, 0);
 };
 
 // ===== INITIALIZATION =====
@@ -491,13 +452,7 @@ const reanalyze = async () => {
         await audioAnalysis.analyzeBuffer(buffer);
         
         // Refresh current frame
-        const f = playback.frame.value;
-        const beat = frameEval.getBeatAtFrame(f);
-        const wordIndex = frameEval.getWordIndexAtFrame(f);
-        const mix = frameEval.getActiveScenesAtFrame(f);
-        const wordOverride = frameEval.getWordOverrideAtFrame(f);
-        
-        renderWorker.sendFrame({ frame: f, dt: 0, beat, wordIndex, alphaA: mix.alphaA, alphaB: mix.alphaB, wordOverride });
+        frameRenderer.sendFrameToWorker(playback.frame.value, 0);
         requestAnimationFrame(() => drawPreview());
     } catch {}
 };
@@ -527,37 +482,52 @@ const handleReset = async () => {
     } catch {}
 };
 
-const genId = () => crypto.randomUUID();
+// ===== COMPUTED PROPERTIES =====
 
-// Move global pool marker
-const moveGlobalPoolMarker = (index: number, newFrame: number, originalFrame?: number) => {
-    if (!timeline.value) return;
+/**
+ * Gets the allowed words track for the currently selected scene
+ */
+const allowedTrack = computed(() => {
+    const id = scenes.selectedSceneId.value;
+    if (!id) return null;
     
-    const track = timeline.value.wordsPoolTrack || { propertyPath: 'timeline.words.pool', keyframes: [] } as any;
-    const frames = (track.keyframes || []).slice();
+    const doc = scenes.sceneDocs.value?.[id];
+    const tracks = Array.isArray(doc?.tracks) ? doc.tracks : [];
     
-    let targetIdx = index;
-    if (typeof originalFrame === 'number') {
-        const cand = frames.findIndex((k: any) => (k.frame | 0) === (originalFrame | 0));
-        if (cand >= 0) targetIdx = cand;
-    }
+    return tracks.find((t: any) => t.propertyPath === 'words.allowed') || null;
+});
+
+// ===== INSPECTOR HANDLERS =====
+
+/**
+ * Updates scene tracks when modified in the inspector
+ */
+const handleSceneTracksUpdate = async (payload: any) => {
+    const sceneId = String(payload?.sceneId || '');
+    const incomingTracks: any[] = Array.isArray(payload?.tracks) ? payload.tracks : [];
     
-    if (targetIdx < 0 || targetIdx >= frames.length) return;
+    if (!sceneId) return;
     
-    const updated = frames.slice();
-    const target = updated[targetIdx];
-    updated.splice(targetIdx, 1);
+    const doc = scenes.sceneDocs.value?.[sceneId];
+    if (!doc) return;
     
-    const next = { frame: Math.max(0, newFrame | 0), value: Array.isArray(target.value) ? target.value : [] };
-    updated.push(next);
-    updated.sort((a: any, b: any) => (a.frame | 0) - (b.frame | 0));
+    const existingTracks: any[] = Array.isArray(doc.tracks) ? doc.tracks : [];
     
-    const nextDoc: TimelineDocument = {
-        ...(timeline.value as any),
-        wordsPoolTrack: { propertyPath: 'timeline.words.pool', keyframes: updated }
-    };
+    // Merge tracks by propertyPath
+    const trackMap: Record<string, any> = {};
+    existingTracks.forEach((t: any) => {
+        trackMap[t.propertyPath] = t;
+    });
+    incomingTracks.forEach((t: any) => {
+        trackMap[t.propertyPath] = t;
+    });
     
-    onTimelineUpdated(nextDoc);
+    const mergedTracks = Object.values(trackMap);
+    const updatedDoc = { ...doc, tracks: mergedTracks };
+    
+    (scenes.sceneDocs.value as any)[sceneId] = updatedDoc;
+    await TimelineService.saveScene(songId.value, updatedDoc);
+    await configureWorkerScene();
 };
 
 // ===== LIFECYCLE =====
@@ -598,24 +568,8 @@ onUnmounted(() => {
                 :fps="fps"
                 @select="selectScene"
                 @add="addScene"
-                @delete="(id: string) => {
-                    scenes.deleteScene(id);
-                    if (timeline) TimelineService.save(songId, timeline);
-                }"
-                @switchHere="({ frame }) => {
-                    const scenesList = [...(timeline?.scenes || [])];
-                    if (!scenesList.length) return;
-                    const idx = scenesList.findIndex(s => frame >= s.startFrame && frame < s.startFrame + s.durationFrames);
-                    if (idx < 0 || idx + 1 >= scenesList.length) return;
-                    const a = { ...scenesList[idx] } as any;
-                    const b = { ...scenesList[idx + 1] } as any;
-                    const leftDur = Math.max(1, frame - a.startFrame);
-                    a.durationFrames = leftDur;
-                    b.startFrame = frame;
-                    scenesList[idx] = a;
-                    scenesList[idx + 1] = b;
-                    if (timeline) onTimelineUpdated({ ...(timeline as any), scenes: scenesList });
-                }"
+                @delete="sceneActions.handleDeleteScene"
+                @switchHere="sceneActions.handleSwitchHere"
             />
         </div>
 
@@ -636,63 +590,13 @@ onUnmounted(() => {
                 :current-frame="playback.frame.value"
                 :word-bank="song?.wordBank || []"
                 :word-groups="song?.wordGroups || []"
-                :allowed-track="(() => {
-                    const id = scenes.selectedSceneId.value;
-                    if (!id) return null;
-                    const doc = scenes.sceneDocs.value?.[id];
-                    const tracks = Array.isArray(doc?.tracks) ? doc.tracks : [];
-                    return tracks.find((t: any) => t.propertyPath === 'words.allowed') || null;
-                })()"
+                :allowed-track="allowedTrack"
                 @update:overlayOpts="v => overlayOpts = v"
                 @update:timeline="onTimelineUpdated"
                 @update:scene="onSceneUpdated"
                 @update:sceneParams="applySceneParams"
-                @update:sceneTracks="(payload: any) => {
-                    const sid = String(payload?.sceneId || '');
-                    const incoming: any[] = Array.isArray(payload?.tracks) ? payload.tracks : [];
-                    if (!sid) return;
-                    const doc = scenes.sceneDocs.value?.[sid];
-                    if (!doc) return;
-                    const existing: any[] = Array.isArray(doc.tracks) ? doc.tracks : [];
-                    const map: Record<string, any> = {};
-                    existing.forEach((t: any) => { map[t.propertyPath] = t; });
-                    incoming.forEach((t: any) => { map[t.propertyPath] = t; });
-                    const merged = Object.values(map);
-                    const updated = { ...doc, tracks: merged };
-                    (scenes.sceneDocs.value as any)[sid] = updated;
-                    TimelineService.saveScene(songId, updated);
-                    configureWorkerScene();
-                }"
-                @navigate="({ dir }) => {
-                    const track = timeline?.wordsPoolTrack;
-                    const kf: number[] = Array.isArray(track?.keyframes)
-                        ? (track as any).keyframes.map((k: any) => Math.max(0, (k.frame | 0))).sort((a: number, b: number) => a - b)
-                        : [];
-                    const beats = audioAnalysis.beatTimesSec.value;
-                    const cur = playback.frame.value;
-                    const secs = (f: number) => f / Math.max(1, fps);
-                    const toFrame = (t: number) => Math.max(0, Math.round(t * Math.max(1, fps)));
-                    
-                    if (dir === 'nextKf' && kf.length) {
-                        const n = kf.find((f: number) => f > cur);
-                        if (typeof n === 'number') { onScrub({ timeSec: secs(n), frame: n }); return; }
-                    }
-                    if (dir === 'prevKf' && kf.length) {
-                        const p = [...kf].reverse().find((f: number) => f < cur);
-                        if (typeof p === 'number') { onScrub({ timeSec: secs(p), frame: p }); return; }
-                    }
-                    if ((dir === 'nextBeat' || dir === 'prevBeat') && beats.length) {
-                        const curT = secs(cur);
-                        const sorted = beats.slice().sort((a: number, b: number) => a - b);
-                        if (dir === 'nextBeat') {
-                            const nb = sorted.find((b: number) => b > curT);
-                            if (typeof nb === 'number') { onScrub({ timeSec: nb, frame: toFrame(nb) }); return; }
-                        } else {
-                            const pb = [...sorted].reverse().find((b: number) => b < curT);
-                            if (typeof pb === 'number') { onScrub({ timeSec: pb, frame: toFrame(pb) }); return; }
-                        }
-                    }
-                }"
+                @update:sceneTracks="handleSceneTracksUpdate"
+                @navigate="({ dir }) => timelineNavigation.navigateTo(dir)"
                 @resetProject="handleReset"
                 @importWolk="wolkImport.openDialog"
             />
@@ -718,26 +622,10 @@ onUnmounted(() => {
                 :action-items="(timeline?.actionTracks || []) as any"
                 :word-keyframes="timeline?.wordsPoolTrack?.keyframes?.map((k: any) => k.frame) || []"
                 @scrub="onScrub"
-                @dragGlobalPoolMarker="({ index, frame, originalFrame }) => moveGlobalPoolMarker(index, frame, originalFrame)"
-                @sceneUpdate="(s: any) => {
-                    const list = [...(timeline?.scenes || [])];
-                    const i = list.findIndex(x => x.id === s.id);
-                    if (i >= 0) {
-                        list[i] = s;
-                        if (timeline) onTimelineUpdated({ ...(timeline as any), scenes: list });
-                    }
-                }"
+                @dragGlobalPoolMarker="({ index, frame, originalFrame }) => wordPoolMarkers.moveMarker(index, frame, originalFrame)"
+                @sceneUpdate="sceneActions.handleSceneUpdate"
                 @sceneSelect="({ id }) => selectScene(id)"
-                @actionToggle="({ frame }) => {
-                    const acts = Array.isArray(timeline?.actionTracks) ? [...(timeline as any).actionTracks] : [];
-                    const idx = acts.findIndex((a: any) => a.frame === frame && a.actionType === 'wordOverride');
-                    if (idx >= 0) {
-                        acts.splice(idx, 1);
-                    } else {
-                        acts.push({ id: genId(), frame, actionType: 'wordOverride', payload: { word: 'WOLK' } });
-                    }
-                    if (timeline) onTimelineUpdated({ ...(timeline as any), actionTracks: acts });
-                }"
+                @actionToggle="actionTracks.toggleWordOverride"
             />
         </div>
     </div>
