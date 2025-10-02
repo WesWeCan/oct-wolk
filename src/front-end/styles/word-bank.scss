@@ -1,25 +1,367 @@
 .word-bank {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
+    position: relative;
+    
+    .form-group {
+        display: flex;
+        gap: 8px;
+        align-items: stretch;
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 10px 14px;
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 14px;
+            transition: all 200ms;
+            
+            &::placeholder {
+                color: #666;
+            }
+            
+            &:focus {
+                outline: none;
+                border-color: rgba(0, 212, 255, 0.5);
+                background: rgba(30, 30, 40, 1);
+                box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+            }
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+    }
 }
 
-.wb-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.wb-col.tree { border-right: 1px solid #ddd; padding-right: 12px; }
-.wb-col.words { padding-left: 12px; }
+.wb-columns { 
+    display: grid; 
+    grid-template-columns: 1fr 1fr; 
+    gap: 24px;
+    
+    @media (max-width: 900px) {
+        grid-template-columns: 1fr;
+    }
+}
 
-.wb-words { display: flex; flex-wrap: wrap; gap: 8px; }
-.wb-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 12px; background: #f7f7f7; cursor: grab; }
-.wb-chip.small { padding: 4px 8px; font-size: 12px; }
-.wb-chip.hovered { outline: 2px solid #3b82f6; }
-.wb-chip .rm { border: none; background: transparent; cursor: pointer; font-size: 14px; line-height: 1; }
+.wb-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    
+    &.tree { 
+        border-right: 1px solid rgba(0, 212, 255, 0.15); 
+        padding-right: 16px; 
+        
+        @media (max-width: 900px) {
+            border-right: none;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.15);
+            padding-right: 0;
+            padding-bottom: 16px;
+        }
+    }
+    
+    &.words { 
+        padding-left: 16px; 
+        
+        @media (max-width: 900px) {
+            padding-left: 0;
+            padding-top: 16px;
+        }
+    }
+}
 
-.group-node { border: 1px solid #eee; border-radius: 8px; margin-bottom: 8px; padding: 8px; }
-.group-node .header { display: flex; align-items: center; gap: 8px; }
-.group-node .name { font-weight: 500; }
-.group-node .collapse { width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; }
-.group-node .body { margin-left: 24px; margin-top: 8px; display: grid; gap: 8px; }
-.group-node .children { display: grid; gap: 6px; }
-.group-node .subgroup-drop { min-height: 32px; border: 1px dashed #bbb; border-radius: 6px; padding: 6px; }
-.group-node .words { display: flex; flex-wrap: wrap; gap: 6px; min-height: 36px; padding: 6px; border: 1px dashed #ddd; border-radius: 6px; }
-.drop-hint, .child-hint { color: #888; font-size: 12px; padding: 4px; }
+.wb-words { 
+    display: flex; 
+    flex-wrap: wrap; 
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.wb-chip { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 6px; 
+    padding: 6px 12px; 
+    border: 1px solid rgba(0, 212, 255, 0.2); 
+    border-radius: 12px; 
+    background: rgba(30, 30, 40, 0.8); 
+    color: #e0e0e0;
+    cursor: grab; 
+    transition: all 150ms;
+    font-size: 13px;
+    flex-shrink: 0;
+    max-width: 100%;
+    
+    &:hover {
+        background: rgba(0, 212, 255, 0.15);
+        border-color: rgba(0, 212, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
+    }
+    
+    &:active {
+        cursor: grabbing;
+        transform: translateY(0);
+    }
+    
+    &.small { 
+        padding: 4px 10px; 
+        font-size: 12px; 
+    }
+    
+    &.hovered { 
+        outline: 2px solid #00d4ff; 
+        background: rgba(0, 212, 255, 0.25);
+        box-shadow: 0 0 12px rgba(0, 212, 255, 0.4);
+    }
+    
+    .rm { 
+        border: none; 
+        background: transparent; 
+        cursor: pointer; 
+        font-size: 16px; 
+        line-height: 1; 
+        color: #ff6b6b;
+        padding: 0 4px;
+        transition: all 150ms;
+        
+        &:hover {
+            color: #ff5252;
+            transform: scale(1.2);
+        }
+    }
+}
+
+.group-node { 
+    border: 1px solid rgba(0, 212, 255, 0.2); 
+    border-radius: 10px; 
+    margin-bottom: 10px;
+    margin-top: 0;
+    padding: 0; 
+    background: linear-gradient(135deg, rgba(25, 25, 35, 0.8) 0%, rgba(20, 20, 30, 0.9) 100%);
+    transition: all 220ms ease;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    
+    &:first-child {
+        margin-top: 0;
+    }
+    
+    &:hover {
+        border-color: rgba(0, 212, 255, 0.4);
+        box-shadow: 0 4px 16px rgba(0, 212, 255, 0.15);
+        transform: translateY(-1px);
+    }
+    
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        background: linear-gradient(180deg, rgba(0, 212, 255, 0.6) 0%, rgba(0, 150, 200, 0.3) 100%);
+    }
+    
+    .header { 
+        display: flex; 
+        flex-wrap: wrap;
+        align-items: center; 
+        gap: 8px; 
+        padding: 12px 14px;
+        background: rgba(0, 212, 255, 0.05);
+        border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 7px 12px;
+            background: rgba(15, 15, 25, 0.9);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 200ms;
+            
+            &:focus {
+                outline: none;
+                border-color: rgba(0, 212, 255, 0.6);
+                background: rgba(15, 15, 25, 1);
+                box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+            }
+        }
+        
+        button {
+            padding: 6px 14px;
+            font-size: 11px;
+            min-width: auto;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            border-radius: 6px;
+            transition: all 180ms;
+            
+            &.rename, &.confirm {
+                background: rgba(0, 212, 255, 0.15);
+                border: 1px solid rgba(0, 212, 255, 0.3);
+                color: #00d4ff;
+                
+                &:hover {
+                    background: rgba(0, 212, 255, 0.25);
+                    border-color: rgba(0, 212, 255, 0.5);
+                    transform: translateY(-1px);
+                }
+            }
+            
+            &.remove, &.cancel {
+                background: rgba(255, 100, 100, 0.1);
+                border: 1px solid rgba(255, 100, 100, 0.3);
+                color: #ff6b6b;
+                
+                &:hover {
+                    background: rgba(255, 100, 100, 0.2);
+                    border-color: rgba(255, 100, 100, 0.5);
+                    transform: translateY(-1px);
+                }
+            }
+        }
+    }
+    
+    .group-name { 
+        font-weight: 700; 
+        color: #00d4ff;
+        font-size: 14px;
+        flex: 1;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+    
+    .collapse { 
+        width: 32px; 
+        height: 32px; 
+        border: 1px solid rgba(0, 212, 255, 0.2); 
+        background: rgba(0, 212, 255, 0.08); 
+        color: #00d4ff;
+        cursor: pointer; 
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 180ms ease;
+        flex-shrink: 0;
+        font-size: 13px;
+        
+        &:hover {
+            background: rgba(0, 212, 255, 0.18);
+            border-color: rgba(0, 212, 255, 0.4);
+            transform: scale(1.08);
+            box-shadow: 0 2px 8px rgba(0, 212, 255, 0.2);
+        }
+        
+        &:active {
+            transform: scale(0.95);
+        }
+    }
+    
+    .body { 
+        padding: 14px 14px 14px 18px;
+        display: grid; 
+        gap: 12px; 
+    }
+    
+    .children { 
+        display: grid; 
+        gap: 10px;
+        padding-left: 16px;
+        border-left: 2px solid rgba(0, 212, 255, 0.15);
+        margin-left: 6px;
+    }
+    
+    .subgroup-drop { 
+        min-height: 42px; 
+        border: 2px dashed rgba(0, 212, 255, 0.25); 
+        border-radius: 8px; 
+        padding: 10px; 
+        background: rgba(15, 15, 25, 0.5);
+        transition: all 220ms ease;
+        
+        &.drag-over {
+            background: rgba(0, 212, 255, 0.12);
+            border-color: rgba(0, 212, 255, 0.6);
+            box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+            transform: scale(1.01);
+        }
+    }
+    
+    .words { 
+        display: flex; 
+        flex-wrap: wrap; 
+        gap: 7px; 
+        min-height: 48px; 
+        padding: 12px; 
+        border: 2px dashed rgba(0, 212, 255, 0.2); 
+        border-radius: 8px; 
+        background: rgba(15, 15, 25, 0.6);
+        transition: all 220ms ease;
+        
+        &.drag-over {
+            background: rgba(0, 212, 255, 0.12);
+            border-color: rgba(0, 212, 255, 0.6);
+            border-style: solid;
+            box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+            transform: scale(1.01);
+        }
+        
+        &:empty::before {
+            content: '↓ Drop words here';
+            color: #666;
+            font-size: 12px;
+            font-style: italic;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+    }
+}
+
+.drop-hint, 
+.child-hint { 
+    color: #777; 
+    font-size: 11px; 
+    padding: 10px; 
+    text-align: center;
+    font-style: italic;
+    opacity: 0.8;
+    letter-spacing: 0.02em;
+    
+    &::before {
+        content: '↓ ';
+        font-style: normal;
+        color: rgba(0, 212, 255, 0.5);
+    }
+}
+
+// Fix vue-draggable ghost elements
+.sortable-ghost {
+    opacity: 0.4;
+    background: rgba(0, 212, 255, 0.2);
+}
+
+.sortable-chosen {
+    opacity: 0.8;
+}
+
+.sortable-drag {
+    opacity: 0;
+}

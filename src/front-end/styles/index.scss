@@ -1,3 +1,9 @@
+// Base styles (must come first)
+@use 'base/fonts' as base-fonts;
+@use 'base/global';
+@use 'base/inputs';
+
+// Legacy SCSS files
 @use 'splash-screen';
 @use 'song-bank';
 @use 'lyric-analyzer';
@@ -6,26 +12,21 @@
 @use 'editor';
 @use 'timeline';
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+// New organized SCSS files
+@use 'app/navigation';
+@use 'components/buttons';
+@use 'components/song-data';
+@use 'editor/toolbar';
+@use 'editor/modal';
+@use 'editor/sidebar';
+@use 'editor/monitor';
+@use 'inspector/main';
+@use 'inspector/fonts';
+@use 'inspector/words';
+@use 'timeline/root';
+@use 'views/editor-index';
 
-
-body {
-    font-family: 'Roboto', sans-serif;
-    background-color: #fff;
-    color: #000;
-}
-
-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 20px;
-}
-
+// Legacy overrides
 .lane-label {
     color: #fff;
 }

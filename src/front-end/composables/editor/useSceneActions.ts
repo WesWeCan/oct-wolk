@@ -89,10 +89,98 @@ export function useSceneActions(
     }
   };
   
+  /**
+   * Duplicates a scene and saves timeline
+   */
+  const handleDuplicateScene = async (id: string) => {
+    if (!timeline.value) return;
+    
+    const scenesList = [...timeline.value.scenes];
+    const idx = scenesList.findIndex(s => s.id === id);
+    
+    if (idx < 0) return;
+    
+    const original = scenesList[idx];
+    const duplicate: SceneRef = {
+      ...original,
+      id: `scene-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: `${original.name} (Copy)`,
+      startFrame: original.startFrame + original.durationFrames
+    };
+    
+    // Insert after original
+    scenesList.splice(idx + 1, 0, duplicate);
+    
+    // Shift subsequent scenes
+    for (let i = idx + 2; i < scenesList.length; i++) {
+      scenesList[i] = {
+        ...scenesList[i],
+        startFrame: scenesList[i - 1].startFrame + scenesList[i - 1].durationFrames
+      };
+    }
+    
+    const updatedTimeline: TimelineDocument = {
+      ...timeline.value,
+      scenes: scenesList
+    };
+    
+    timeline.value = updatedTimeline;
+    await TimelineService.save(songId.value, updatedTimeline);
+    
+    // Copy scene document if exists
+    const originalDoc = scenes.sceneDocs.value[id];
+    if (originalDoc) {
+      const duplicateDoc = {
+        ...originalDoc,
+        id: duplicate.id,
+        name: duplicate.name
+      };
+      await TimelineService.saveScene(songId.value, duplicateDoc);
+      scenes.sceneDocs.value[duplicate.id] = duplicateDoc;
+    }
+    
+    // Select the duplicate
+    scenes.selectedSceneId.value = duplicate.id;
+  };
+  
+  /**
+   * Renames a scene and saves timeline
+   */
+  const handleRenameScene = async ({ id, name }: { id: string; name: string }) => {
+    if (!timeline.value) return;
+    
+    const scenesList = [...timeline.value.scenes];
+    const idx = scenesList.findIndex(s => s.id === id);
+    
+    if (idx < 0) return;
+    
+    scenesList[idx] = {
+      ...scenesList[idx],
+      name
+    };
+    
+    const updatedTimeline: TimelineDocument = {
+      ...timeline.value,
+      scenes: scenesList
+    };
+    
+    timeline.value = updatedTimeline;
+    await TimelineService.save(songId.value, updatedTimeline);
+    
+    // Update scene document if exists
+    const sceneDoc = scenes.sceneDocs.value[id];
+    if (sceneDoc) {
+      sceneDoc.name = name;
+      await TimelineService.saveScene(songId.value, sceneDoc);
+    }
+  };
+  
   return {
     handleDeleteScene,
     handleSwitchHere,
-    handleSceneUpdate
+    handleSceneUpdate,
+    handleDuplicateScene,
+    handleRenameScene
   };
 }
 

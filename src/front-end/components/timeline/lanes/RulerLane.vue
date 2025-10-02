@@ -49,23 +49,24 @@ const redraw = () => {
     while (svg.firstChild) svg.removeChild(svg.firstChild);
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     const mk = (name: string) => document.createElementNS('http://www.w3.org/2000/svg', name);
-    const bg = mk('rect'); bg.setAttribute('x', '0'); bg.setAttribute('y', '0'); bg.setAttribute('width', String(w)); bg.setAttribute('height', String(h)); bg.setAttribute('fill', '#202020'); svg.appendChild(bg);
+    const bg = mk('rect'); bg.setAttribute('x', '0'); bg.setAttribute('y', '0'); bg.setAttribute('width', String(w)); bg.setAttribute('height', String(h)); bg.setAttribute('fill', 'rgba(20, 20, 25, 0.95)'); svg.appendChild(bg);
     // capture rect for full-width interactions
     const capture = mk('rect'); capture.setAttribute('x', '0'); capture.setAttribute('y', '0'); capture.setAttribute('width', String(w)); capture.setAttribute('height', String(h)); capture.setAttribute('fill', 'transparent'); capture.setAttribute('pointer-events', 'all'); svg.appendChild(capture);
     const grid = mk('g'); grid.setAttribute('stroke', 'rgba(255,255,255,0.15)'); grid.setAttribute('stroke-width', '1'); svg.appendChild(grid);
     const step = niceGridSeconds(props.viewport.durationSec, w);
     const startTick = Math.ceil(props.viewport.startSec / step) * step;
+    const padding = 6; // Internal padding for spacing from edges
     for (let t = startTick; t < props.viewport.startSec + props.viewport.durationSec; t += step) {
         const x = timeToX(t, w);
-        const line = mk('line'); line.setAttribute('x1', String(x)); line.setAttribute('y1', '0'); line.setAttribute('x2', String(x)); line.setAttribute('y2', String(h)); grid.appendChild(line);
+        const line = mk('line'); line.setAttribute('x1', String(x)); line.setAttribute('y1', String(padding)); line.setAttribute('x2', String(x)); line.setAttribute('y2', String(h - padding)); grid.appendChild(line);
         const labelText = formatLabel(t, step);
-        const label = mk('text'); label.textContent = labelText; label.setAttribute('x', String(x + 4)); label.setAttribute('y', String(26)); label.setAttribute('fill', '#fff'); label.setAttribute('font-size', '11'); label.setAttribute('paint-order','stroke'); label.setAttribute('stroke','#000'); label.setAttribute('stroke-width','2'); label.setAttribute('pointer-events','none'); svg.appendChild(label);
+        const label = mk('text'); label.textContent = labelText; label.setAttribute('x', String(x + 4)); label.setAttribute('y', String(h - 12)); label.setAttribute('fill', '#fff'); label.setAttribute('font-size', '11'); label.setAttribute('paint-order', 'stroke'); label.setAttribute('stroke', '#000'); label.setAttribute('stroke-width', '2'); label.setAttribute('pointer-events', 'none'); svg.appendChild(label);
     }
     // playhead
     const curTime = Math.max(0, props.playhead.frame / Math.max(1, props.viewport.fps));
     const px = timeToX(curTime, w);
-    const ph = mk('line'); ph.setAttribute('x1', String(px)); ph.setAttribute('y1', '0'); ph.setAttribute('x2', String(px)); ph.setAttribute('y2', String(h)); ph.setAttribute('stroke', 'rgba(255,0,0,0.5)'); ph.setAttribute('stroke-width', '1'); svg.appendChild(ph);
-    const label = mk('text'); label.textContent = formatLabel(curTime, 0.5); label.setAttribute('x', String(px + 6)); label.setAttribute('y', '14'); label.setAttribute('fill', '#ff8080'); label.setAttribute('font-size', '11'); label.setAttribute('paint-order','stroke'); label.setAttribute('stroke','#000'); label.setAttribute('stroke-width','2'); label.setAttribute('pointer-events','none'); svg.appendChild(label);
+    const ph = mk('line'); ph.setAttribute('x1', String(px)); ph.setAttribute('y1', String(padding)); ph.setAttribute('x2', String(px)); ph.setAttribute('y2', String(h - padding)); ph.setAttribute('stroke', 'rgba(255,0,0,0.5)'); ph.setAttribute('stroke-width', '1'); svg.appendChild(ph);
+    const label = mk('text'); label.textContent = formatLabel(curTime, 0.5); label.setAttribute('x', String(px + 6)); label.setAttribute('y', String(h - 12)); label.setAttribute('fill', '#ff8080'); label.setAttribute('font-size', '11'); label.setAttribute('paint-order', 'stroke'); label.setAttribute('stroke', '#000'); label.setAttribute('stroke-width', '2'); label.setAttribute('pointer-events', 'none'); svg.appendChild(label);
 };
 
 let isPointerDown = false;
@@ -91,7 +92,7 @@ const onPointerMove = (e: PointerEvent) => {
 const onPointerUp = (e: PointerEvent) => {
     if (!isPointerDown) return;
     isPointerDown = false;
-    const svg = svgRef.value; if (svg) { try { svg.releasePointerCapture(e.pointerId); } catch {} }
+    const svg = svgRef.value; if (svg) { try { svg.releasePointerCapture(e.pointerId); } catch { } }
 };
 
 useLaneInteractions(svgRef as any, {
@@ -116,9 +117,5 @@ watch(() => [props.viewport.startSec, props.viewport.durationSec, props.viewport
 </script>
 
 <template>
-    <svg ref="svgRef" class="ruler" tabindex="0" />
+    <svg ref="svgRef" class="ruler" tabindex="0"></svg>
 </template>
-
- 
-
-

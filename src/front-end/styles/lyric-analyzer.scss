@@ -1,25 +1,299 @@
-.lyric-analyzer {
+.lyric-analyzer-page {
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: 20px;
-    height: 100vh;
-    gap: 20px;
+    
+    .page-header {
+        background: rgba(15, 15, 20, 0.8);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(0, 212, 255, 0.15);
+        padding: 24px 40px;
+        
+        .header-content {
+            max-width: 1800px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .title-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            
+            .back-link {
+                color: #00d4ff;
+                text-decoration: none;
+                font-size: 14px;
+                transition: all 200ms;
+                width: fit-content;
+                
+                &:hover {
+                    color: #00e5ff;
+                    transform: translateX(-4px);
+                }
+            }
+            
+            h1 {
+                margin: 0;
+                font-size: 32px;
+                font-weight: 600;
+                color: #e0e0e0;
+            }
+            
+            .subtitle {
+                margin: 0;
+                color: #999;
+                font-size: 14px;
+            }
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: 600;
+                white-space: nowrap;
+                
+                &:disabled {
+                    opacity: 0.4;
+                    cursor: not-allowed;
+                }
+            }
+        }
+    }
+    
+    .loading-state {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 400px;
+        gap: 16px;
+        color: #999;
+        
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(0, 212, 255, 0.2);
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        p {
+            margin: 0;
+            font-size: 16px;
+        }
+    }
+    
+    .page-content {
+        flex: 1;
+        padding: 32px 40px;
+        max-width: 1800px;
+        width: 100%;
+        margin: 0 auto;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+        min-height: 0;
+        gap: 32px;
+    }
+    
+    .song-data-section {
+        background: rgba(20, 20, 30, 0.6);
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        border-radius: 12px;
+        overflow: hidden;
+        transition: all 200ms;
+        
+        &[open] {
+            border-color: rgba(0, 212, 255, 0.4);
+        }
+        
+        summary {
+            padding: 20px 24px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #e0e0e0;
+            transition: all 200ms;
+            list-style: none; // Remove default marker
+            
+            &::-webkit-details-marker {
+                display: none; // Remove webkit default marker
+            }
+            
+            &::before {
+                content: '▶';
+                color: #00d4ff;
+                font-size: 12px;
+                transition: transform 200ms;
+            }
+            
+            &:hover {
+                background: rgba(0, 212, 255, 0.05);
+            }
+            
+            .summary-icon {
+                font-size: 20px;
+            }
+            
+            .summary-text {
+                flex: 1;
+            }
+        }
+        
+        &[open] summary::before {
+            transform: rotate(90deg);
+        }
+        
+        .section-content {
+            padding: 0 24px 24px 24px;
+        }
+    }
+    
+    .editor-grid {
+        display: grid;
+        grid-template-columns: var(--lyrics-width, 50%) 6px calc(100% - var(--lyrics-width, 50%) - 6px);
+        gap: 0;
+        position: relative;
+        
+        @media (max-width: 1200px) {
+            grid-template-columns: 1fr;
+            gap: 24px;
+            
+            .panel-resizer {
+                display: none;
+            }
+        }
+    }
+    
+    .lyrics-panel,
+    .wordbank-panel {
+        background: rgba(20, 20, 30, 0.6);
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: border-color 200ms;
+        
+        &:hover {
+            border-color: rgba(0, 212, 255, 0.3);
+        }
+        
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.15);
+            background: rgba(15, 15, 20, 0.5);
+            flex-shrink: 0;
+            
+            h2 {
+                margin: 0 0 6px 0;
+                font-size: 14px;
+                font-weight: 600;
+                color: #00d4ff;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            
+            .panel-hint {
+                margin: 0;
+                font-size: 11px;
+                color: #888;
+                font-style: italic;
+            }
+        }
+        
+        .panel-content {
+            flex: 1;
+            padding: 20px;
+        }
+    }
+    
+    .panel-resizer {
+        position: relative;
+        width: 6px;
+        cursor: ew-resize;
+        background: repeating-linear-gradient(
+            0deg,
+            rgba(0, 212, 255, 0.2) 0,
+            rgba(0, 212, 255, 0.2) 2px,
+            transparent 2px,
+            transparent 6px
+        );
+        transition: all 180ms ease;
+        z-index: 10;
+        
+        &:hover {
+            width: 10px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.4) 0,
+                rgba(0, 212, 255, 0.4) 2px,
+                transparent 2px,
+                transparent 6px
+            );
+        }
+        
+        &:active {
+            width: 12px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.6) 0,
+                rgba(0, 212, 255, 0.6) 2px,
+                transparent 2px,
+                transparent 6px
+            );
+        }
+    }
 }
 
-
-.analyzer {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
-
-.lyrics {
-    background-color: #f0f0f0;
-    padding: 20px;
-}
-
-.words {
-    background-color: #f0f0f0;
-    padding: 20px;
+@media (max-width: 768px) {
+    .lyric-analyzer-page {
+        .page-header {
+            padding: 20px;
+            
+            .header-content {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .header-actions {
+                width: 100%;
+                
+                button {
+                    flex: 1;
+                }
+            }
+        }
+        
+        .page-content {
+            padding: 24px 20px;
+        }
+        
+        .editor-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 }

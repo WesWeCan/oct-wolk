@@ -1,0 +1,288 @@
+// Inspector main layout and sections (matching timeline aesthetic)
+.inspector {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  padding-right: 8px;
+  
+  h3 {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #00d4ff;
+    margin: 0 0 20px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+  }
+
+  // Details/Summary sections (matching timeline controls)
+  details {
+    margin-bottom: 16px;
+    background: rgba(20, 20, 25, 0.6);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 6px;
+    overflow: visible; // Allow content to flow naturally
+    transition: all 200ms;
+
+    &:hover {
+      border-color: rgba(0, 212, 255, 0.3);
+      background: rgba(20, 20, 25, 0.8);
+    }
+
+    summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+      transition: all 200ms;
+      background: rgba(255, 255, 255, 0.02);
+
+      &::-webkit-details-marker {
+        display: none;
+      }
+
+      &::after {
+        content: '▼';
+        font-size: 8px;
+        transition: transform 200ms;
+        color: #666;
+      }
+
+      &:hover {
+        background: rgba(0, 212, 255, 0.08);
+        color: #00d4ff;
+
+        &::after {
+          color: #00d4ff;
+        }
+      }
+    }
+
+    &:not([open]) summary::after {
+      transform: rotate(-90deg);
+    }
+
+    > div {
+      padding: 14px;
+      overflow: visible; // Don't clip content
+    }
+  }
+
+  // Labels and inputs
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #ddd;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+
+    &.inline {
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      text-transform: none;
+      font-weight: 500;
+      color: #ccc;
+      cursor: pointer;
+
+      input[type="checkbox"] {
+        margin: 0;
+        cursor: pointer;
+      }
+    }
+
+    &.property {
+      background: rgba(255, 255, 255, 0.02);
+      padding: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      transition: all 180ms;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(0, 212, 255, 0.2);
+      }
+
+      .property-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+
+        .value-display {
+          font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
+          font-size: 11px;
+          color: #6c6;
+          background: rgba(0, 255, 0, 0.08);
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-weight: 600;
+        }
+      }
+    }
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="search"],
+  textarea,
+  select {
+    width: 100%;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    font-family: inherit;
+    transition: all 180ms;
+    box-sizing: border-box;
+
+    &:focus {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(0, 212, 255, 0.5);
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+    }
+
+    &:hover:not(:focus) {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+  }
+  
+  textarea {
+    resize: vertical;
+    min-height: 80px;
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
+    font-size: 12px;
+  }
+
+  // Form rows
+  .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+
+    label {
+      flex: 1;
+      min-width: 140px;
+    }
+    
+    &.nav-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      
+      button {
+        padding: 6px 10px;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+    }
+  }
+
+  // Section titles
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #00d4ff;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+  }
+
+  // Animatable properties
+  .animatable-properties {
+    margin-top: 16px;
+  }
+
+  // Model uploads
+  .model-uploads {
+    margin-top: 16px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 6px;
+
+    .upload-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+
+      button {
+        padding: 6px 10px;
+        font-size: 11px;
+        flex: 1;
+        min-width: 100px;
+      }
+    }
+
+    .no-model {
+      padding: 12px;
+      text-align: center;
+      color: #888;
+      font-style: italic;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 4px;
+    }
+
+    .error {
+      padding: 10px 12px;
+      background: rgba(255, 0, 0, 0.1);
+      border: 1px solid rgba(255, 0, 0, 0.3);
+      border-radius: 6px;
+      color: #ff6b6b;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .current-assets {
+      padding: 10px 12px;
+      background: rgba(20, 20, 25, 0.5);
+      border-radius: 6px;
+      font-size: 11px;
+      color: #aaa;
+      font-family: 'SF Mono', 'Monaco', monospace;
+      line-height: 1.6;
+      margin-top: 12px;
+      word-break: break-all;
+    }
+  }
+
+  // Generic info displays
+  > div {
+    &:not([class]) {
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #ccc;
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 6px;
+      font-family: 'SF Mono', 'Monaco', monospace;
+    }
+  }
+}
+

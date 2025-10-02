@@ -15,12 +15,23 @@
 .lane {
     position: relative;
     width: 100%;
-    border-bottom: 1px solid #222;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+    background: rgba(255, 255, 255, 0.01);
+    transition: background 150ms;
+    // NO height transition - should be instant
+    will-change: auto; // Disable GPU acceleration hints for height
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
 
     &.lane--ruler-sticky {
         position: sticky !important;
         top: 0;
         z-index: 3;
+        background: rgba(20, 20, 25, 0.95);
+        backdrop-filter: blur(8px);
+        border-bottom-color: rgba(0, 212, 255, 0.2);
     }
 
     &.lane--no-resize {
@@ -43,56 +54,25 @@
     height: 6px;
     cursor: ns-resize;
     background: transparent;
+    transition: all 180ms;
 }
 
 .lane-resizer:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(0, 212, 255, 0.15);
+    height: 8px;
 }
 
-// Property controls in left column
-.prop-row {
-    margin-bottom: 6px;
-}
-
-.prop-row-header {
+// Empty properties placeholder
+.empty-properties-lane {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 2px;
-    font-size: 11px;
-}
-
-.prop-label {
-    font-weight: 500;
-    color: #ccc;
-}
-
-.prop-value-display {
-    font-family: 'Courier New', monospace;
-    font-size: 10px;
-    color: #6c6;
-    background: rgba(0, 255, 0, 0.08);
-    padding: 2px 4px;
-    border-radius: 2px;
-    min-width: 40px;
-    text-align: right;
-}
-
-.prop-controls {
-    display: flex;
-    gap: 2px;
-    align-items: center;
+    justify-content: center;
+    background: rgba(20, 20, 25, 0.5);
     
-    button {
-        padding: 2px 4px;
-        font-size: 10px;
-        min-width: 20px;
-    }
-    
-    input[type="number"] {
-        width: 60px;
-        font-size: 10px;
-        padding: 2px 4px;
+    .empty-properties-message {
+        color: #666;
+        font-size: 12px;
+        font-style: italic;
     }
 }
 
@@ -102,11 +82,19 @@
     align-items: center;
     gap: 8px;
     padding: 0 8px;
-    background: #202020;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(0, 212, 255, 0.15);
     color: #fff;
     cursor: pointer;
     font-size: 12px;
     user-select: none;
+    transition: all 150ms;
+    
+    &:hover {
+        background: rgba(0, 212, 255, 0.08);
+        border-bottom-color: rgba(0, 212, 255, 0.3);
+        color: #00d4ff;
+    }
 }
 
 .twisty {
@@ -123,7 +111,8 @@
     /* start at top of lane content */
     bottom: 0;
     width: 0;
-    border-left: 2px solid #ff3b30;
+    border-left: 2px solid #00d4ff;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.6);
     left: var(--playhead-x, -1000px);
     pointer-events: none;
 }
@@ -131,17 +120,24 @@
 /* Ruler lane */
 .ruler {
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     display: block;
-    background: #202020;
+    background: rgba(20, 20, 25, 0.95);
     touch-action: none;
+    user-select: none; // Prevent text selection when scrubbing
+    -webkit-user-select: none;
+    outline: none; // Remove focus outline
+    
+    &:focus {
+        outline: none;
+    }
 }
 
 /* Scenes lane */
 .scenes-lane {
     position: relative;
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     background: #181818;
     overflow: hidden;
 }
@@ -183,29 +179,30 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
+    border-radius: 8px;
 }
 
 .h {
     position: absolute;
     top: 2px;
     bottom: 2px;
-    width: 3px;
+    width: 6px;
     background: #ffd54f;
 }
 
 .h.left {
-    left: -2px;
+    left: -3px;
 }
 
 .h.right {
-    right: -2px;
+    right: -3px;
 }
 
 /* Actions lane */
 .actions-lane {
     position: relative;
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     background: #1a1a1a;
 }
 
@@ -226,7 +223,7 @@
 /* Waveform lane */
 .waveform-lane {
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     display: block;
     background: #111;
 }
@@ -234,7 +231,7 @@
 /* Energy lane */
 .energy-lane {
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     display: block;
     background: #111;
 }
@@ -244,7 +241,7 @@
 /* Bands lane */
 .bands-lane {
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     display: block;
     background: #0f0f0f;
 }
@@ -252,7 +249,7 @@
 /* Beat strength lane */
 .beatstrength-lane {
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     display: block;
     background: #111;
 }
@@ -262,7 +259,7 @@
 /* Beats lane */
 .beats-lane {
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     display: block;
     background: #151515;
 }
@@ -270,7 +267,7 @@
 /* Keyframes lane */
 .keyframes-lane {
     width: 100%;
-    height: calc(100% - 28px);
+    height: 100%;
     display: block;
     background: #181818;
 }
@@ -307,4 +304,17 @@
 .timeline-help .lane {
     color: #888;
     margin-left: 6px;
+}
+
+// Timeline canvas wrapper
+.timeline-canvas-wrapper {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+}
+
+.timeline-canvas {
+    width: 100%;
+    height: 100%;
+    touch-action: none;
 }

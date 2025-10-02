@@ -1,0 +1,205 @@
+// Timeline root and left column styles
+.timeline {
+  .grid {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    align-items: start; // Top-align the grid
+  }
+  
+  .leftcol {
+    background: rgba(20, 20, 25, 0.95);
+    border-right: 1px solid rgba(0, 212, 255, 0.2);
+    position: sticky;
+    top: 0;
+    align-self: start; // Top-left align
+    
+    // Lane label as collapsible details (matching sidebar style)
+    .lane-label {
+      display: flex;
+      align-items: flex-start; // Top align vertically
+      justify-content: flex-start; // Left align horizontally
+      padding: 10px 12px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: #999;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(0, 212, 255, 0.15);
+      background: rgba(255, 255, 255, 0.02);
+      cursor: pointer;
+      user-select: none;
+      transition: background 180ms, color 180ms; // Only transition colors, not height/size
+      position: relative;
+      
+      &::after {
+        content: '▼';
+        font-size: 8px;
+        margin-left: auto;
+        transition: transform 200ms;
+        color: #666;
+      }
+      
+      &:hover {
+        background: rgba(0, 212, 255, 0.08);
+        border-bottom-color: rgba(0, 212, 255, 0.3);
+        color: #00d4ff;
+        
+        &::after {
+          color: #00d4ff;
+        }
+      }
+      
+      &.collapsed::after {
+        transform: rotate(-90deg);
+      }
+      
+      // Special styling for ruler lane (not collapsible)
+      &.ruler-label {
+        cursor: default;
+        align-items: center; // Center align for ruler
+        
+        &::after {
+          display: none; // No collapse arrow
+        }
+        
+        &:hover {
+          background: rgba(255, 255, 255, 0.02); // No hover effect
+          border-bottom-color: rgba(0, 212, 255, 0.15);
+          color: #999;
+        }
+      }
+    }
+    
+    // Property lane labels
+    .property-lane-label {
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      cursor: default;
+      overflow: hidden;
+      
+      // Override the general lane-label ::after caret - properties handle their own
+      &::after {
+        display: none !important;
+      }
+      
+      .prop-label-header {
+        display: flex;
+        align-items: center;
+        width: 100%; // Full width
+        padding: 6px 12px;
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+        flex-shrink: 0;
+        height: 28px; // Fixed header height
+        box-sizing: border-box;
+        
+        .prop-name {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+        }
+        
+        &::after {
+          content: '▼';
+          font-size: 8px;
+          margin-left: auto;
+          transition: transform 200ms;
+          color: #666;
+        }
+        
+        &:hover {
+          background: rgba(0, 212, 255, 0.08);
+          
+          &::after {
+            color: #00d4ff;
+          }
+        }
+      }
+      
+      &.collapsed .prop-label-header::after {
+        transform: rotate(-90deg);
+      }
+      
+      .prop-controls {
+        padding: 6px 12px 8px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1; // Take remaining space
+        min-height: 97px; // Ensure enough space: value(25) + buttons(30) + input(30) + gaps(12)
+        overflow: hidden;
+        
+        .prop-value-display {
+          font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
+          font-size: 11px;
+          color: #6c6;
+          background: rgba(0, 255, 0, 0.08);
+          padding: 4px 8px;
+          border-radius: 4px;
+          text-align: center;
+          font-weight: 600;
+        }
+        
+        .prop-buttons {
+          display: flex;
+          gap: 2px;
+          justify-content: center;
+          flex-wrap: wrap;
+          
+          button {
+            font-size: 10px;
+            padding: 4px 6px;
+            min-width: auto;
+            flex: 0 0 auto;
+            
+            &.danger {
+              font-size: 16px;
+              line-height: 1;
+              padding: 2px 6px;
+            }
+          }
+        }
+        
+        .prop-value-input {
+          width: 100%;
+          font-size: 11px;
+          padding: 4px 8px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 4px;
+          color: #fff;
+          font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
+          text-align: center;
+          
+          &:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(0, 212, 255, 0.5);
+            outline: none;
+          }
+        }
+      }
+    }
+    
+    // Empty properties placeholder
+    .empty-props-label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+      text-align: center;
+      
+      .empty-hint {
+        font-size: 9px;
+        color: #666;
+        margin-top: 4px;
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: normal;
+      }
+    }
+  }
+}

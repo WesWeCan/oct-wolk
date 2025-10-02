@@ -1,0 +1,78 @@
+// Global base styles and scroll behavior
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+// Allow normal scrolling globally - individual pages control their own overflow
+html {
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden; // Prevent horizontal scroll
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(0, 212, 255, 0.12) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(100, 100, 120, 0.15) 0%, transparent 60%),
+    linear-gradient(135deg, #2a2a35 0%, #3a3a4a 30%, #2f2f3f 70%, #252530 100%);
+  background-attachment: fixed;
+  color: #e8e8e8;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden; // Prevent horizontal scroll
+}
+
+#app {
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden; // Prevent horizontal scroll
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+}
+
+// Themed custom scrollbar
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(20, 20, 25, 0.6);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.3);
+  border-radius: 5px;
+  border: 2px solid rgba(20, 20, 25, 0.6);
+  transition: background 200ms;
+  
+  &:hover {
+    background: rgba(0, 212, 255, 0.5);
+  }
+  
+  &:active {
+    background: rgba(0, 212, 255, 0.7);
+  }
+}
+
+::-webkit-scrollbar-corner {
+  background: rgba(20, 20, 25, 0.6);
+}
+
+// Firefox scrollbar theming
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 212, 255, 0.3) rgba(20, 20, 25, 0.6);
+}
+

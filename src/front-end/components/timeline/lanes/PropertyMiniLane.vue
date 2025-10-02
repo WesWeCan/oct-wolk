@@ -108,26 +108,18 @@ const onKfPointerDown = (e: PointerEvent) => {
 
 const keyframes = computed(() => Array.isArray(props.track?.keyframes) ? props.track!.keyframes.slice().sort((a, b) => (a.frame|0) - (b.frame|0)) : []);
 
-const yMid = computed(() => Math.max(6, Math.min(height.value - 6, height.value * 0.5)));
-
-const yForValue = (v: any) => {
-    if (!Number.isFinite(Number(v))) return yMid.value;
-    const min = Number.isFinite(Number(props.meta?.min)) ? Number(props.meta?.min) : 0;
-    const max = Number.isFinite(Number(props.meta?.max)) ? Number(props.meta?.max) : 1;
-    const lo = Math.min(min, max);
-    const hi = Math.max(min, max);
-    const t = (Number(v) - lo) / Math.max(1e-6, (hi - lo));
-    const pad = 4;
-    const top = pad;
-    const bot = Math.max(pad, height.value - pad);
-    return bot - (bot - top) * Math.min(1, Math.max(0, t));
-};
+// Always center keyframes at middle of lane (16px for 32px height)
+// Use direct value instead of computed to avoid reactive lag
+const yMid = computed(() => {
+    const h = height.value || 48;
+    return h * 0.5;
+});
 
 const pathD = computed(() => {
     const fps = Math.max(1, props.fps);
+    const y = yMid.value; // All keyframes at same Y position
     const pts = keyframes.value.map(kf => {
         const x = (((kf.frame/ fps) - props.viewport.startSec) / Math.max(1e-6, props.viewport.durationSec)) * width.value;
-        const y = (props.meta?.type === 'number' || props.meta?.type == null) ? yForValue((kf as any).value) : yMid.value;
         return [x, y] as [number, number];
     });
     if (pts.length < 2) return '';
@@ -136,6 +128,20 @@ const pathD = computed(() => {
         d += ` L${Math.round(pts[i][0])},${Math.round(pts[i][1])}`;
     }
     return d;
+});
+
+// Compute diamond paths as array to optimize rendering
+const diamondPaths = computed(() => {
+    const fps = Math.max(1, props.fps);
+    const y = yMid.value;
+    const w = width.value;
+    const startSec = props.viewport.startSec;
+    const durSec = props.viewport.durationSec;
+    
+    return keyframes.value.map(kf => {
+        const x = (((kf.frame / fps) - startSec) / Math.max(1e-6, durSec)) * w - 5;
+        return `M${x},${y} l5,-5 l5,5 l-5,5 z`;
+    });
 });
 
 
@@ -150,29 +156,38 @@ const onBackgroundPointerDown = (e: PointerEvent) => {
 
 <template>
     <svg ref="svgRef" class="property-mini-lane" @dblclick="handleDblClickAdd" @pointerdown.self="onBackgroundPointerDown">
-        <rect x="0" y="0" :width="width" :height="height" fill="#000" opacity="0.03" @pointerdown="onBackgroundPointerDown" />
-        <path v-if="pathD" :d="pathD" stroke="#66a" stroke-width="1" fill="none" opacity="0.5" pointer-events="none" />
+        <rect x="0" y="0" :width="width" :height="height" fill="#111" @pointerdown="onBackgroundPointerDown" />
+        <path v-if="pathD" :d="pathD" stroke="rgba(0, 212, 255, 0.5)" stroke-width="1.5" fill="none" opacity="0.8" pointer-events="none" />
         <template v-for="(kf, i) in keyframes" :key="i">
             <path
-                :d="`M${(((kf.frame/Math.max(1, fps)) - props.viewport.startSec) / Math.max(1e-6, props.viewport.durationSec)) * width - 6},${(props.meta?.type === 'number' || props.meta?.type == null) ? yForValue((kf as any).value) : yMid} l6,-6 l6,6 l-6,6 z`"
-                :fill="(props.selectedIndex === i) ? '#ffd' : '#fff'"
-                :stroke="(props.selectedIndex === i) ? '#c60' : '#333'"
-                stroke-width="1"
-                opacity="0.95"
+                :d="diamondPaths[i]"
+                :fill="(props.selectedIndex === i) ? '#00d4ff' : 'rgba(255, 255, 255, 0.9)'"
+                :stroke="(props.selectedIndex === i) ? '#00d4ff' : 'rgba(0, 212, 255, 0.5)'"
+                stroke-width="1.5"
+                opacity="1"
                 :data-idx="i"
                 class="keyframe-diamond"
                 @pointerdown.stop.prevent="onKfPointerDown"
             />
         </template>
-        <text v-if="!keyframes.length" x="8" y="14" fill="#999" font-size="11" pointer-events="none">{{ propertyPath }}</text>
+        <text v-if="!keyframes.length" x="8" y="20" fill="#666" font-size="10" pointer-events="none">No keyframes</text>
     </svg>
 </template>
 
 <style scoped>
-.property-mini-lane { width: 100%; height: 100%; display: block; }
+.property-mini-lane { 
+    width: 100%; 
+    height: 100%; 
+    display: block;
+    min-height: 32px;
+}
 .keyframe-diamond { 
     cursor: grab; 
     pointer-events: all;
+    transition: all 150ms;
+}
+.keyframe-diamond:hover {
+    filter: brightness(1.3);
 }
 .keyframe-diamond:active { 
     cursor: grabbing; 

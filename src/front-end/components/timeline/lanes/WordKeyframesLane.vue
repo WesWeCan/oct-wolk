@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useLaneInteractions } from '../useLaneInteractions';
 
 // WordKeyframes lane: pure timing markers for global word pool
-const props = defineProps<{ viewport: { startSec: number; durationSec: number; totalSec?: number; fps: number }; fps: number; markers?: number[]; beats?: number[] }>();
+const props = defineProps<{ viewport: { startSec: number; durationSec: number; totalSec?: number; fps: number }; fps: number; markers?: number[]; beats?: number[]; currentFrame?: number }>();
 
 const emit = defineEmits<{
     (e: 'pan', secDelta: number): void;
@@ -99,6 +99,11 @@ onUnmounted(() => { try { ro?.disconnect(); } catch {} ro = null; });
 
 const markers = computed(() => Array.isArray(props.markers) ? props.markers.slice().map(n => Math.max(0, n|0)) : []);
 
+// Check if a keyframe is at the current playhead frame
+const isKeyframeSelected = (frame: number): boolean => {
+    return props.currentFrame !== undefined && Math.abs(frame - props.currentFrame) < 0.5;
+};
+
 watch(() => [props.viewport.startSec, props.viewport.durationSec, props.fps, ...markers.value], () => {
     updateViewBox();
 }, { deep: true });
@@ -119,6 +124,21 @@ onMounted(() => {
     <svg ref="svgRef" class="keyframes-lane">
         <rect x="0" y="0" :width="width" :height="height" fill="#000" opacity="0.05" />
         <template v-for="f in markers" :key="f">
+            <!-- Selected keyframe outline -->
+            <rect
+                v-if="isKeyframeSelected(f)"
+                :x="(((f/Math.max(1, props.fps)) - props.viewport.startSec) / Math.max(1e-6, props.viewport.durationSec)) * width - 6"
+                :y="Math.max(2, Math.min(height - 18, (height - 12) * 0.5 - 2))"
+                width="12"
+                height="16"
+                rx="3"
+                ry="3"
+                fill="none"
+                stroke="#00d4ff"
+                stroke-width="2"
+                opacity="0.9"
+            />
+            <!-- Keyframe marker -->
             <rect
                 :x="(((f/Math.max(1, props.fps)) - props.viewport.startSec) / Math.max(1e-6, props.viewport.durationSec)) * width - 4"
                 :y="Math.max(4, Math.min(height - 16, (height - 12) * 0.5))"
@@ -126,12 +146,27 @@ onMounted(() => {
                 height="12"
                 rx="2"
                 ry="2"
-                fill="#fff"
-                opacity="0.9"
+                :fill="isKeyframeSelected(f) ? '#00d4ff' : '#fff'"
+                :opacity="isKeyframeSelected(f) ? '1.0' : '0.9'"
+                class="keyframe-marker"
             />
         </template>
         <text v-if="!markers || !markers.length" x="8" y="16" fill="#e66" font-size="12">No keyframe markers</text>
     </svg>
 </template>
 
+<style scoped lang="scss">
+.keyframes-lane {
+    cursor: default;
+    
+    .keyframe-marker {
+        cursor: grab;
+        transition: opacity 120ms, fill 120ms;
+        
+        &:hover {
+            opacity: 1 !important;
+        }
+    }
+}
+</style>
 

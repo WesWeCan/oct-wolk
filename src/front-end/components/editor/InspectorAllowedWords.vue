@@ -15,7 +15,7 @@ const props = defineProps<{
     currentFrame: number;
     useGlobal?: boolean; // if true, emit global track updates
 }>();
-const emit = defineEmits<{ (e: 'update:track', value: Track): void; (e: 'update:globalTrack', value: Track): void }>();
+const emit = defineEmits<{ (e: 'update:track', value: Track): void; (e: 'update:globalTrack', value: Track): void; (e: 'navigateToFrame', frame: number): void }>();
 
 const search = ref('');
 
@@ -179,48 +179,62 @@ const filteredTree = computed(() => filterTree(uiTree.value, search.value.trim()
 watch(() => props.currentFrame, () => { draftSelection.value = null; });
 watch(() => (props.allowedTrack && Array.isArray((props.allowedTrack as any).keyframes) ? (props.allowedTrack as any).keyframes.length : 0), () => { draftSelection.value = null; });
 
+// Helper to get word preview (first 4 words + "..." if more)
+const getWordPreview = (words: string[]): string => {
+    if (!Array.isArray(words) || words.length === 0) return '';
+    const preview = words.slice(0, 4);
+    return preview.join(', ') + (words.length > 4 ? ', ...' : '');
+};
+
+// Navigate to keyframe
+const goToKeyframe = (frame: number) => {
+    emit('navigateToFrame', frame);
+};
+
 </script>
 <template>
-    <div>
-        <div v-if="!sortedKeyframes.length" style="margin-bottom:6px; font-size:12px; opacity:0.8;">Using entire word bank (no keyframes).</div>
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-            <input type="text" v-model="search" placeholder="Search…" />
-            <button @click="() => commitKeyframe('addOrUpdate')">Add/Update keyframe @ {{ currentFrame }}</button>
-            <button @click="() => commitKeyframe('copyLast')" :disabled="!sortedKeyframes.length">Copy last list @ {{ currentFrame }}</button>
+    <div class="inspector words">
+        <div v-if="!sortedKeyframes.length" class="no-keyframes">Using entire word bank (no keyframes).</div>
+        <div class="search-row">
+            <input type="text" v-model="search" placeholder="Search words…" />
+            <div class="button-row">
+                <button @click="() => commitKeyframe('addOrUpdate')" title="Add or update keyframe at current frame">◆ Add @ {{ currentFrame }}</button>
+                <button @click="() => commitKeyframe('copyLast')" :disabled="!sortedKeyframes.length" title="Copy last keyframe to current frame">⎘ Copy @ {{ currentFrame }}</button>
+            </div>
         </div>
-        <div style="display:flex; gap:16px;">
-            <div style="flex:1 1 auto; max-height:300px; overflow:auto; border:1px solid #333; padding:6px;">
-                <div v-for="g in filteredTree" :key="g.name" style="margin-bottom:6px;">
-                    <div style="display:flex; align-items:center; gap:6px;">
+        <div class="content">
+            <div class="word-tree">
+                <div v-for="g in filteredTree" :key="g.name" class="group">
+                    <div class="group-header">
                         <input type="checkbox" :checked="groupState(g)==='checked'" :indeterminate.prop="groupState(g)==='indeterminate'" @change="() => toggleGroup(g)" />
-                        <span style="font-weight:600;">{{ g.name }}</span>
+                        <span>{{ g.name }}</span>
                     </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 8px 20px;">
-                        <label v-for="w in g.words" :key="w" style="display:flex; align-items:center; gap:4px; border:1px solid #444; padding:2px 6px; border-radius:3px;">
+                    <div class="word-chips">
+                        <label v-for="w in g.words" :key="w" class="chip">
                             <input type="checkbox" :checked="isChecked(w)" @change="() => toggleWord(w)" />
                             <span>{{ w }}</span>
                         </label>
                     </div>
-                    <div v-if="g.groups.length" style="margin-left:16px;">
-                        <div v-for="c in g.groups" :key="g.name + '/' + c.name" style="margin-bottom:6px;">
-                            <div style="display:flex; align-items:center; gap:6px;">
+                    <div v-if="g.groups.length" class="children">
+                        <div v-for="c in g.groups" :key="g.name + '/' + c.name" class="group">
+                            <div class="group-header">
                                 <input type="checkbox" :checked="groupState(c)==='checked'" :indeterminate.prop="groupState(c)==='indeterminate'" @change="() => toggleGroup(c)" />
                                 <span>{{ c.name }}</span>
                             </div>
-                            <div style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 8px 20px;">
-                                <label v-for="w in c.words" :key="w" style="display:flex; align-items:center; gap:4px; border:1px solid #444; padding:2px 6px; border-radius:3px;">
+                            <div class="word-chips">
+                                <label v-for="w in c.words" :key="w" class="chip">
                                     <input type="checkbox" :checked="isChecked(w)" @change="() => toggleWord(w)" />
                                     <span>{{ w }}</span>
                                 </label>
                             </div>
-                            <div v-if="c.groups.length" style="margin-left:16px;">
-                                <div v-for="cc in c.groups" :key="g.name + '/' + c.name + '/' + cc.name" style="margin-bottom:6px;">
-                                    <div style="display:flex; align-items:center; gap:6px;">
+                            <div v-if="c.groups.length" class="children">
+                                <div v-for="cc in c.groups" :key="g.name + '/' + c.name + '/' + cc.name" class="group">
+                                    <div class="group-header">
                                         <input type="checkbox" :checked="groupState(cc)==='checked'" :indeterminate.prop="groupState(cc)==='indeterminate'" @change="() => toggleGroup(cc)" />
                                         <span>{{ cc.name }}</span>
                                     </div>
-                                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 8px 20px;">
-                                        <label v-for="w in cc.words" :key="w" style="display:flex; align-items:center; gap:4px; border:1px solid #444; padding:2px 6px; border-radius:3px;">
+                                    <div class="word-chips">
+                                        <label v-for="w in cc.words" :key="w" class="chip">
                                             <input type="checkbox" :checked="isChecked(w)" @change="() => toggleWord(w)" />
                                             <span>{{ w }}</span>
                                         </label>
@@ -230,36 +244,41 @@ watch(() => (props.allowedTrack && Array.isArray((props.allowedTrack as any).key
                         </div>
                     </div>
                 </div>
-                <div v-if="ungroupedBankWords.length" style="margin-top:8px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <div style="font-weight:600;">Ungrouped</div>
+                <div v-if="ungroupedBankWords.length" class="ungrouped">
+                    <div class="header">
+                        <div>Ungrouped</div>
                         <button @click="deselectAllUngrouped">Deselect all</button>
                     </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
-                        <label v-for="w in ungroupedBankWords" :key="'__ungroup__'+w" style="display:flex; align-items:center; gap:4px; border:1px solid #444; padding:2px 6px; border-radius:3px;">
+                    <div class="chips">
+                        <label v-for="w in ungroupedBankWords" :key="'__ungroup__'+w" class="chip">
                             <input type="checkbox" :checked="isChecked(w)" @change="() => toggleWord(w)" />
                             <span>{{ w }}</span>
                         </label>
                     </div>
                 </div>
-                <div v-if="ungroupedSelected.length && !ungroupedBankWords.length" style="margin-top:8px;">
-                    <div style="font-weight:600; color:#eaa;">Ungrouped (selected)</div>
-                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
-                        <label v-for="w in ungroupedSelected" :key="'__sel_ungroup__'+w" style="display:flex; align-items:center; gap:4px; border:1px dashed #844; padding:2px 6px; border-radius:3px;">
+                <div v-if="ungroupedSelected.length && !ungroupedBankWords.length" class="ungrouped selected">
+                    <div class="header">Ungrouped (selected)</div>
+                    <div class="chips">
+                        <label v-for="w in ungroupedSelected" :key="'__sel_ungroup__'+w" class="chip">
                             <input type="checkbox" :checked="isChecked(w)" @change="() => toggleWord(w)" />
                             <span>{{ w }}</span>
                         </label>
                     </div>
                 </div>
             </div>
-            <div style="width:220px;">
-                <div style="font-weight:600; margin-bottom:6px;">Keyframes</div>
-                <div v-for="(k,i) in sortedKeyframes" :key="i" style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:6px;">
-                    <div>#{{ i+1 }} @ {{ k.frame }}</div>
-                    <div style="opacity:0.7; font-size:12px;">{{ Array.isArray(k.value)? k.value.length : 0 }} words</div>
-                    <button title="Delete" @click="() => deleteKeyframe(i)">×</button>
+            <div class="keyframe-list">
+                <div class="title">Keyframes</div>
+                <div v-for="(k,i) in sortedKeyframes" :key="i" class="keyframe-item" @click="() => goToKeyframe(k.frame)">
+                    <div class="kf-main">
+                        <div class="info">
+                            <span class="frame">#{{ i+1 }} @ {{ k.frame }}</span>
+                            <span class="count">{{ Array.isArray(k.value)? k.value.length : 0 }} words</span>
+                        </div>
+                        <div class="preview">{{ getWordPreview(k.value as string[]) }}</div>
+                    </div>
+                    <button title="Delete" @click.stop="() => deleteKeyframe(i)">×</button>
                 </div>
-                <div v-if="!sortedKeyframes.length" style="opacity:0.8; font-size:12px;">No keyframes</div>
+                <div v-if="!sortedKeyframes.length" class="empty">No keyframes</div>
             </div>
         </div>
     </div>

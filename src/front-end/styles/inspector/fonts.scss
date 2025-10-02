@@ -1,0 +1,115 @@
+// Font management UI styles (matching timeline aesthetic)
+.inspector {
+  .font-management {
+    .fallback-list {
+      margin-top: 12px;
+      
+      .list-title {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: #999;
+        margin-bottom: 8px;
+      }
+
+      .fallback-item {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-bottom: 8px;
+        padding: 8px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 6px;
+        transition: all 180ms;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(0, 212, 255, 0.2);
+        }
+
+        input {
+          flex: 1;
+        }
+
+        button {
+          padding: 4px 8px;
+          font-size: 11px;
+        }
+      }
+    }
+
+    .search-input {
+      width: 100%;
+      margin-bottom: 12px;
+    }
+
+    .font-list {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid rgba(0, 212, 255, 0.15);
+      border-radius: 6px;
+      background: rgba(20, 20, 25, 0.5);
+      margin-bottom: 12px;
+
+      .font-item {
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        transition: all 150ms;
+
+        &:last-child {
+          border-bottom: none;
+        }
+
+        &:hover {
+          background: rgba(0, 212, 255, 0.08);
+        }
+
+        .font-name {
+          font-size: 13px;
+          color: #eee;
+          margin-bottom: 6px;
+
+          .file-name {
+            font-size: 11px;
+            color: #888;
+            font-family: 'SF Mono', 'Monaco', monospace;
+          }
+        }
+
+        .actions {
+          display: flex;
+          gap: 6px;
+
+          button {
+            padding: 4px 10px;
+            font-size: 11px;
+          }
+        }
+      }
+    }
+
+    .font-preview {
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(0, 212, 255, 0.15);
+      border-radius: 6px;
+      margin-top: 12px;
+
+      .preview-label {
+        font-size: 10px;
+        color: #888;
+        margin-bottom: 10px;
+        font-family: 'SF Mono', 'Monaco', monospace;
+      }
+
+      .preview-text {
+        font-size: 16px;
+        color: #fff;
+        line-height: 1.6;
+      }
+    }
+  }
+}
+

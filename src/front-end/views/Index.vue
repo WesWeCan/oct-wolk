@@ -1,48 +1,53 @@
 <script setup lang="ts">
-
 import { onMounted } from 'vue';
+import CreativeTechnologistLogo from '@/front-end/components/CreativeTechnologistLogo.vue';
 
 onMounted(() => {
-    document.title = 'Words On Live Kanvas - Open Culture Tech';
+    document.title = 'W.O.L.K. - Words On Live Kanvas';
 });
-
-// const openStorageFolder = () => {
-//     window.electronAPI.openStorageFolder();
-// }
-
 </script>
 
 <template>
 
 <div class="splash-screen">
-    
+    <div class="content-wrapper">
+        <section class="hero">
+            <h1 class="main-title">W.O.L.K.</h1>
+            <h2 class="subtitle">Words On Live Kanvas</h2>
+            <p class="tagline">Transform your lyrics into animated visuals</p>
+        </section>
 
+        <nav class="navigation">
+            <RouterLink to="/song-bank" class="nav-btn">Analyze your lyrics</RouterLink>
+            <RouterLink to="/editor" class="nav-btn">Edit your visuals</RouterLink>
+        </nav>
 
-    <img src="#" alt="Logo" class="logo">
+        <footer class="footer">
+            <div class="credits-section">
+                <span class="label">Concept and Development by:</span>
+                <div class="developers">
+                   
+                    <div class="dev-item">
+                        <img src="../../back-end/logos/cablai.png" alt="Cablai" class="logo-cablai" />
+                    </div>
+                    <div class="dev-item">
+                        <span class="rbjan-text">RBJAN</span>
+                    </div>
+                    <div class="dev-item">
+                        <img src="../../back-end/logos/vj_bikkel.png" alt="VJ BIKKEL" class="logo-bikkel" />
+                    </div>
+                    <div class="dev-item logo-wesley">
+                        <CreativeTechnologistLogo />
+                    </div>
+                </div>
+            </div>
 
-    <section>
-        <h1>Words On Live Kanvas</h1>
-        <p>An open source platform for artists to create and canvasses with words.</p>
-    </section>
-
-   <nav>
-    <RouterLink to="/song-bank">Song Bank</RouterLink>
-    <RouterLink to="/editor">Editor</RouterLink>
-    <!-- <RouterLink to="/player">Live Player</RouterLink> -->
-   </nav>
-
-   <footer>
-    <span>Developed by:</span>
-    <span>Context Undefined</span>
-    <span>Cablai & RBJAN</span>
-    <span>VJ BIKKEL</span>
-
-    <span>Part of the Open Culture Tech 2.0 project by Thunderboom Records</span>
-   </footer>
-
+            <div class="org-section">
+                <span>Part of </span>
+                <a href="https://www.openculturetech.com/" target="_blank" rel="noopener noreferrer" class="oct-link">Open Culture Tech 2.0</a>
+                <span> by Thunderboom Records</span>
+            </div>
+        </footer>
+    </div>
 </div>
-
-
-  
-
 </template>

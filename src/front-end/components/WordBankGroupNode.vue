@@ -62,9 +62,8 @@ const onToggle = () => emit('toggle-collapsed', props.path)
     <div class="group-node">
         <div class="header">
             <button class="collapse" @click="onToggle">{{ props.group.collapsed ? '▶' : '▼' }}</button>
-            <span>{{ props.group.name }}</span>
             <template v-if="!isRenaming">
-                <span class="name">{{ props.group.name }}</span>
+                <span class="group-name">{{ props.group.name }}</span>
                 <button class="rename" @click="beginRename">Rename</button>
             </template>
             <template v-else>

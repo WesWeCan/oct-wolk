@@ -207,25 +207,77 @@ const drawPreview = () => {
     const dst = previewCanvas.value;
     if (!src || !dst) return;
     
+    const wrapper = dst.parentElement;
+    if (!wrapper) return;
+    
+    const container = wrapper.parentElement; // monitor-display
+    if (!container) return;
+    
     const ctx = dst.getContext('2d');
     if (!ctx) return;
     
-    const w = dst.width = dst.clientWidth;
-    const h = dst.height = dst.clientHeight;
     const rw = targetWidth.value;
     const rh = targetHeight.value;
+    const aspectRatio = rw / rh;
     
-    const scale = Math.min(w / Math.max(1, rw), h / Math.max(1, rh));
-    const dw = Math.floor(rw * scale);
-    const dh = Math.floor(rh * scale);
-    const dx = Math.floor((w - dw) / 2);
-    const dy = Math.floor((h - dh) / 2);
+    // Get available space from container (minus padding)
+    const maxW = container.clientWidth - 32; // 16px padding each side
+    const maxH = container.clientHeight - 32;
+    
+    // Calculate display size maintaining aspect ratio
+    let displayW = maxW;
+    let displayH = maxW / aspectRatio;
+    
+    if (displayH > maxH) {
+        displayH = maxH;
+        displayW = maxH * aspectRatio;
+    }
+    
+    // Set canvas to exact display size (no black bars)
+    const w = dst.width = Math.floor(displayW);
+    const h = dst.height = Math.floor(displayH);
     
     ctx.clearRect(0, 0, w, h);
     try {
-        ctx.drawImage(src, 0, 0, src.width, src.height, dx, dy, dw, dh);
+        ctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, w, h);
     } catch {}
 };
+
+// Watch for preview canvas resize
+let previewResizeObserver: ResizeObserver | null = null;
+let containerResizeObserver: ResizeObserver | null = null;
+
+watch(previewCanvas, (canvas) => {
+    if (previewResizeObserver) {
+        previewResizeObserver.disconnect();
+        previewResizeObserver = null;
+    }
+    
+    if (canvas) {
+        previewResizeObserver = new ResizeObserver(() => {
+            drawPreview();
+        });
+        previewResizeObserver.observe(canvas);
+        
+        // Also observe the monitor-display container
+        const wrapper = canvas.parentElement;
+        const container = wrapper?.parentElement;
+        if (container && !containerResizeObserver) {
+            containerResizeObserver = new ResizeObserver(() => {
+                drawPreview();
+            });
+            containerResizeObserver.observe(container);
+        }
+        
+        // Initial draw when canvas is mounted
+        nextTick(() => drawPreview());
+    }
+});
+
+// Watch for render dimension changes
+watch([targetWidth, targetHeight], () => {
+    nextTick(() => drawPreview());
+});
 
 // ===== PLAYBACK CONTROL =====
 let lastPlayStartAtFrame = 0;
@@ -433,6 +485,10 @@ const initForSong = async (id: string) => {
     await nextTick();
     await renderWorker.start();
     await configureWorkerScene();
+    
+    // Initial preview draw after worker is ready
+    await nextTick();
+    drawPreview();
 };
 
 // Watch song ID changes
@@ -475,6 +531,57 @@ const exportWolk = async () => {
     if (song.value) {
         await videoExport.exportWolk(song.value);
     }
+};
+
+// Monitor settings functions
+const updateDimensions = (e: Event) => {
+    const value = (e.target as HTMLSelectElement).value;
+    if (!timeline.value || value === 'custom') return;
+    
+    const [width, height] = value.split('x').map(Number);
+    timeline.value = {
+        ...timeline.value,
+        settings: {
+            ...timeline.value.settings,
+            renderWidth: width,
+            renderHeight: height
+        }
+    };
+};
+
+const updateCustomDimensions = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value;
+    if (!timeline.value) return;
+    
+    const match = value.match(/(\d+)\s*[×x]\s*(\d+)/);
+    if (match) {
+        const [, width, height] = match;
+        timeline.value = {
+            ...timeline.value,
+            settings: {
+                ...timeline.value.settings,
+                renderWidth: Number(width),
+                renderHeight: Number(height)
+            }
+        };
+    }
+};
+
+const toggleIncludeAudio = () => {
+    if (!timeline.value) return;
+    timeline.value = {
+        ...timeline.value,
+        settings: {
+            ...timeline.value.settings,
+            includeAudio: !timeline.value.settings.includeAudio
+        }
+    };
+};
+
+// Monitor editing state
+const isEditingSettings = ref(false);
+const toggleEditSettings = () => {
+    isEditingSettings.value = !isEditingSettings.value;
 };
 
 const handleReset = async () => {
@@ -688,11 +795,103 @@ const handlePropChangeValue = (payload: { propertyPath: string; value: any }) =>
 onMounted(async () => {
     document.title = 'Editor - Words On Live Kanvas - Open Culture Tech';
     await videoExport.checkFfmpegAvailable();
+    
+    // Load saved panel widths from localStorage
+    const savedSidebarWidth = localStorage.getItem('editor-sidebar-width');
+    const savedInspectorWidth = localStorage.getItem('editor-inspector-width');
+    
+    const editorEl = document.querySelector('.editor') as HTMLElement;
+    if (editorEl) {
+        if (savedSidebarWidth) {
+            editorEl.style.setProperty('--sidebar-width', savedSidebarWidth + 'px');
+        }
+        if (savedInspectorWidth) {
+            editorEl.style.setProperty('--inspector-width', savedInspectorWidth + 'px');
+        }
+    }
+    
+    // Setup sidebar resize
+    const sidebar = document.querySelector('.editor__sidebar') as HTMLElement;
+    if (sidebar) {
+        const onPointerDown = (e: PointerEvent) => {
+            const rect = sidebar.getBoundingClientRect();
+            if (e.clientX < rect.right - 6) return; // only grab right edge
+            
+            sidebar.classList.add('is-resizing');
+            const startW = sidebar.offsetWidth;
+            const startX = e.clientX;
+            
+            const onMove = (ev: PointerEvent) => {
+                const dx = ev.clientX - startX;
+                const newW = Math.max(200, Math.min(500, startW + dx));
+                editorEl.style.setProperty('--sidebar-width', newW + 'px');
+            };
+            
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                window.removeEventListener('pointercancel', onUp);
+                sidebar.classList.remove('is-resizing');
+                
+                // Save to localStorage
+                const currentWidth = sidebar.offsetWidth;
+                localStorage.setItem('editor-sidebar-width', currentWidth.toString());
+            };
+            
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+            window.addEventListener('pointercancel', onUp);
+        };
+        
+        sidebar.addEventListener('pointerdown', onPointerDown);
+    }
+    
+    // Setup inspector resize
+    const inspector = document.querySelector('.editor__inspector') as HTMLElement;
+    if (inspector) {
+        const onPointerDown = (e: PointerEvent) => {
+            const rect = inspector.getBoundingClientRect();
+            if (e.clientX > rect.left + 6) return; // only grab left edge
+            
+            inspector.classList.add('is-resizing');
+            const startW = inspector.offsetWidth;
+            const startX = e.clientX;
+            
+            const onMove = (ev: PointerEvent) => {
+                const dx = startX - ev.clientX;
+                const newW = Math.max(280, Math.min(600, startW + dx));
+                editorEl.style.setProperty('--inspector-width', newW + 'px');
+            };
+            
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                window.removeEventListener('pointercancel', onUp);
+                inspector.classList.remove('is-resizing');
+                
+                // Save to localStorage
+                const currentWidth = inspector.offsetWidth;
+                localStorage.setItem('editor-inspector-width', currentWidth.toString());
+            };
+            
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+            window.addEventListener('pointercancel', onUp);
+        };
+        
+        inspector.addEventListener('pointerdown', onPointerDown);
+    }
 });
 
 onUnmounted(() => {
     renderWorker.dispose();
     audioPlayer.dispose();
+    if (previewResizeObserver) {
+        previewResizeObserver.disconnect();
+    }
+    if (containerResizeObserver) {
+        containerResizeObserver.disconnect();
+    }
 });
 </script>
 
@@ -700,14 +899,15 @@ onUnmounted(() => {
     <div class="editor-root">
     <div class="editor">
         <div class="editor__toolbar">
-            <button @click="play" :disabled="playback.playing.value">Play</button>
-            <button @click="pause" :disabled="!playback.playing.value">Pause</button>
-            <button @click="stop" :disabled="!playback.playing.value && playback.frame.value === 0">Stop</button>
-            <button @click="reanalyze" :disabled="!audioPlayer.audioReady.value">Reanalyze</button>
-            <span>Frame: {{ playback.frame.value }}</span>
-            <button @click="exportWithOptions" style="margin-left:8px;">Export</button>
-            <button @click="exportWolk" style="margin-left:8px;">Export .wolk</button>
-            <button @click="videoExport.stopExport" style="margin-left:8px;" :disabled="!videoExport.isRecording.value">Stop Export</button>
+            <div class="toolbar__left">
+                <button @click="play" :disabled="playback.playing.value" class="primary">Play</button>
+                <button @click="pause" :disabled="!playback.playing.value">Pause</button>
+                <button @click="stop" :disabled="!playback.playing.value && playback.frame.value === 0">Stop</button>
+            </div>
+            <div class="toolbar__right">
+                <button @click="reanalyze" :disabled="!audioPlayer.audioReady.value">Reanalyze</button>
+                <button @click="exportWolk" class="export">Export .wolk</button>
+            </div>
             <span v-if="videoExport.ffmpegAvailable.value === false" class="toolbar__notice">
                 ffmpeg not found. On macOS: install with <code>brew install ffmpeg</code>. Only WebM will be produced.
             </span>
@@ -722,15 +922,107 @@ onUnmounted(() => {
                 @select="selectScene"
                 @add="addScene"
                 @delete="sceneActions.handleDeleteScene"
+                @duplicate="sceneActions.handleDuplicateScene"
+                @rename="sceneActions.handleRenameScene"
                 @switchHere="sceneActions.handleSwitchHere"
             />
         </div>
 
-        <div class="editor__preview" :style="{ aspectRatio }">
-            <div class="preview__canvas-wrapper">
-                <canvas ref="renderCanvas" class="preview__canvas"></canvas>
-                <canvas ref="previewCanvas" class="preview__canvas"></canvas>
-                <canvas ref="previewOverlay" class="preview__overlay"></canvas>
+        <div class="editor__preview">
+            <div class="monitor-container">
+                <div class="monitor-header">
+                    <div class="monitor-title-section">
+                        <h3 class="monitor-title">MONITOR</h3>
+                        <span class="monitor-frame">Frame: {{ playback.frame.value }}</span>
+                    </div>
+                    <div class="monitor-export-controls">
+                        <button @click="videoExport.stopExport" class="export danger" :disabled="!videoExport.isRecording.value">Stop Export</button>
+                        <button @click="exportWithOptions" class="export success">Export</button>
+                    </div>
+                </div>
+                
+                <div class="monitor-display">
+                    <!-- 
+                        Render canvas: Full resolution (e.g., 1920x1080) canvas hidden off-screen.
+                        This is transferred to a Web Worker for high-quality rendering and export.
+                    -->
+                    <canvas ref="renderCanvas" class="preview__canvas-offscreen"></canvas>
+                    
+                    <!-- 
+                        Preview canvas: Scaled-down display canvas that shows the render output.
+                        drawPreview() copies from renderCanvas to this canvas, fitting to container size.
+                    -->
+                    <div class="preview__canvas-wrapper">
+                        <canvas ref="previewCanvas" class="preview__canvas"></canvas>
+                        <canvas ref="previewOverlay" class="preview__overlay"></canvas>
+                    </div>
+                </div>
+                
+                <div class="monitor-settings">
+                    <div class="monitor-info">
+                        <!-- Read-only mode -->
+                        <template v-if="!isEditingSettings">
+                            <span class="info-item">{{ timeline?.settings.fps || 60 }} FPS</span>
+                            <span class="info-separator">•</span>
+                            <span class="info-item">{{ timeline?.settings.renderWidth || 1920 }} × {{ timeline?.settings.renderHeight || 1080 }}</span>
+                            <span class="info-separator">•</span>
+                            <span class="info-item">{{ timeline?.settings.exportBitrateMbps || 8 }} Mbps</span>
+                        </template>
+                        
+                        <!-- Edit mode -->
+                        <template v-else>
+                            <input 
+                                v-if="timeline" 
+                                type="number" 
+                                :value="timeline.settings.fps" 
+                                @input="e => { if (timeline) timeline.settings.fps = Number((e.target as HTMLInputElement).value) }"
+                                class="fps-input"
+                                placeholder="FPS"
+                                min="1"
+                                max="120"
+                            />
+                            <span class="info-label">FPS</span>
+                            <span class="info-separator">•</span>
+                            <select v-if="timeline" @change="updateDimensions" :value="`${timeline.settings.renderWidth}x${timeline.settings.renderHeight}`" class="dimension-preset">
+                                <option value="1920x1080">1920 × 1080</option>
+                                <option value="1280x720">1280 × 720</option>
+                                <option value="3840x2160">3840 × 2160 (4K)</option>
+                                <option value="2560x1440">2560 × 1440 (2K)</option>
+                                <option value="1080x1920">1080 × 1920 (Vertical)</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <input 
+                                v-if="timeline && `${timeline.settings.renderWidth}x${timeline.settings.renderHeight}` === 'custom'" 
+                                type="text" 
+                                :value="`${timeline.settings.renderWidth} × ${timeline.settings.renderHeight}`"
+                                @input="updateCustomDimensions"
+                                class="custom-dimensions"
+                                placeholder="Width × Height"
+                            />
+                            <span class="info-separator">•</span>
+                            <input 
+                                v-if="timeline" 
+                                type="number" 
+                                :value="timeline.settings.exportBitrateMbps" 
+                                @input="e => { if (timeline) timeline.settings.exportBitrateMbps = Number((e.target as HTMLInputElement).value) }"
+                                class="bitrate-input"
+                                placeholder="Mbps"
+                                min="1"
+                                max="100"
+                            />
+                            <span class="info-label">Mbps</span>
+                        </template>
+                    </div>
+                    <div class="monitor-controls">
+                        <button @click="toggleEditSettings" class="edit-toggle">
+                            {{ isEditingSettings ? '✓ Done' : '✎ Edit' }}
+                        </button>
+                        <button @click="toggleIncludeAudio" :class="['audio-toggle', { active: timeline?.settings.includeAudio }]">
+                            <span class="audio-icon">{{ timeline?.settings.includeAudio ? '✓' : '✗' }}</span>
+                            Include Audio
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -752,6 +1044,7 @@ onUnmounted(() => {
                 @update:sceneTracks="handleSceneTracksUpdate"
                 @propChangeValue="handlePropChangeValue"
                 @navigate="({ dir }) => timelineNavigation.navigateTo(dir)"
+                @scrubToFrame="(frame) => playback.scrubToFrame(frame)"
                 @resetProject="handleReset"
                 @importWolk="wolkImport.openDialog"
             />
@@ -796,14 +1089,14 @@ onUnmounted(() => {
     <div v-if="wolkImport.showDialog.value" class="modal-backdrop">
         <div class="modal">
             <h3>Import .wolk</h3>
-            <div style="margin:8px 0;">
+            <div>
                 <input
                     type="file"
                     accept=".wolk,application/zip,application/gzip"
                     @change="wolkImport.pickFile"
                 />
             </div>
-            <div style="margin:8px 0; display:flex; gap:12px; align-items:center;">
+            <div class="import-options">
                 <label>
                     <input type="radio" value="copy" v-model="wolkImport.strategy.value" />
                     Copy (create new project)
@@ -813,10 +1106,10 @@ onUnmounted(() => {
                     Override (replace if same ID)
                 </label>
             </div>
-            <div v-if="wolkImport.error.value" style="color:#e66;">{{ wolkImport.error.value }}</div>
-            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+            <div v-if="wolkImport.error.value" class="error">{{ wolkImport.error.value }}</div>
+            <div class="actions">
                 <button @click="wolkImport.closeDialog" :disabled="wolkImport.isImporting.value">Cancel</button>
-                <button @click="wolkImport.doImport" :disabled="wolkImport.isImporting.value || !wolkImport.file.value">
+                <button @click="wolkImport.doImport" :disabled="wolkImport.isImporting.value || !wolkImport.file.value" class="primary">
                     {{ wolkImport.isImporting.value ? 'Importing…' : 'Import' }}
                 </button>
             </div>

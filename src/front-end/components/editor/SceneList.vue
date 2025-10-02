@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { SceneRef } from '@/types/timeline_types';
+import { ref } from 'vue';
+import type { SceneRef, SceneType } from '@/types/timeline_types';
 
 const props = defineProps<{ scenes: SceneRef[]; selectedId?: string; currentFrame?: number; fps?: number }>();
 const emit = defineEmits<{
@@ -7,40 +8,156 @@ const emit = defineEmits<{
     (e: 'add', type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d'): void;
     (e: 'switchHere', payload: { frame: number }): void;
     (e: 'delete', id: string): void;
+    (e: 'duplicate', id: string): void;
+    (e: 'rename', payload: { id: string; name: string }): void;
 }>();
 
-const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d') => emit('add', type);
+const showAddMenu = ref(false);
+const editingSceneId = ref<string | null>(null);
+const editingName = ref('');
+
+const handleAdd = (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d') => {
+    emit('add', type);
+    showAddMenu.value = false;
+};
+
+const formatSceneType = (type: SceneType): string => {
+    const typeMap: Record<SceneType, string> = {
+        'wordcloud': 'WordCloud',
+        'wordSphere': '3D Sphere',
+        'singleWord': 'Single',
+        'model3d': '3D Model',
+        'imageMaskFill': 'Mask'
+    };
+    return typeMap[type] || type;
+};
+
+const getSceneIcon = (type: SceneType): string => {
+    const iconMap: Record<SceneType, string> = {
+        'wordcloud': '🌥️',
+        'wordSphere': '🌐',
+        'singleWord': '📝',
+        'model3d': '🎭',
+        'imageMaskFill': '🖼️'
+    };
+    return iconMap[type] || '📄';
+};
+
+const startRename = (scene: SceneRef) => {
+    editingSceneId.value = scene.id;
+    editingName.value = scene.name;
+};
+
+const saveRename = (id: string) => {
+    if (editingName.value.trim()) {
+        emit('rename', { id, name: editingName.value.trim() });
+    }
+    editingSceneId.value = null;
+};
+
+const cancelRename = () => {
+    editingSceneId.value = null;
+};
 </script>
 
 <template>
-    <div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-            <h3>Scenes</h3>
-            <div style="display:flex; gap:6px;">
-                <button @click="handleAdd('wordcloud')">+ WordCloud</button>
-                <button @click="handleAdd('wordSphere')">+ 3D Word Sphere</button>
-                <button @click="handleAdd('singleWord')">+ Single Word</button>
-                <button @click="handleAdd('model3d')">+ 3D Model</button>
+    <div class="scene-list-container">
+        <div class="scene-list-header">
+            <h3>SCENES</h3>
+            <div class="add-scene-dropdown">
+                <button @click="showAddMenu = !showAddMenu" class="primary add-scene-btn">
+                    + Add Scene
+                </button>
+                <div v-if="showAddMenu" class="dropdown-menu">
+                    <button @click="handleAdd('wordcloud')" class="dropdown-item">
+                        <span class="icon">🌥️</span>
+                        <span>WordCloud</span>
+                    </button>
+                    <button @click="handleAdd('wordSphere')" class="dropdown-item">
+                        <span class="icon">🌐</span>
+                        <span>3D Sphere</span>
+                    </button>
+                    <button @click="handleAdd('singleWord')" class="dropdown-item">
+                        <span class="icon">📝</span>
+                        <span>Single Word</span>
+                    </button>
+                    <button @click="handleAdd('model3d')" class="dropdown-item">
+                        <span class="icon">🎭</span>
+                        <span>3D Model</span>
+                    </button>
+                </div>
             </div>
         </div>
-        <ul>
-            <li v-for="(s, idx) in scenes" :key="s.id" :style="{padding:'6px', cursor:'pointer', background: s.id===props.selectedId ? '#ccc' : 'transparent', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px'}" @click="emit('select', s.id)">
-                <span>{{ idx + 1 }}. {{ s.name }}</span>
-                <button title="Delete scene" @click.stop="emit('delete', s.id)">Delete</button>
+        
+        <div v-if="scenes.length === 0" class="empty-state">
+            <div class="empty-icon">🎬</div>
+            <div class="empty-title">No scenes yet</div>
+            <div class="empty-text">Click a button above to create your first scene</div>
+        </div>
+        
+        <ul v-else class="scene-items">
+            <li v-for="(s, idx) in scenes" :key="s.id" class="scene-item" :class="{ selected: s.id === props.selectedId }" @click="emit('select', s.id)">
+                <div class="scene-main">
+                    <div class="scene-icon">{{ getSceneIcon(s.type) }}</div>
+                    <div class="scene-content">
+                        <input 
+                            v-if="editingSceneId === s.id"
+                            v-model="editingName"
+                            @click.stop
+                            @keyup.enter="saveRename(s.id)"
+                            @keyup.esc="cancelRename"
+                            @blur="saveRename(s.id)"
+                            class="scene-name-input"
+                            ref="editInput"
+                        />
+                        <div v-else class="scene-name" @dblclick.stop="startRename(s)">{{ s.name }}</div>
+                        <div class="scene-meta">
+                            <span class="meta-item scene-index">#{{ idx + 1 }}</span>
+                            <span class="meta-item scene-type">{{ formatSceneType(s.type) }}</span>
+                            <span class="meta-item scene-frames">{{ s.durationFrames }}f</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="scene-actions">
+                    <button title="Rename scene" @click.stop="startRename(s)" class="action-btn">✏️</button>
+                    <button title="Duplicate scene" @click.stop="emit('duplicate', s.id)" class="action-btn">⎘</button>
+                    <button title="Delete scene" @click.stop="emit('delete', s.id)" class="danger delete-btn">×</button>
+                </div>
             </li>
         </ul>
-        <div style="margin-top:8px; padding:8px; border-top:1px solid #333; font-size:12px; line-height:18px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
-                <div style="font-weight:600;">Controls</div>
-                <button @click="() => emit('switchHere', { frame: Math.max(0, props.currentFrame||0) })">Switch active scene here</button>
+        
+        <details class="timeline-controls" open>
+            <summary>
+                <span>TIMELINE CONTROLS</span>
+            </summary>
+            <div class="controls-grid">
+                <div class="shortcut-box">
+                    <div class="shortcut-key">Drag scene</div>
+                    <div class="shortcut-desc">Move</div>
+                </div>
+                <div class="shortcut-box">
+                    <div class="shortcut-key">Drag edge</div>
+                    <div class="shortcut-desc">Resize</div>
+                </div>
+                <div class="shortcut-box">
+                    <div class="shortcut-key">Alt + edge</div>
+                    <div class="shortcut-desc">Transition</div>
+                </div>
+                <div class="shortcut-box">
+                    <div class="shortcut-key">Double-click</div>
+                    <div class="shortcut-desc">Rename</div>
+                </div>
+                <div class="shortcut-box">
+                    <div class="shortcut-key">Space + drag</div>
+                    <div class="shortcut-desc">Pan</div>
+                </div>
+                <div class="shortcut-box">
+                    <div class="shortcut-key">⌘ + wheel</div>
+                    <div class="shortcut-desc">Zoom</div>
+                </div>
             </div>
-            <div>Drag scene: move</div>
-            <div>Resize: drag left/right edge</div>
-            <div>Adjust transition: Alt + drag edge</div>
-            <div>Pan timeline: Space/Ctrl/Meta drag; Zoom: Cmd/Ctrl + wheel</div>
-        </div>
+        </details>
     </div>
-    
 </template>
 
 

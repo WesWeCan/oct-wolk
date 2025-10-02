@@ -602,8 +602,8 @@ function niceGridSeconds(windowSec: number, widthPx: number): number {
 </script>
 
 <template>
-    <div style="width:100%; height:100%; overflow:auto">
-        <canvas ref="canvasRef" style="width:100%; height:100%; touch-action: none" tabindex="0"></canvas>
+    <div class="timeline-canvas-wrapper">
+        <canvas ref="canvasRef" class="timeline-canvas" tabindex="0"></canvas>
     </div>
     
 </template>

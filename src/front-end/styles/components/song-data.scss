@@ -1,0 +1,172 @@
+.song-data {
+    display: grid;
+    gap: 24px;
+    grid-template-columns: 1fr 1fr;
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        
+        &.cover-upload,
+        &.audio-upload {
+            grid-column: 1 / -1;
+        }
+        
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #00d4ff;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        input[type="text"] {
+            padding: 12px 14px;
+            background: rgba(30, 30, 40, 0.8);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 14px;
+            transition: all 200ms;
+            
+            &::placeholder {
+                color: #666;
+            }
+            
+            &:focus {
+                outline: none;
+                border-color: rgba(0, 212, 255, 0.5);
+                background: rgba(30, 30, 40, 1);
+                box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+            }
+            
+            &:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+        }
+        
+        .file-upload-area {
+            border: 2px dashed rgba(0, 212, 255, 0.3);
+            border-radius: 8px;
+            padding: 32px;
+            background: rgba(20, 20, 30, 0.4);
+            transition: all 200ms;
+            
+            &:hover {
+                border-color: rgba(0, 212, 255, 0.5);
+                background: rgba(20, 20, 30, 0.6);
+            }
+            
+            .upload-label {
+                cursor: pointer;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+                
+                .upload-icon {
+                    font-size: 48px;
+                    opacity: 0.6;
+                }
+                
+                .upload-text {
+                    font-size: 16px;
+                    color: #00d4ff;
+                    font-weight: 600;
+                }
+                
+                .upload-hint {
+                    font-size: 12px;
+                    color: #888;
+                }
+            }
+        }
+        
+        .file-preview {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            
+            &.audio {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .preview-image {
+                width: 100%;
+                max-width: 300px;
+                height: auto;
+                display: block;
+                border-radius: 8px;
+                border: 1px solid rgba(0, 212, 255, 0.2);
+            }
+            
+            .preview-overlay {
+                position: absolute;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.7);
+                backdrop-filter: blur(2px);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                transition: all 200ms;
+            }
+            
+            &:hover .preview-overlay {
+                opacity: 1;
+            }
+            
+            .audio-player {
+                audio {
+                    width: 100%;
+                    height: 48px;
+          
+                    background: rgba(20, 20, 30, 0.8);
+
+                    
+                }
+            }
+            
+            .replace-btn {
+                cursor: pointer;
+                padding: 12px 24px;
+                background: rgba(0, 212, 255, 0.15);
+                border: 1px solid rgba(0, 212, 255, 0.3);
+                border-radius: 6px;
+                color: #00d4ff;
+                font-weight: 600;
+                font-size: 14px;
+                transition: all 200ms;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                
+                &:hover {
+                    background: rgba(0, 212, 255, 0.25);
+                    border-color: rgba(0, 212, 255, 0.5);
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+                }
+                
+                &.secondary {
+                    background: rgba(30, 30, 40, 0.8);
+                    border-color: rgba(0, 212, 255, 0.2);
+                    
+                    &:hover {
+                        background: rgba(0, 212, 255, 0.15);
+                    }
+                }
+            }
+        }
+    }
+}
+
+@media (max-width: 768px) {
+    .song-data {
+        grid-template-columns: 1fr;
+    }
+}

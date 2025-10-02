@@ -1,73 +1,323 @@
 .editor {
     display: grid;
     grid-template-rows: auto 1fr auto;
-    grid-template-columns: 280px 1fr 320px;
+    grid-template-columns: var(--sidebar-width, 280px) 1fr var(--inspector-width, 320px);
     grid-template-areas:
         'toolbar toolbar toolbar'
         'sidebar preview inspector'
         'timeline timeline timeline';
-    height: calc(100vh - 48px);
+    height: calc(100vh - 48px); // Account for app header height (48px)
+    width: 100%;
+    max-width: 100vw;
+    overflow: hidden; // Prevent editor from scrolling
+    box-sizing: border-box;
 }
 
-.editor__toolbar { grid-area: toolbar; padding: 8px 12px; border-bottom: 1px solid #222; display: flex; gap: 8px; align-items: center; }
+.editor__toolbar { 
+    grid-area: toolbar; 
+    padding: 8px 12px; 
+    border-bottom: 1px solid #222; 
+    display: flex; 
+    gap: 8px; 
+    align-items: center;
+    justify-content: space-between; // Space between left and right sections
+    
+    .toolbar__left {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+    
+    .toolbar__right {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-left: auto;
+    }
+}
 .toolbar__notice { margin-left: 12px; padding: 4px 8px; border-radius: 4px; background: #442; color: #ffd8a8; font-size: 12px; }
-.editor__sidebar { grid-area: sidebar; border-right: 1px solid #222; overflow: auto; padding: 12px; }
-.editor__preview { grid-area: preview; display: grid; place-items: center; background: #111; overflow: hidden; }
-.editor__inspector { grid-area: inspector; border-left: 1px solid #222; overflow: auto; padding: 12px; }
-.editor__timeline { grid-area: timeline; border-top: 1px solid #222; max-height: 250px; overflow: auto; background: #181818; position: relative; }
+
+.editor__sidebar { 
+    grid-area: sidebar; 
+    border-right: 1px solid #222; 
+    overflow-x: visible; // Allow dropdowns and buttons to overflow horizontally
+    overflow-y: hidden; // Prevent vertical overflow, let children handle scrolling
+    padding: 12px; 
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    
+    &::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        cursor: ew-resize;
+        background: repeating-linear-gradient(
+            0deg,
+            rgba(0, 212, 255, 0.2) 0,
+            rgba(0, 212, 255, 0.2) 8px,
+            rgba(255, 255, 255, 0.08) 8px,
+            rgba(255, 255, 255, 0.08) 16px
+        );
+        opacity: 0.5;
+        transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 10;
+        
+        &:hover {
+            opacity: 1;
+            width: 10px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.4) 0,
+                rgba(0, 212, 255, 0.4) 8px,
+                rgba(0, 212, 255, 0.15) 8px,
+                rgba(0, 212, 255, 0.15) 16px
+            );
+        }
+    }
+    
+    &.is-resizing {
+        cursor: ew-resize;
+        user-select: none;
+        
+        &::after {
+            opacity: 1;
+            width: 12px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.6) 0,
+                rgba(0, 212, 255, 0.6) 8px,
+                rgba(0, 212, 255, 0.25) 8px,
+                rgba(0, 212, 255, 0.25) 16px
+            );
+        }
+    }
+}
+
+.editor__preview { 
+    grid-area: preview; 
+    background: #111; 
+    overflow: hidden; 
+}
+
+.editor__inspector { 
+    grid-area: inspector; 
+    border-left: 1px solid #222; 
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0; // Padding handled by child
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; // Allow flex child to shrink
+    
+    &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        cursor: ew-resize;
+        background: repeating-linear-gradient(
+            0deg,
+            rgba(0, 212, 255, 0.2) 0,
+            rgba(0, 212, 255, 0.2) 8px,
+            rgba(255, 255, 255, 0.08) 8px,
+            rgba(255, 255, 255, 0.08) 16px
+        );
+        opacity: 0.5;
+        transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 10;
+        
+        &:hover {
+            opacity: 1;
+            width: 10px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.4) 0,
+                rgba(0, 212, 255, 0.4) 8px,
+                rgba(0, 212, 255, 0.15) 8px,
+                rgba(0, 212, 255, 0.15) 16px
+            );
+        }
+    }
+    
+    &.is-resizing {
+        cursor: ew-resize;
+        user-select: none;
+        
+        &::before {
+            opacity: 1;
+            width: 12px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.6) 0,
+                rgba(0, 212, 255, 0.6) 8px,
+                rgba(0, 212, 255, 0.25) 8px,
+                rgba(0, 212, 255, 0.25) 16px
+            );
+        }
+    }
+}
+.editor__timeline { 
+    grid-area: timeline; 
+    border-top: 1px solid #222; 
+    max-height: 250px; 
+    overflow: auto; 
+    background: #181818; 
+    position: relative; 
+}
+
 .editor__timeline::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
-    height: 12px;
+    height: 8px;
     cursor: ns-resize;
-    background:
-        repeating-linear-gradient(
-            90deg,
-            rgba(255,255,255,0.25) 0,
-            rgba(255,255,255,0.25) 6px,
-            rgba(255,255,255,0.05) 6px,
-            rgba(255,255,255,0.05) 12px
-        );
-    border-bottom: 1px solid #333;
-    border-top: none;
-    opacity: 0.65;
-    transition: opacity 140ms ease, transform 140ms ease;
-    transform-origin: top center;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(0, 212, 255, 0.2) 0,
+        rgba(0, 212, 255, 0.2) 10px,
+        rgba(255, 255, 255, 0.08) 10px,
+        rgba(255, 255, 255, 0.08) 20px
+    );
+    opacity: 0.5;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 10;
     pointer-events: auto;
 }
-.editor__timeline:hover::before { opacity: 0.95; transform: scaleY(1.15); }
-.editor__timeline.is-resizing::before { opacity: 1; transform: scaleY(1.25); }
+
+.editor__timeline:hover::before { 
+    opacity: 1;
+    height: 12px;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(0, 212, 255, 0.4) 0,
+        rgba(0, 212, 255, 0.4) 10px,
+        rgba(0, 212, 255, 0.15) 10px,
+        rgba(0, 212, 255, 0.15) 20px
+    );
+}
+
+.editor__timeline.is-resizing::before { 
+    opacity: 1;
+    height: 14px;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(0, 212, 255, 0.6) 0,
+        rgba(0, 212, 255, 0.6) 10px,
+        rgba(0, 212, 255, 0.25) 10px,
+        rgba(0, 212, 255, 0.25) 20px
+    );
+}
+
 .editor__timeline.is-resizing { cursor: ns-resize; }
 
-.preview__canvas-wrapper { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
-.preview__canvas { background: #000; max-width: 100%; max-height: 100%; width: 100%; height: 100%; object-fit: contain; }
-.preview__overlay { position: absolute; inset: 0; pointer-events: none; }
+.preview__canvas-wrapper { 
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+    max-width: calc(100% - 32px);
+    max-height: calc(100% - 32px);
+}
+.preview__canvas { 
+    display: block;
+}
+.preview__canvas-offscreen {
+    position: fixed;
+    left: -9999px;
+    top: -9999px;
+    pointer-events: none;
+    z-index: -1;
+    /* Canvas bitmap size is set via JS, not CSS */
+}
+.preview__overlay { 
+    position: absolute; 
+    inset: 0; 
+    pointer-events: none; 
+}
 
 button { cursor: pointer; }
 
+// Responsive breakpoints for smaller screens
+@media (max-width: 1400px) {
+    .editor {
+        // Reduce default sidebar and inspector widths on medium screens
+        grid-template-columns: var(--sidebar-width, 240px) 1fr var(--inspector-width, 280px);
+    }
+}
+
 @media (max-width: 1200px) {
     .editor {
-        grid-template-columns: 240px 1fr;
+        // Stack inspector below: sidebar + preview on top, inspector below
+        grid-template-columns: var(--sidebar-width, 240px) 1fr;
+        grid-template-rows: auto 1fr auto 1fr auto;
         grid-template-areas:
             'toolbar toolbar'
             'sidebar preview'
-            'timeline timeline';
+            'timeline timeline'
+            'inspector inspector'
+            'inspector inspector';
     }
-    .editor__inspector { display: none; }
+    
+    .editor__inspector {
+        overflow-y: auto;
+        max-height: 50vh;
+        border-top: 1px solid #222;
+    }
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
     .editor {
+        // Full vertical stack: preview, sidebar, inspector
         grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(200px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr) auto;
         grid-template-areas:
             'toolbar'
             'preview'
             'sidebar'
+            'inspector'
             'timeline';
+    }
+    
+    .editor__sidebar {
+        overflow-y: auto;
+        max-height: 40vh;
+        border-bottom: 1px solid #222;
+    }
+    
+    .editor__inspector {
+        overflow-y: auto;
+        max-height: 40vh;
+    }
+}
+
+@media (max-width: 600px) {
+    .editor__toolbar {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 6px 8px;
+        
+        button {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+    }
+    
+    // Make timeline more compact on mobile
+    .editor__timeline {
+        min-height: 200px;
+    }
+    
+    // Adjust inspector padding for mobile
+    .editor__inspector {
+        padding: 8px;
     }
 }
 

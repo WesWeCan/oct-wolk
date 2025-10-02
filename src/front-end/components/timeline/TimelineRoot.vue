@@ -4,6 +4,7 @@ import RulerLane from '@/front-end/components/timeline/lanes/RulerLane.vue';
 import ScenesLane from '@/front-end/components/timeline/lanes/ScenesLane.vue';
 import ActionsLane from '@/front-end/components/timeline/lanes/ActionsLane.vue';
 import WordKeyframesLane from '@/front-end/components/timeline/lanes/WordKeyframesLane.vue';
+import PropertyMiniLane from '@/front-end/components/timeline/lanes/PropertyMiniLane.vue';
 // New AE-style left column scaffold (names + properties)
 const showLeftColumn = true;
 import WaveformLane from '@/front-end/components/timeline/lanes/WaveformLane.vue';
@@ -11,7 +12,6 @@ import EnergyLane from '@/front-end/components/timeline/lanes/EnergyLane.vue';
 import BeatsLane from '@/front-end/components/timeline/lanes/BeatsLane.vue';
 import BandsLane from '@/front-end/components/timeline/lanes/BandsLane.vue';
 import BeatStrengthLane from '@/front-end/components/timeline/lanes/BeatStrengthLane.vue';
-import ScenePropertiesLane from '@/front-end/components/timeline/lanes/ScenePropertiesLane.vue';
 import { useTimelineViewport } from './useTimelineViewport';
 import TimelineHelp from './TimelineHelp.vue';
 import type { SceneRef, ActionItem } from '@/types/timeline_types';
@@ -57,7 +57,6 @@ const emit = defineEmits<{
 
 const containerRef = ref<HTMLDivElement | null>(null);
 const hostRef = ref<HTMLElement | null>(null);
-const scenePropsLaneRef = ref<InstanceType<typeof ScenePropertiesLane> | null>(null);
 
 const vp = useTimelineViewport({ fps: props.fps, durationSec: Math.min(30, Math.max(1, props.durationSec || 60)), totalSec: Math.max(1, props.durationSec || 60) });
 
@@ -68,17 +67,16 @@ watch(() => props.currentFrame, (f) => {
 });
 
 const laneHeights = ref<{ [key: string]: number }>({
-    ruler: 72,
+    ruler: 48, // Reduced from 72
     scenes: 96,
     actions: 40,
-    keyframes: 120,
-    'scene-props': 120, // Initial height for scene properties
-    waveform: 160,
-    energy: 80,
-    bands: 80,
-    beatstrength: 60,
-    
-    beats: 80,
+    keyframes: 80, // Reduced from 120
+    'scene-props': 96, // Initial height for scene properties (3 rows × 32px)
+    waveform: 140, // Slightly reduced
+    energy: 70, // Slightly reduced
+    bands: 70, // Slightly reduced
+    beatstrength: 50, // Slightly reduced
+    beats: 70, // Slightly reduced
 });
 const collapsed = ref<{ [key: string]: boolean }>({});
 
@@ -96,76 +94,119 @@ const handlePropMoveKf = (payload: { propertyPath: string; index: number; frame:
 const handlePropDeleteKf = (payload: { propertyPath: string; index: number }) => emit('propDeleteKf', payload);
 const handlePropChangeValue = (payload: { propertyPath: string; value: any }) => emit('propChangeValue', payload);
 
-// Left column controls for properties
-const propertyMetas = computed<any[]>(() => Array.isArray(props.scenePropertyMetas) ? (props.scenePropertyMetas as any[]) : (props.scenePropertyTracks || []).map(t => ({ propertyPath: t.propertyPath })));
-
-// Auto-adjust scene-props lane height based on number of properties
-watch(propertyMetas, (metas) => {
-    if (metas && metas.length > 0) {
-        // Each property row is ~48px (header + controls), plus 40px base padding
-        const calculatedHeight = Math.max(120, 40 + metas.length * 48);
-        laneHeights.value = { ...laneHeights.value, 'scene-props': calculatedHeight };
+// Property lanes - each property becomes its own lane
+const propertyLanes = computed(() => {
+    if (!props.selectedSceneId || !Array.isArray(props.scenePropertyTracks) || props.scenePropertyTracks.length === 0) {
+        // Empty state - show placeholder
+        return [];
     }
+    return props.scenePropertyTracks.map((track: any) => {
+        const meta = Array.isArray(props.scenePropertyMetas) 
+            ? props.scenePropertyMetas.find((m: any) => m.propertyPath === track.propertyPath)
+            : null;
+        return {
+            key: `prop-${track.propertyPath}`,
+            propertyPath: track.propertyPath,
+            label: meta?.label || track.propertyPath,
+            track: track,
+            meta: meta
+        };
+    });
+});
+
+// Initialize heights for property lanes
+// Calculate minimum height: header (28px) + value display (25px) + buttons (30px) + input (30px) + padding (12px) = 125px
+const PROPERTY_LANE_MIN_HEIGHT = 125;
+
+watch(propertyLanes, (lanes) => {
+    const newHeights = { ...laneHeights.value };
+    lanes.forEach(lane => {
+        if (!(lane.key in newHeights)) {
+            newHeights[lane.key] = PROPERTY_LANE_MIN_HEIGHT;
+        }
+    });
+    laneHeights.value = newHeights;
 }, { immediate: true });
 
-// Get interpolated value at current frame
-const getParamValue = (propertyPath: string) => {
-    const meta = (propertyMetas.value || []).find((m: any) => m.propertyPath === propertyPath) as any;
-    const track = (props.scenePropertyTracks || []).find((t: any) => t.propertyPath === propertyPath);
-    const frame = props.currentFrame || 0;
+// Get current interpolated value for a property
+const getPropertyValue = (propertyPath: string) => {
+    const track = props.scenePropertyTracks?.find((t: any) => t.propertyPath === propertyPath);
+    if (!track || !Array.isArray(track.keyframes) || track.keyframes.length === 0) return 0;
     
-    // Use proper interpolation
-    const fallback = meta?.default ?? 0;
-    return evalInterpolatedAtFrame(track, frame, fallback);
+    const currentFrame = props.currentFrame || 0;
+    const kfs = track.keyframes;
+    let before = null;
+    let after = null;
+    for (const kf of kfs) {
+        if (kf.frame <= currentFrame) before = kf;
+        if (kf.frame >= currentFrame && !after) after = kf;
+    }
+    if (!before && !after) return 0;
+    if (!after) return before.value;
+    if (!before || before.frame === after.frame) return after.value;
+    const t = (currentFrame - before.frame) / (after.frame - before.frame);
+    return before.value + (after.value - before.value) * t;
 };
-const onLeftButtonClick = (e: MouseEvent) => {
-    const target = e.target as HTMLElement | null; if (!target) return;
-    const action = target.getAttribute('data-action');
-    const propertyPath = target.getAttribute('data-prop') || '';
-    
-    console.log('[TimelineRoot] onLeftButtonClick:', { action, propertyPath, hasRef: !!scenePropsLaneRef.value });
-    
-    // Handle delete action (no propertyPath needed)
-    if (action === 'delete') {
-        console.log('[TimelineRoot] Delete action, calling onDeleteSelected');
-        scenePropsLaneRef.value?.onDeleteSelected();
-        return;
-    }
-    
-    if (!propertyPath) return;
-    const frame = (vp.playhead.value.frame | 0);
-    if (action === 'add') {
-        handlePropAddKf({ propertyPath, frame, value: getParamValue(propertyPath) });
-        return;
-    }
-    // prev/next navigation - delegate to lane component to handle selection
-    if (action === 'prev') {
-        scenePropsLaneRef.value?.onNavigate('prevKf', propertyPath);
-        return;
-    }
-    if (action === 'next') {
-        scenePropsLaneRef.value?.onNavigate('nextKf', propertyPath);
-        return;
+
+// Property lane controls
+const handlePropAdd = (propertyPath: string) => {
+    const value = getPropertyValue(propertyPath);
+    handlePropAddKf({ propertyPath, frame: props.currentFrame || 0, value });
+};
+
+const handlePropPrev = (propertyPath: string) => {
+    const track = props.scenePropertyTracks?.find((t: any) => t.propertyPath === propertyPath);
+    if (!track || !Array.isArray(track.keyframes)) return;
+    const frames = track.keyframes.map((k: any) => k.frame).sort((a: number, b: number) => a - b);
+    const current = props.currentFrame || 0;
+    for (let i = frames.length - 1; i >= 0; i--) {
+        if (frames[i] < current) {
+            const targetFrame = frames[i];
+            emit('scrub', { timeSec: targetFrame / Math.max(1, props.fps), frame: targetFrame });
+            return;
+        }
     }
 };
-const onLeftValueChange = (e: Event) => {
-    const el = e.target as HTMLInputElement | null; if (!el) return;
-    const prop = el.getAttribute('data-prop') || '';
-    if (!prop) return;
-    const v = el.value;
-    const num = Number(v);
-    handlePropChangeValue({ propertyPath: prop, value: Number.isFinite(num) ? num : v });
+
+const handlePropNext = (propertyPath: string) => {
+    const track = props.scenePropertyTracks?.find((t: any) => t.propertyPath === propertyPath);
+    if (!track || !Array.isArray(track.keyframes)) return;
+    const frames = track.keyframes.map((k: any) => k.frame).sort((a: number, b: number) => a - b);
+    const current = props.currentFrame || 0;
+    for (let i = 0; i < frames.length; i++) {
+        if (frames[i] > current) {
+            const targetFrame = frames[i];
+            emit('scrub', { timeSec: targetFrame / Math.max(1, props.fps), frame: targetFrame });
+            return;
+        }
+    }
+};
+
+const handlePropValueChange = (propertyPath: string, value: any) => {
+    handlePropChangeValue({ propertyPath, value });
+};
+
+// Track selected keyframes per property
+const selectedPropertyKeyframes = ref<Record<string, number>>({});
+
+const handlePropDelete = (propertyPath: string) => {
+    const selectedIdx = selectedPropertyKeyframes.value[propertyPath];
+    if (selectedIdx === undefined || selectedIdx === null || selectedIdx < 0) return;
+    handlePropDeleteKf({ propertyPath, index: selectedIdx });
+    selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: -1 };
 };
 
 // Lane vertical resize via drag handle
 const resizing = ref<{ key: string; startY: number; startH: number } | null>(null);
-const minHeights: Record<string, number> = { ruler: 48, scenes: 60, actions: 28, keyframes: 80, waveform: 120, energy: 60, bands: 60, beatstrength: 48, beats: 60 };
+const minHeights: Record<string, number> = { ruler: 40, scenes: 60, actions: 28, keyframes: 80, waveform: 120, energy: 60, bands: 60, beatstrength: 48, beats: 60 };
 const startResize = (key: string, e: PointerEvent) => {
     resizing.value = { key, startY: e.clientY, startH: laneHeights.value[key] };
     const onMove = (ev: PointerEvent) => {
         if (!resizing.value) return;
         const dy = ev.clientY - resizing.value.startY;
-        const nh = Math.max(minHeights[resizing.value.key] || 24, resizing.value.startH + dy);
+        // For property lanes, use PROPERTY_LANE_MIN_HEIGHT; for others use minHeights or default 24
+        const minH = resizing.value.key.startsWith('prop-') ? PROPERTY_LANE_MIN_HEIGHT : (minHeights[resizing.value.key] || 24);
+        const nh = Math.max(minH, resizing.value.startH + dy);
         laneHeights.value = { ...laneHeights.value, [resizing.value.key]: nh };
     };
     const onUp = () => {
@@ -221,37 +262,99 @@ watch(() => vp.viewport.value, (v) => {
 
 <template>
     <div ref="containerRef" class="timeline-root" :style="{ '--playhead-x': `${(Math.max(0, Math.min((vp.playhead.value.frame/Math.max(1,fps)) - vp.viewport.value.startSec, vp.viewport.value.durationSec)) / Math.max(1e-6, vp.viewport.value.durationSec)) * 100}%` } as any">
-        <div class="timeline-grid" :style="({ display: 'grid', gridTemplateColumns: showLeftColumn ? '220px 1fr' : '1fr' })">
-            <div v-if="showLeftColumn" class="timeline-leftcol">
-                <div class="lane-label" :style="({ height: `${laneHeights.ruler}px` })">Ruler</div>
-                <div class="lane-label" :style="({ height: `${collapsed.scenes ? 28 : laneHeights.scenes}px` })">Scenes</div>
-                <div class="lane-label" :style="({ height: `${collapsed.keyframes ? 28 : laneHeights.keyframes}px` })">Word Keyframes</div>
-                <div class="lane-label" :style="({ height: `${collapsed['scene-props'] ? 28 : laneHeights['scene-props']}px` })">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                        <span>Properties</span>
-                        <button type="button" data-action="delete" @click="onLeftButtonClick" :disabled="!scenePropsLaneRef?.hasSelection" style="font-size: 10px; padding: 2px 6px;">Delete</button>
+        <div class="timeline">
+            <div class="grid" :style="{ gridTemplateColumns: showLeftColumn ? '220px 1fr' : '1fr' }">
+            <div v-if="showLeftColumn" class="leftcol">
+                <div class="lane-label ruler-label" :style="{ height: `${laneHeights.ruler}px` }">TIME</div>
+                <div 
+                    class="lane-label" 
+                    :class="{ collapsed: collapsed.keyframes }"
+                    :style="{ height: `${collapsed.keyframes ? 28 : laneHeights.keyframes}px` }"
+                    @click="collapsed.keyframes = !collapsed.keyframes"
+                >
+                    WORD POOL KEYFRAMES
+                </div>
+                <div 
+                    class="lane-label" 
+                    :class="{ collapsed: collapsed.scenes }"
+                    :style="{ height: `${collapsed.scenes ? 28 : laneHeights.scenes}px` }"
+                    @click="collapsed.scenes = !collapsed.scenes"
+                >
+                    SCENES
+                </div>
+
+                <!-- Individual property lane labels -->
+                <div v-if="propertyLanes.length === 0 && selectedSceneId" class="lane-label empty-props-label" :style="{ height: '60px' }">
+                    PROPERTIES
+                    <span class="empty-hint">Select a scene to see properties</span>
+                </div>
+                <div v-for="propLane in propertyLanes" :key="propLane.key" 
+                    class="lane-label property-lane-label"
+                    :class="{ collapsed: collapsed[propLane.key] }"
+                    :style="{ height: `${collapsed[propLane.key] ? 28 : (laneHeights[propLane.key] || PROPERTY_LANE_MIN_HEIGHT)}px` }"
+                >
+                    <div class="prop-label-header" @click="collapsed[propLane.key] = !collapsed[propLane.key]">
+                        <span class="prop-name">{{ propLane.label }}</span>
                     </div>
-                    <div class="prop-rows">
-                        <div v-for="m in propertyMetas" :key="m.propertyPath" class="prop-row">
-                            <div class="prop-row-header">
-                                <span class="prop-label">{{ m.label || m.propertyPath }}</span>
-                                <span class="prop-value-display" :title="`Interpolated value at frame ${currentFrame}`">{{ typeof getParamValue(m.propertyPath) === 'number' ? getParamValue(m.propertyPath).toFixed(3) : getParamValue(m.propertyPath) }}</span>
-                            </div>
-                            <div class="prop-controls" @click="onLeftButtonClick" @change="onLeftValueChange">
-                                <button type="button" data-action="prev" :data-prop="m.propertyPath">◀</button>
-                                <button type="button" data-action="add" :data-prop="m.propertyPath">◆</button>
-                                <button type="button" data-action="next" :data-prop="m.propertyPath">▶</button>
-                                <input v-if="m.type === 'number' || !m.type" type="number" :min="m.min ?? undefined" :max="m.max ?? undefined" :step="m.step ?? 0.01" :value="typeof getParamValue(m.propertyPath) === 'number' ? Number(getParamValue(m.propertyPath).toFixed(3)) : getParamValue(m.propertyPath)" :data-prop="m.propertyPath" />
-                                
-                            </div>
+                    <div v-if="!collapsed[propLane.key]" class="prop-controls" @click.stop>
+                        <div class="prop-value-display">{{ getPropertyValue(propLane.propertyPath).toFixed(3) }}</div>
+                        <div class="prop-buttons">
+                            <button type="button" class="small" @click="handlePropPrev(propLane.propertyPath)" title="Previous keyframe">◀</button>
+                            <button type="button" class="small primary" @click="handlePropAdd(propLane.propertyPath)" title="Add keyframe">◆</button>
+                            <button type="button" class="small" @click="handlePropNext(propLane.propertyPath)" title="Next keyframe">▶</button>
+                            <button type="button" class="small danger" @click="handlePropDelete(propLane.propertyPath)" title="Delete selected keyframe">×</button>
                         </div>
+                        <input 
+                            type="number" 
+                            :value="getPropertyValue(propLane.propertyPath).toFixed(3)"
+                            @input="handlePropValueChange(propLane.propertyPath, Number(($event.target as HTMLInputElement).value))"
+                            :min="propLane.meta?.min"
+                            :max="propLane.meta?.max"
+                            :step="propLane.meta?.step || 0.01"
+                            class="prop-value-input"
+                        />
                     </div>
                 </div>
-                <div class="lane-label" :style="({ height: `${collapsed.waveform ? 28 : laneHeights.waveform}px` })">Waveform</div>
-                <div class="lane-label" :style="({ height: `${collapsed.energy ? 28 : laneHeights.energy}px` })">Energy</div>
-                <div class="lane-label" :style="({ height: `${collapsed.beatstrength ? 28 : laneHeights.beatstrength}px` })">Beat Strength</div>
-                <div class="lane-label" :style="({ height: `${collapsed.beats ? 28 : laneHeights.beats}px` })">Beats</div>
-                <div class="lane-label" :style="({ height: `${collapsed.bands ? 28 : laneHeights.bands}px` })">Bands</div>
+                <div 
+                    class="lane-label"
+                    :class="{ collapsed: collapsed.waveform }"
+                    :style="{ height: `${collapsed.waveform ? 28 : laneHeights.waveform}px` }"
+                    @click="collapsed.waveform = !collapsed.waveform"
+                >
+                    WAVEFORM
+                </div>
+                <div 
+                    class="lane-label"
+                    :class="{ collapsed: collapsed.energy }"
+                    :style="{ height: `${collapsed.energy ? 28 : laneHeights.energy}px` }"
+                    @click="collapsed.energy = !collapsed.energy"
+                >
+                    ENERGY
+                </div>
+                <div 
+                    class="lane-label"
+                    :class="{ collapsed: collapsed.beatstrength }"
+                    :style="{ height: `${collapsed.beatstrength ? 28 : laneHeights.beatstrength}px` }"
+                    @click="collapsed.beatstrength = !collapsed.beatstrength"
+                >
+                    BEAT STRENGTH
+                </div>
+                <div 
+                    class="lane-label"
+                    :class="{ collapsed: collapsed.beats }"
+                    :style="{ height: `${collapsed.beats ? 28 : laneHeights.beats}px` }"
+                    @click="collapsed.beats = !collapsed.beats"
+                >
+                    BEATS
+                </div>
+                <div 
+                    class="lane-label"
+                    :class="{ collapsed: collapsed.bands }"
+                    :style="{ height: `${collapsed.bands ? 28 : laneHeights.bands}px` }"
+                    @click="collapsed.bands = !collapsed.bands"
+                >
+                    BANDS
+                </div>
             </div>
             <div>
         <div class="lane lane--ruler-sticky lane--no-resize" :style="{ height: `${laneHeights.ruler}px` }">
@@ -259,12 +362,27 @@ watch(() => vp.viewport.value, (v) => {
         </div>
         
         
-        <!-- Scenes lane -->
-        <div class="lane" :style="{ height: `${collapsed.scenes ? 28 : laneHeights.scenes}px` }">
-            <div class="lane__header" @click="collapsed.scenes = !collapsed.scenes">
-                <span class="twisty">▸</span>
-                <span>Scenes</span>
-            </div>
+     
+
+        <!-- Arrange lanes: Waveform, Energy, Beat Strength, Beats, Bands, Keyframes, Actions -->
+        <div class="lane" :style="{ height: `${collapsed.keyframes ? 28 : laneHeights.keyframes}px` }">
+            <WordKeyframesLane
+                v-if="!collapsed.keyframes"
+                :viewport="vp.viewport.value"
+                :fps="fps"
+                :markers="wordKeyframes || []"
+                :beats="beats || []"
+                :current-frame="vp.playhead.value.frame"
+                @pan="(sec:number) => vp.panBy(sec)"
+                @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)"
+                @scrub="(p:any) => emit('scrub', p)"
+                @dragMarker="({ index, frame, originalFrame }) => emit('dragGlobalPoolMarker', { index, frame, originalFrame })"
+            />
+            <div class="lane-resizer" @pointerdown="(e:any) => startResize('keyframes', e)"></div>
+        </div>
+
+           <!-- Scenes lane -->
+           <div class="lane" :style="{ height: `${collapsed.scenes ? 28 : laneHeights.scenes}px` }">
             <ScenesLane
                 v-if="!collapsed.scenes"
                 :viewport="vp.viewport.value"
@@ -279,87 +397,50 @@ watch(() => vp.viewport.value, (v) => {
             />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('scenes', e)"></div>
         </div>
-
-        <!-- Arrange lanes: Waveform, Energy, Beat Strength, Beats, Bands, Keyframes, Actions -->
-        <div class="lane" :style="{ height: `${collapsed.keyframes ? 28 : laneHeights.keyframes}px` }">
-            <div class="lane__header" @click="collapsed.keyframes = !collapsed.keyframes">
-                <span class="twisty">▸</span>
-                <span>Word Keyframes</span>
-            </div>
-            <WordKeyframesLane
-                v-if="!collapsed.keyframes"
-                :viewport="vp.viewport.value"
-                :fps="fps"
-                :markers="wordKeyframes || []"
-                :beats="beats || []"
-                @pan="(sec:number) => vp.panBy(sec)"
-                @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)"
-                @scrub="(p:any) => emit('scrub', p)"
-                @dragMarker="({ index, frame, originalFrame }) => emit('dragGlobalPoolMarker', { index, frame, originalFrame })"
-            />
-            <div class="lane-resizer" @pointerdown="(e:any) => startResize('keyframes', e)"></div>
+        <!-- Empty properties placeholder -->
+        <div v-if="propertyLanes.length === 0 && selectedSceneId" class="lane lane--no-resize empty-properties-lane" :style="{ height: '60px' }">
+            <div class="empty-properties-message">No animatable properties for this scene</div>
         </div>
-        <!-- Scene properties lane (container of mini-lanes) -->
-        <div class="lane" :style="{ height: `${collapsed['scene-props'] ? 28 : laneHeights['scene-props']}px` }">
-            <div class="lane__header" @click="collapsed['scene-props'] = !collapsed['scene-props']">
-                <span class="twisty">▸</span>
-                <span>Properties</span>
-            </div>
-            <ScenePropertiesLane
-                ref="scenePropsLaneRef"
-                v-if="!collapsed['scene-props']"
+        
+        <!-- Individual property lanes -->
+        <div v-for="propLane in propertyLanes" :key="propLane.key" 
+            class="lane" 
+            :style="{ height: `${collapsed[propLane.key] ? 28 : (laneHeights[propLane.key] || PROPERTY_LANE_MIN_HEIGHT)}px` }">
+            <PropertyMiniLane
+                v-if="!collapsed[propLane.key]"
                 :viewport="vp.viewport.value"
                 :fps="fps"
-                :scene-id="selectedSceneId"
-                :tracks="(props.scenePropertyTracks || []) as any"
-                :metas="(props.scenePropertyMetas || []) as any"
+                :property-path="propLane.propertyPath"
+                :track="propLane.track"
+                :meta="propLane.meta"
                 :current-frame="vp.playhead.value.frame"
+                :selected-index="selectedPropertyKeyframes[propLane.propertyPath] ?? null"
                 @pan="(sec:number) => vp.panBy(sec)"
                 @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)"
                 @scrub="(p:any) => emit('scrub', p)"
-                @addKeyframe="handlePropAddKf"
-                @moveKeyframe="handlePropMoveKf"
-                @deleteKeyframe="handlePropDeleteKf"
-                @selectKeyframe="() => {}"
+                @moveKeyframe="({ index, frame }) => handlePropMoveKf({ propertyPath: propLane.propertyPath, index, frame })"
+                @deleteKeyframe="({ index }) => handlePropDeleteKf({ propertyPath: propLane.propertyPath, index })"
+                @selectKeyframe="({ index }) => selectedPropertyKeyframes[propLane.propertyPath] = index"
             />
+            <div class="lane-resizer" @pointerdown="(e:any) => startResize(propLane.key, e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.waveform ? 28 : laneHeights.waveform}px` }">
-            <div class="lane__header" @click="collapsed.waveform = !collapsed.waveform">
-                <span class="twisty">▸</span>
-                <span>Waveform</span>
-            </div>
             <WaveformLane v-if="!collapsed.waveform" :viewport="vp.viewport.value" :fps="fps" :waveform="waveform || []" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('waveform', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.energy ? 28 : laneHeights.energy}px` }">
-            <div class="lane__header" @click="collapsed.energy = !collapsed.energy">
-                <span class="twisty">▸</span>
-                <span>Energy</span>
-            </div>
             <EnergyLane v-if="!collapsed.energy" :viewport="vp.viewport.value" :fps="fps" :energy-per-frame="energyPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('energy', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.beatstrength ? 28 : laneHeights.beatstrength}px` }">
-            <div class="lane__header" @click="collapsed.beatstrength = !collapsed.beatstrength">
-                <span class="twisty">▸</span>
-                <span>Beat Strength</span>
-            </div>
             <BeatStrengthLane v-if="!collapsed.beatstrength" :viewport="vp.viewport.value" :fps="fps" :beat-strength-per-frame="beatStrengthPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('beatstrength', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.beats ? 28 : laneHeights.beats}px` }">
-            <div class="lane__header" @click="collapsed.beats = !collapsed.beats">
-                <span class="twisty">▸</span>
-                <span>Beats</span>
-            </div>
             <BeatsLane v-if="!collapsed.beats" :viewport="vp.viewport.value" :fps="fps" :beats="beats || []" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('beats', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.bands ? 28 : laneHeights.bands}px` }">
-            <div class="lane__header" @click="collapsed.bands = !collapsed.bands">
-                <span class="twisty">▸</span>
-                <span>Bands (Low/Mid/High)</span>
-            </div>
             <BandsLane v-if="!collapsed.bands" :viewport="vp.viewport.value" :fps="fps" :low="bandsLowPerFrame" :mid="bandsMidPerFrame" :high="bandsHighPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('bands', e)"></div>
         </div>
@@ -367,6 +448,7 @@ watch(() => vp.viewport.value, (v) => {
         <!-- <div class="lane" :style="{ height: 'auto' }">
             <TimelineHelp />
         </div> -->
+            </div>
             </div>
         </div>
     </div>
