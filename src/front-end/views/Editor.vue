@@ -290,30 +290,25 @@ const SYNC_DRIFT_FRAMES = 2;  // only resync if off by > 2 frames
 /**
  * Playback tick callback - sends frame data to worker.
  */
-playback.onTick((frame, dt) => {
-    // Hard-sync timeline frame to audio element time to avoid drift
-    if (audioPlayer.isPlaying.value && audioPlayer.audioEl.value) {
-        const now = performance.now();
+playback.onTick((_frame, dt) => {
+    // Always derive the timeline frame from audio currentTime when available
+    let frameToRender = playback.frame.value;
+    if (audioPlayer.audioEl.value) {
         const t = audioPlayer.audioEl.value.currentTime;
-        const fFromAudio = Math.max(0, Math.round(t * Math.max(1, fps.value)));
-        const drift = Math.abs(fFromAudio - playback.frame.value);
-        // Suppress early snaps right after play to avoid snapping to 0 while audio time warms up
-        const withinSuppress = (now - lastPlayStartTs) < SYNC_SUPPRESS_MS;
-        // Only sync forward; never snap backward to earlier frames
-        const shouldSyncForward = fFromAudio > playback.frame.value && drift > SYNC_DRIFT_FRAMES;
-        if (!withinSuppress && shouldSyncForward) {
-            playback.scrubToFrame(fFromAudio);
+        frameToRender = Math.max(0, Math.round(t * Math.max(1, fps.value)));
+        if (frameToRender !== playback.frame.value) {
+            playback.scrubToFrame(frameToRender);
         }
     }
-    
-    // Check if reconfiguration needed
-    const cfgKey = computeConfigKeyForFrame(frame);
+
+    // Reconfigure scene if needed based on the frame we will render
+    const cfgKey = computeConfigKeyForFrame(frameToRender);
     if (cfgKey !== lastConfiguredKey) {
         configureWorkerScene();
     }
-    
-    // Send frame to worker (consolidated logic)
-    frameRenderer.sendFrameToWorker(frame, dt);
+
+    // Send frame-to-render to worker
+    frameRenderer.sendFrameToWorker(frameToRender, dt);
 });
 
 // Render completion callback
@@ -458,30 +453,67 @@ const initForSong = async (id: string) => {
             const arrayBuffer = await response.arrayBuffer();
             
             // Decode for analysis
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            // CRITICAL: We must detect the file's native sample rate and use it for AudioContext
+            // to avoid resampling artifacts that cause timing mismatches
+            const tempCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const tempBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
+            const nativeSampleRate = tempBuffer.sampleRate;
+            await tempCtx.close();
+            
+            // Create new context with the correct sample rate
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: nativeSampleRate });
             const buffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
             
             // Store buffer duration as fallback (for custom protocols where audio element might not get metadata)
             audioDurationSec.value = buffer.duration;
-            // Stored audio buffer duration
+            
             
             // Run analysis
             await audioAnalysis.analyzeBuffer(buffer);
+            
+            
         } else {
             // Regular URL
             const response = await axios.get<ArrayBuffer>(audioSrc, { responseType: 'arraybuffer' });
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            
+            // CRITICAL: Detect native sample rate and use it to avoid resampling
+            const tempCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const tempBuffer = await tempCtx.decodeAudioData(response.data.slice(0));
+            const nativeSampleRate = tempBuffer.sampleRate;
+            await tempCtx.close();
+            
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: nativeSampleRate });
             const buffer = await audioCtx.decodeAudioData(response.data.slice(0));
             
             // Store buffer duration as fallback
             audioDurationSec.value = buffer.duration;
-            // Stored audio buffer duration
+            
             
             await audioAnalysis.analyzeBuffer(buffer);
+            
         }
         
         // Load audio element
         await audioPlayer.load(song.value.audioSrc);
+        
+        // Wait for metadata to load
+        if (audioPlayer.audioEl.value) {
+            await new Promise((resolve) => {
+                const el = audioPlayer.audioEl.value!;
+                if (el.readyState >= 1) { // HAVE_METADATA
+                    resolve(undefined);
+                } else {
+                    el.addEventListener('loadedmetadata', () => resolve(undefined), { once: true });
+                }
+            });
+        }
+        
+        // Check for encoder delay by comparing durations
+        const audioElDuration = audioPlayer.audioEl.value?.duration || 0;
+        const bufferDuration = audioDurationSec.value;
+        const durationDiff = Math.abs(audioElDuration - bufferDuration);
+        
+        
     }
     
     await nextTick();
@@ -510,15 +542,25 @@ const reanalyze = async () => {
             ? await (await fetch(song.value.audioSrc)).arrayBuffer()
             : (await axios.get<ArrayBuffer>(song.value.audioSrc, { responseType: 'arraybuffer' })).data;
         
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        // CRITICAL: Detect native sample rate to avoid resampling
+        const tempCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const tempBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
+        const nativeSampleRate = tempBuffer.sampleRate;
+        await tempCtx.close();
+        
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: nativeSampleRate });
         const buffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
         
+        
+        
         await audioAnalysis.analyzeBuffer(buffer);
+        
+        
         
         // Refresh current frame
         frameRenderer.sendFrameToWorker(playback.frame.value, 0);
         requestAnimationFrame(() => drawPreview());
-    } catch {}
+    } catch (e) {}
 };
 
 const exportWithOptions = async () => {
@@ -1103,6 +1145,7 @@ onUnmounted(() => {
                 :fps="fps"
                 :current-frame="playback.frame.value"
                 :duration-sec="audioPlayer.duration.value || audioDurationSec"
+                :analyzed-duration-sec="audioAnalysis.analysisCache.value?.durationSec"
                 :beats="audioAnalysis.beatTimesSec.value || undefined"
                 :waveform="(audioAnalysis.waveform.value || []) as any"
                 :energy-per-frame="audioAnalysis.analysisCache.value?.energyPerFrame as any"

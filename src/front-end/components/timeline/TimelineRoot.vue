@@ -20,6 +20,7 @@ import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 const props = defineProps<{
     fps: number;
     durationSec?: number;
+    analyzedDurationSec?: number;
     currentFrame: number;
     waveform?: number[];
     energyPerFrame?: number[];
@@ -59,10 +60,17 @@ const emit = defineEmits<{
 const containerRef = ref<HTMLDivElement | null>(null);
 const hostRef = ref<HTMLElement | null>(null);
 
-const vp = useTimelineViewport({ fps: props.fps, durationSec: Math.min(30, Math.max(1, props.durationSec || 60)), totalSec: Math.max(1, props.durationSec || 60) });
+const vp = useTimelineViewport({ fps: props.fps, durationSec: Math.min(30, Math.max(1, props.durationSec || 60)), totalSec: Math.max(1, props.analyzedDurationSec || props.durationSec || 60) });
 
 watch(() => props.fps, (f) => { vp.viewport.value = { ...vp.viewport.value, fps: Math.max(1, f || 60) }; });
-watch(() => props.durationSec, (d) => { if (typeof d === 'number' && d > 0) { vp.setTotal(d); if (vp.viewport.value.durationSec > d) vp.setDuration(Math.max(0.1, Math.min(30, d))); vp.setStart(Math.min(vp.viewport.value.startSec, Math.max(0, d - vp.viewport.value.durationSec))); } });
+watch(() => [props.durationSec, props.analyzedDurationSec] as const, ([d, ad]) => { 
+    const totalDur = ad || d;
+    if (typeof totalDur === 'number' && totalDur > 0) { 
+        vp.setTotal(totalDur); 
+        if (vp.viewport.value.durationSec > totalDur) vp.setDuration(Math.max(0.1, Math.min(30, totalDur))); 
+        vp.setStart(Math.min(vp.viewport.value.startSec, Math.max(0, totalDur - vp.viewport.value.durationSec))); 
+    } 
+}, { immediate: true });
 watch(() => props.currentFrame, (f) => { 
     vp.setPlayhead(f); 
 });
@@ -259,13 +267,8 @@ onMounted(() => {
 });
 
 // Debug instrumentation for keyframes flow
-watch(() => props.wordKeyframes, (m) => {
-    const count = Array.isArray(m) ? m.length : 0;
-    console.debug('[TimelineRoot] wordKeyframes updated:', { count, sample: (m || []).slice(0, 8) });
-}, { deep: true, immediate: true });
-watch(() => vp.viewport.value, (v) => {
-    console.debug('[TimelineRoot] viewport:', v);
-}, { deep: true });
+watch(() => props.wordKeyframes, (m) => {}, { deep: true, immediate: true });
+watch(() => vp.viewport.value, (v) => {}, { deep: true });
 
 </script>
 
@@ -437,15 +440,15 @@ watch(() => vp.viewport.value, (v) => {
             <div v-if="!collapsed[propLane.key]" class="lane-resizer" @pointerdown="(e:any) => startResize(propLane.key, e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.waveform ? 28 : laneHeights.waveform}px` }">
-            <WaveformLane v-if="!collapsed.waveform" :viewport="vp.viewport.value" :fps="fps" :waveform="waveform || []" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <WaveformLane v-if="!collapsed.waveform" :viewport="vp.viewport.value" :fps="fps" :waveform="waveform || []" :analyzed-duration-sec="analyzedDurationSec" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('waveform', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.energy ? 28 : laneHeights.energy}px` }">
-            <EnergyLane v-if="!collapsed.energy" :viewport="vp.viewport.value" :fps="fps" :energy-per-frame="energyPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <EnergyLane v-if="!collapsed.energy" :viewport="vp.viewport.value" :fps="fps" :energy-per-frame="energyPerFrame" :analyzed-duration-sec="analyzedDurationSec" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('energy', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.beatstrength ? 28 : laneHeights.beatstrength}px` }">
-            <BeatStrengthLane v-if="!collapsed.beatstrength" :viewport="vp.viewport.value" :fps="fps" :beat-strength-per-frame="beatStrengthPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <BeatStrengthLane v-if="!collapsed.beatstrength" :viewport="vp.viewport.value" :fps="fps" :beat-strength-per-frame="beatStrengthPerFrame" :analyzed-duration-sec="analyzedDurationSec" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('beatstrength', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.beats ? 28 : laneHeights.beats}px` }">
@@ -453,7 +456,7 @@ watch(() => vp.viewport.value, (v) => {
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('beats', e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.bands ? 28 : laneHeights.bands}px` }">
-            <BandsLane v-if="!collapsed.bands" :viewport="vp.viewport.value" :fps="fps" :low="bandsLowPerFrame" :mid="bandsMidPerFrame" :high="bandsHighPerFrame" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
+            <BandsLane v-if="!collapsed.bands" :viewport="vp.viewport.value" :fps="fps" :low="bandsLowPerFrame" :mid="bandsMidPerFrame" :high="bandsHighPerFrame" :analyzed-duration-sec="analyzedDurationSec" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
             <div class="lane-resizer" @pointerdown="(e:any) => startResize('bands', e)"></div>
         </div>
         

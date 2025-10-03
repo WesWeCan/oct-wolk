@@ -38,9 +38,13 @@ export function useAudioPlayer() {
         
         // Create new audio element
         audioEl.value = new Audio(src);
-        audioEl.value.preload = 'auto';
+        audioEl.value.preload = 'metadata'; // Load metadata first
         
         // Setup event listeners
+        audioEl.value.addEventListener('loadedmetadata', () => {
+            // metadata loaded
+        });
+        
         audioEl.value.addEventListener('canplay', () => {
             audioReady.value = true;
         });
@@ -58,6 +62,24 @@ export function useAudioPlayer() {
         audioEl.value.addEventListener('error', (e) => {
             console.error('[useAudioPlayer] Audio error:', e, audioEl.value?.error);
         });
+        
+        // Wait for metadata to load
+        return new Promise<void>((resolve) => {
+            const el = audioEl.value!;
+            if (el.readyState >= 1) { // HAVE_METADATA
+                resolve();
+            } else {
+                const onMetadata = () => {
+                    resolve();
+                };
+                el.addEventListener('loadedmetadata', onMetadata, { once: true });
+                // Timeout fallback
+                setTimeout(() => {
+                    el.removeEventListener('loadedmetadata', onMetadata);
+                    resolve();
+                }, 5000);
+            }
+        });
     };
     
     /**
@@ -70,7 +92,7 @@ export function useAudioPlayer() {
         try {
             await audioEl.value.play();
         } catch (e) {
-            console.warn('Audio play failed:', e);
+            // ignore
         }
     };
     
@@ -131,7 +153,7 @@ export function useAudioPlayer() {
                     
                     performSeek();
                 } catch (e) {
-                    console.warn('[useAudioPlayer] Seek failed:', e);
+                    // ignore
                     resolve();
                 }
             };

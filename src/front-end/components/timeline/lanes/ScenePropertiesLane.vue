@@ -76,19 +76,19 @@ const onNavigate = (dir: 'prevKf' | 'nextKf', pp: string) => {
 };
 
 const onDeleteSelected = () => {
-  console.log('[ScenePropertiesLane] onDeleteSelected called, selectedIdx:', selectedIdx.value);
+  
   const pp = Object.keys(selectedIdx.value).find(p => selectedIdx.value[p] != null);
   if (!pp) {
-    console.log('[ScenePropertiesLane] No property path found with selection');
+    
     return;
   }
   const idx = selectedIdx.value[pp] as number;
-  console.log('[ScenePropertiesLane] Found selection:', { pp, idx });
+  
   if (!Number.isFinite(idx)) {
-    console.log('[ScenePropertiesLane] Index is not finite:', idx);
+    
     return;
   }
-  console.log('[ScenePropertiesLane] Emitting deleteKeyframe:', { propertyPath: pp, index: idx });
+  
   emit('deleteKeyframe', { propertyPath: pp, index: idx });
   selectedIdx.value = {}; // Clear selection after delete
 };

@@ -109,15 +109,9 @@ watch(() => [props.viewport.startSec, props.viewport.durationSec, props.fps, ...
 }, { deep: true });
 
 // Debug instrumentation
-watch(markers, (m) => {
-    console.debug('[WordKeyframesLane] markers changed:', { count: m?.length || 0, sample: (m || []).slice(0, 8) });
-});
-watch(() => props.viewport, (v) => {
-    console.debug('[WordKeyframesLane] viewport changed:', v);
-}, { deep: true });
-onMounted(() => {
-    console.debug('[WordKeyframesLane] mounted. Initial markers:', { count: markers.value.length, sample: markers.value.slice(0, 8) });
-});
+watch(markers, (m) => {});
+watch(() => props.viewport, (v) => {}, { deep: true });
+onMounted(() => {});
 </script>
 
 <template>

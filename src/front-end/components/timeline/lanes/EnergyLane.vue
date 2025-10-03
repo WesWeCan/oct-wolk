@@ -6,6 +6,7 @@ const props = defineProps<{
     viewport: { startSec: number; durationSec: number; totalSec?: number; fps: number };
     fps: number;
     energyPerFrame?: number[];
+    analyzedDurationSec?: number;
 }>();
 
 const emit = defineEmits<{
@@ -32,12 +33,12 @@ const draw = () => {
     if (!energy.length) return;
 
     const fps = Math.max(1, props.fps || props.viewport.fps || 60);
+    const startF = Math.max(0, Math.floor(props.viewport.startSec * fps));
+    const endF = Math.max(startF + 1, Math.floor((props.viewport.startSec + props.viewport.durationSec) * fps));
     ctx.strokeStyle = 'rgba(0, 200, 255, 0.9)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     let started = false;
-    const startF = Math.max(0, Math.floor(props.viewport.startSec * fps));
-    const endF = Math.max(startF + 1, Math.floor((props.viewport.startSec + props.viewport.durationSec) * fps));
     for (let f = startF; f <= endF && f < energy.length; f++) {
         const tSec = f / fps;
         const x = (tSec - props.viewport.startSec) / Math.max(1e-6, props.viewport.durationSec) * wCss;

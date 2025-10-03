@@ -58,7 +58,7 @@ const handleDblClickAdd = () => {
 const isDragging = ref(false);
 
 const beginDrag = (i: number, e: PointerEvent) => {
-    console.log('[PropertyMiniLane] Begin drag for keyframe', i);
+    
     const el = svgRef.value; if (!el) return;
     const target = e.target as SVGElement;
     
@@ -73,12 +73,12 @@ const beginDrag = (i: number, e: PointerEvent) => {
         const rel = Math.max(0, Math.min(1, px / Math.max(1e-6, width.value)));
         const sec = props.viewport.startSec + rel * Math.max(1e-6, props.viewport.durationSec);
         const frame = Math.max(0, Math.round(sec * Math.max(1, props.fps)));
-        console.log('[PropertyMiniLane] Moving keyframe to frame', frame);
+        
         emit('moveKeyframe', { index: i, frame });
         emit('scrub', { timeSec: sec, frame });
     };
     const up = (ev: PointerEvent) => {
-        console.log('[PropertyMiniLane] Drag ended');
+        
         isDragging.value = false;
         document.body.style.cursor = '';
         try { target?.releasePointerCapture?.(ev.pointerId); } catch {}
@@ -92,7 +92,7 @@ const beginDrag = (i: number, e: PointerEvent) => {
 };
 
 const onKfPointerDown = (e: PointerEvent) => {
-    console.log('[PropertyMiniLane] Keyframe pointerdown:', e.target);
+    
     e.preventDefault();
     e.stopPropagation(); // Stop event from reaching useLaneInteractions
     
@@ -100,7 +100,7 @@ const onKfPointerDown = (e: PointerEvent) => {
     if (!target) return;
     const idxAttr = target.getAttribute('data-idx');
     const i = idxAttr != null ? Number(idxAttr) : NaN;
-    console.log('[PropertyMiniLane] Keyframe index:', i);
+    
     if (!Number.isFinite(i)) return;
     emit('selectKeyframe', { index: i as number });
     beginDrag(i as number, e);

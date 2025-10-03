@@ -6,6 +6,7 @@ const props = defineProps<{
     viewport: { startSec: number; durationSec: number; totalSec: number; fps: number };
     fps: number;
     waveform: number[];
+    analyzedDurationSec?: number;
 }>();
 
 const emit = defineEmits<{
@@ -30,8 +31,10 @@ const draw = () => {
     const data = props.waveform || [];
     if (data.length && props.viewport.totalSec > 0) {
         const totalBuckets = Math.floor(data.length / 2);
-        const startBucket = Math.max(0, Math.floor((props.viewport.startSec / props.viewport.totalSec) * totalBuckets));
-        const endBucket = Math.min(totalBuckets, Math.ceil(((props.viewport.startSec + props.viewport.durationSec) / props.viewport.totalSec) * totalBuckets));
+        // Use analyzed duration for correct bucket mapping
+        const actualDuration = props.analyzedDurationSec || props.viewport.totalSec;
+        const startBucket = Math.max(0, Math.floor((props.viewport.startSec / actualDuration) * totalBuckets));
+        const endBucket = Math.min(totalBuckets, Math.ceil(((props.viewport.startSec + props.viewport.durationSec) / actualDuration) * totalBuckets));
         const visible = Math.max(1, endBucket - startBucket);
         const stepX = wCss / visible;
         ctx.strokeStyle = '#00e676'; ctx.lineWidth = 1;

@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useLaneInteractions } from '../useLaneInteractions';
 
-const props = defineProps<{ viewport: { startSec: number; durationSec: number; fps: number }, fps: number, low?: number[], mid?: number[], high?: number[] }>();
+const props = defineProps<{ viewport: { startSec: number; durationSec: number; fps: number }, fps: number, low?: number[], mid?: number[], high?: number[], analyzedDurationSec?: number }>();
 
 const emit = defineEmits<{
     (e: 'pan', secDelta: number): void;
