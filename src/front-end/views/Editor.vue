@@ -50,6 +50,8 @@ const audioDurationSec = ref(0); // Store audio buffer duration as fallback
 const renderCanvas = ref<HTMLCanvasElement | null>(null);
 const previewCanvas = ref<HTMLCanvasElement | null>(null);
 const previewOverlay = ref<HTMLCanvasElement | null>(null);
+const inspectorEl = ref<HTMLElement | null>(null);
+const timelineEl = ref<HTMLElement | null>(null);
 
 const targetWidth = computed(() => timeline.value?.settings.renderWidth || 1920);
 const targetHeight = computed(() => timeline.value?.settings.renderHeight || 1080);
@@ -703,11 +705,8 @@ const scenePropertyTracksForUI = computed<any[]>(() => {
     const id = scenes.selectedSceneId.value; if (!id) return [];
     const doc = (scenes.sceneDocs.value as any)[String(id)];
     const tracks = Array.isArray(doc?.tracks) ? doc.tracks : [];
-    if (tracks.length) return tracks;
-    const sc = (timeline.value?.scenes || []).find((x: any) => x.id === id);
-    const type = sc?.type as any;
-    const props = type ? (SCENE_ANIMATABLES as any)[String(type)] || [] : [];
-    return props.map((p: any) => ({ propertyPath: p.propertyPath, keyframes: [] as any[] }));
+    // Only show lanes for tracks that actually have keyframes
+    return tracks.filter((t: any) => Array.isArray(t?.keyframes) && t.keyframes.length > 0);
 });
 
 const handleDeleteKeyframe = (payload: { propertyPath: string; index: number }) => {
@@ -732,7 +731,12 @@ const handleDeleteKeyframe = (payload: { propertyPath: string; index: number }) 
         if (payload.index >= 0 && payload.index < list.length) {
             list.splice(payload.index, 1);
             console.log('[Editor] Keyframes after delete:', list);
-            tracks[tIdx] = { ...tracks[tIdx], keyframes: list };
+            if (list.length === 0) {
+                // Remove track entirely when empty
+                tracks.splice(tIdx, 1);
+            } else {
+                tracks[tIdx] = { ...tracks[tIdx], keyframes: list };
+            }
             (scenes.sceneDocs.value as any)[id] = { ...doc, tracks };
             TimelineService.saveScene(songId.value, (scenes.sceneDocs.value as any)[id]);
             console.log('[Editor] Saved scene');
@@ -788,6 +792,47 @@ const handlePropChangeValue = (payload: { propertyPath: string; value: any }) =>
     
     // Force a frame update to reflect the change immediately
     frameRenderer.sendFrameToWorker(frame, 0);
+};
+
+// ===== SCROLL HANDLERS =====
+
+const handleScrollToProperty = (payload: { propertyPath: string }) => {
+    // Scroll to the corresponding property lane in the timeline
+    nextTick(() => {
+        const laneEl = timelineEl.value?.querySelector(`[data-property-path="${payload.propertyPath}"]`) as HTMLElement;
+        if (laneEl) {
+            laneEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Add highlight effect
+            laneEl.style.background = 'rgba(0, 212, 255, 0.2)';
+            setTimeout(() => {
+                laneEl.style.background = '';
+            }, 1000);
+        }
+    });
+};
+
+const handleScrollToInspector = (payload: { propertyPath: string }) => {
+    // Scroll to the corresponding property in the inspector
+    nextTick(() => {
+        const propEl = inspectorEl.value?.querySelector(`[data-property-path="${payload.propertyPath}"]`) as HTMLElement;
+        if (propEl) {
+            // Open the details group containing this property
+            const detailsEl = propEl.closest('details');
+            if (detailsEl) {
+                detailsEl.open = true;
+            }
+            
+            propEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Add highlight effect to the property header
+            const headerEl = propEl.querySelector('.property-header') as HTMLElement;
+            if (headerEl) {
+                headerEl.style.background = 'rgba(0, 212, 255, 0.2)';
+                setTimeout(() => {
+                    headerEl.style.background = '';
+                }, 1000);
+            }
+        }
+    });
 };
 
 // ===== LIFECYCLE =====
@@ -1026,7 +1071,7 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <div class="editor__inspector">
+        <div class="editor__inspector" ref="inspectorEl">
             <Inspector
                 :timeline="timeline"
                 :selected-scene="scenes.selectedScene.value"
@@ -1043,14 +1088,17 @@ onUnmounted(() => {
                 @update:sceneParams="applySceneParams"
                 @update:sceneTracks="handleSceneTracksUpdate"
                 @propChangeValue="handlePropChangeValue"
+                @addKeyframe="handlePropAddKf"
+                @deleteKeyframe="handleDeleteKeyframe"
                 @navigate="({ dir }) => timelineNavigation.navigateTo(dir)"
                 @scrubToFrame="(frame) => playback.scrubToFrame(frame)"
                 @resetProject="handleReset"
                 @importWolk="wolkImport.openDialog"
+                @scrollToProperty="handleScrollToProperty"
             />
         </div>
 
-        <div class="editor__timeline timeline-host">
+        <div class="editor__timeline timeline-host" ref="timelineEl">
             <TimelineRoot
                 :fps="fps"
                 :current-frame="playback.frame.value"
@@ -1081,6 +1129,7 @@ onUnmounted(() => {
                 @propMoveKf="handlePropMoveKf"
                 @propDeleteKf="handleDeleteKeyframe"
                 @propChangeValue="handlePropChangeValue"
+                @scrollToInspector="handleScrollToInspector"
             />
         </div>
     </div>

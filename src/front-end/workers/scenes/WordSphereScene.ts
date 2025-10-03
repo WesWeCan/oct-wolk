@@ -1,5 +1,6 @@
 import type { SceneContext, WorkerScene } from '../engine/types';
 import * as THREE from 'three';
+import { OrbitRig } from '../engine/OrbitRig';
 
 export class WordSphereScene implements WorkerScene {
     private width = 0;
@@ -32,6 +33,11 @@ export class WordSphereScene implements WorkerScene {
     private smHue = 210;
     private smSat = 30;
     private smLight = 12;
+
+    // Orbit and rotation accumulators
+    private orbit: OrbitRig = new OrbitRig();
+    private accumulatedRotation = new THREE.Vector3();
+    private rotXDeg = 0; private rotYDeg = 0; private rotZDeg = 0;
 
     initialize(context: SceneContext): void {
         this.width = context.resolution.width;
@@ -86,19 +92,16 @@ export class WordSphereScene implements WorkerScene {
     }
 
     update(_frame: number, dt: number, context: SceneContext): void {
-        // Deterministic rotation based on frame index (no per-frame accumulation)
-        const f = Math.max(0, (context.time?.frame as number) | 0);
-        const fps = Math.max(1, ((this.rotationFpsOverride ?? (context.time?.fps as number)) | 0) || 60);
-        const t = f / fps; // seconds since frame 0
+        const animated = (context.extras && (context.extras as any).animated) ? (context.extras as any).animated : undefined;
+        // Absolute Euler-only rotation for determinism (read animated if present)
+        const rxDeg = (animated && Number.isFinite(animated['rotationX'])) ? Number(animated['rotationX']) : this.rotXDeg;
+        const ryDeg = (animated && Number.isFinite(animated['rotationY'])) ? Number(animated['rotationY']) : this.rotYDeg;
+        const rzDeg = (animated && Number.isFinite(animated['rotationZ'])) ? Number(animated['rotationZ']) : this.rotZDeg;
+        const rx = THREE.MathUtils.degToRad(rxDeg);
+        const ry = THREE.MathUtils.degToRad(ryDeg);
+        const rz = THREE.MathUtils.degToRad(rzDeg);
         if (this.rootGroup) {
-            // Prefer human-friendly RPM if provided; otherwise fall back to rad/s
-            const omega = (this.rotationRpm != null)
-                ? (this.rotationRpm * Math.PI * 2) / 60 // rad/s
-                : this.rotationSpeed; // rad/s
-            const angle = omega * t;
-            const twoPi = Math.PI * 2;
-            this.rootGroup.rotation.y = angle % twoPi;
-            this.rootGroup.rotation.x = (0.15 * angle) % twoPi;
+            this.rootGroup.rotation.set(rx, ry, rz);
         }
 
         // Smooth band-driven parameters (low-pass ~250ms) like SingleWordScene
@@ -148,6 +151,19 @@ export class WordSphereScene implements WorkerScene {
                 if (mat && 'opacity' in mat) { mat.opacity = alpha; }
             }
         }
+
+        // Apply orbit camera (animated overrides defaults)
+        try {
+            const yaw = (animated && Number.isFinite(animated['camera.yaw'])) ? Number(animated['camera.yaw']) : 0;
+            const pitch = (animated && Number.isFinite(animated['camera.pitch'])) ? Number(animated['camera.pitch']) : 0;
+            const dist = (animated && Number.isFinite(animated['camera.distance'])) ? Number(animated['camera.distance']) : 6;
+            const fov = (animated && Number.isFinite(animated['camera.fov'])) ? Number(animated['camera.fov']) : 45;
+            const tx = (animated && Number.isFinite(animated['camera.targetX'])) ? Number(animated['camera.targetX']) : 0;
+            const ty = (animated && Number.isFinite(animated['camera.targetY'])) ? Number(animated['camera.targetY']) : 0;
+            const tz = (animated && Number.isFinite(animated['camera.targetZ'])) ? Number(animated['camera.targetZ']) : 0;
+            this.orbit.setFromParams({ yawDeg: yaw, pitchDeg: pitch, distance: dist, fovDeg: fov, targetX: tx, targetY: ty, targetZ: tz });
+            if (this.camera) this.orbit.applyTo(this.camera as any);
+        } catch {}
     }
 
     render(target: OffscreenCanvasRenderingContext2D, _context: SceneContext): void {

@@ -139,6 +139,46 @@
       }
     }
   }
+  
+  // Also apply property styling to div.property (not just label.property)
+  div.property {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    transition: all 180ms;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(0, 212, 255, 0.2);
+    }
+
+    .property-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #ddd;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+
+      .value-display {
+        font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
+        font-size: 11px;
+        color: #6c6;
+        background: rgba(0, 255, 0, 0.08);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: 600;
+      }
+    }
+  }
 
   input[type="text"],
   input[type="number"],

@@ -12,7 +12,21 @@ import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; }
 
 const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; sceneParams?: Record<string, any> | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }; currentFrame?: number; wordBank?: string[]; wordGroups?: WordGroup[]; allowedTrack?: PropertyTrack<string[]> | null; sceneTracks?: PropertyTrack<any>[] | null }>();
-const emit = defineEmits<{ (e: 'update:timeline', value: TimelineDocument): void; (e: 'update:scene', value: SceneRef): void; (e: 'update:sceneParams', value: Record<string, any>): void; (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void; (e: 'resetProject'): void; (e: 'importWolk'): void; (e: 'update:sceneTracks', value: { sceneId: string; tracks: PropertyTrack[] }): void; (e: 'navigate', value: { dir: 'prevKf' | 'nextKf' | 'prevBeat' | 'nextBeat' }): void; (e: 'scrubToFrame', frame: number): void; (e: 'propChangeValue', payload: { propertyPath: string; value: any }): void }>();
+const emit = defineEmits<{
+    (e: 'update:timeline', value: TimelineDocument): void;
+    (e: 'update:scene', value: SceneRef): void;
+    (e: 'update:sceneParams', value: Record<string, any>): void;
+    (e: 'update:overlayOpts', value: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }): void;
+    (e: 'resetProject'): void;
+    (e: 'importWolk'): void;
+    (e: 'update:sceneTracks', value: { sceneId: string; tracks: PropertyTrack[] }): void;
+    (e: 'navigate', value: { dir: 'prevKf' | 'nextKf' | 'prevBeat' | 'nextBeat' }): void;
+    (e: 'scrubToFrame', frame: number): void;
+    (e: 'propChangeValue', payload: { propertyPath: string; value: any }): void;
+    (e: 'addKeyframe', payload: { propertyPath: string; frame: number; value: any }): void;
+    (e: 'deleteKeyframe', payload: { propertyPath: string; index: number }): void;
+    (e: 'scrollToProperty', payload: { propertyPath: string }): void;
+}>();
 // Capture route in setup to avoid calling useRoute() later in event handlers
 const route = useRoute();
 const isModel3DScene = computed(() => ((props.selectedScene as any)?.type === 'model3d'));
@@ -38,6 +52,23 @@ const sceneAnimatables = computed(() => {
     if (!sceneType) return [];
     return (SCENE_ANIMATABLES as any)[sceneType] || [];
 });
+
+// Group animatables by their group field
+const groupedAnimatables = computed(() => {
+    const groups: Record<string, any[]> = {};
+    sceneAnimatables.value.forEach((meta: any) => {
+        const groupName = meta.group || 'Other';
+        if (!groups[groupName]) groups[groupName] = [];
+        groups[groupName].push(meta);
+    });
+    return groups;
+});
+
+// Emit event to scroll to corresponding timeline lane
+const scrollToLane = (propertyPath: string) => {
+    console.log('[Inspector] scrollToLane called for:', propertyPath);
+    emit('scrollToProperty' as any, { propertyPath });
+};
 // Helpers for model3d asset uploads
 const uploading = ref(false);
 const uploadError = ref<string | null>(null);
@@ -223,6 +254,157 @@ const highlightWordSearch = (e: Event) => {
     } catch {}
 };
 
+// Scrub numeric values by dragging the handle next to property labels
+const startScrub = (e: PointerEvent, meta: any) => {
+    try { (e.target as any)?.setPointerCapture?.(e.pointerId); } catch {}
+    const startX = e.clientX;
+    const min = Number.isFinite(meta?.min) ? Number(meta.min) : -Infinity;
+    const max = Number.isFinite(meta?.max) ? Number(meta.max) : Infinity;
+    const step = Number.isFinite(meta?.step) ? Number(meta.step) : 0.1;
+    const pp = String(meta?.propertyPath || '');
+    const getVal = () => {
+        const v = getAnimatedValue(pp) as any;
+        return (typeof v === 'number') ? v : (Number.isFinite(meta?.default) ? Number(meta.default) : 0);
+    };
+    const v0 = getVal();
+    const range = (Number.isFinite(min) && Number.isFinite(max) && max > min) ? (max - min) : 100;
+    const basePerPx = range * 0.002; // 500px drag ~ full range
+    const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        let speed = basePerPx;
+        if (ev.shiftKey) speed *= 4; // fast
+        if (ev.altKey || (ev as any).metaKey) speed *= 0.25; // fine
+        let next = v0 + dx * speed;
+        if (Number.isFinite(step) && step > 0) {
+            next = Math.round(next / step) * step;
+        }
+        if (Number.isFinite(min)) next = Math.max(min, next);
+        if (Number.isFinite(max)) next = Math.min(max, next);
+        emit('propChangeValue', { propertyPath: pp, value: next });
+    };
+    const onUp = (ev: PointerEvent) => {
+        try { (e.target as any)?.releasePointerCapture?.(e.pointerId); } catch {}
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+};
+
+// Inspector-level Reset/Clear helpers (emit events to parent that manages tracks)
+const resetAnimatableToDefault = (meta: any) => {
+    console.log('[Inspector] resetAnimatableToDefault called for:', meta.propertyPath, 'at frame:', props.currentFrame);
+    console.trace('[Inspector] Reset button call stack');
+    const frame = (props.currentFrame || 0) as number;
+    const def = Number.isFinite(meta?.default) ? Number(meta.default) : 0;
+    // Reuse the same event contract as ScenePropertiesLane
+    (emit as any)('addKeyframe', { propertyPath: meta.propertyPath, frame, value: def });
+};
+
+const clearAnimatableTrack = (propertyPath: string) => {
+    // Ask parent to delete all keyframes by emitting synthetic deletes; parent should handle
+    const track = (props.sceneTracks || []).find((t: any) => t.propertyPath === propertyPath);
+    const count = Array.isArray(track?.keyframes) ? track!.keyframes.length : 0;
+    for (let i = count - 1; i >= 0; i--) {
+        (emit as any)('deleteKeyframe', { propertyPath, index: i });
+    }
+    
+    // After clearing, add a keyframe with the default value at the current frame
+    const sceneType = props.selectedScene?.type;
+    if (sceneType) {
+        const animatableMetas = (SCENE_ANIMATABLES as any)[sceneType] || [];
+        const meta = animatableMetas.find((m: any) => m.propertyPath === propertyPath);
+        if (meta) {
+            const frame = props.currentFrame || 0;
+            const def = Number.isFinite(meta?.default) ? Number(meta.default) : 0;
+            (emit as any)('addKeyframe', { propertyPath, frame, value: def });
+        }
+    }
+};
+
+// Color picker helpers: Convert between HSL and hex
+const hslToHex = (h: number, s: number, l: number): string => {
+    h = h / 360;
+    s = s / 100;
+    l = l / 100;
+    let r: number, g: number, b: number;
+    if (s === 0) {
+        r = g = b = l;
+    } else {
+        const hue2rgb = (p: number, q: number, t: number) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+    }
+    const toHex = (x: number) => {
+        const hex = Math.round(x * 255).toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    };
+    return '#' + toHex(r) + toHex(g) + toHex(b);
+};
+
+const hexToHsl = (hex: string): { h: number; s: number; l: number } => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return { h: 0, s: 0, l: 0 };
+    let r = parseInt(result[1], 16) / 255;
+    let g = parseInt(result[2], 16) / 255;
+    let b = parseInt(result[3], 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+            case g: h = ((b - r) / d + 2) / 6; break;
+            case b: h = ((r - g) / d + 4) / 6; break;
+        }
+    }
+    return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+};
+
+// Get HSL color from property path (for color picker)
+const getHslColor = (prefix: string): { h: number; s: number; l: number } => {
+    // Try labels pattern first (.bgHue, .bgSat, .bgLight), then background pattern (.hue, .sat, .light)
+    let h = getAnimatedValue(`${prefix}.bgHue`) as number;
+    let s = getAnimatedValue(`${prefix}.bgSat`) as number;
+    let l = getAnimatedValue(`${prefix}.bgLight`) as number;
+    
+    if (h == null) h = getAnimatedValue(`${prefix}.hue`) as number ?? 0;
+    if (s == null) s = getAnimatedValue(`${prefix}.sat`) as number ?? 0;
+    if (l == null) l = getAnimatedValue(`${prefix}.light`) as number ?? 100;
+    
+    return { h: h ?? 0, s: s ?? 0, l: l ?? 100 };
+};
+
+const setColorFromPicker = (prefix: string, hex: string) => {
+    const { h, s, l } = hexToHsl(hex);
+    
+    // Check which pattern to use (labels or background)
+    if (getAnimatedValue(`${prefix}.bgHue`) != null || prefix === 'labels') {
+        // Labels pattern
+        emit('propChangeValue', { propertyPath: `${prefix}.bgHue`, value: h });
+        emit('propChangeValue', { propertyPath: `${prefix}.bgSat`, value: s });
+        emit('propChangeValue', { propertyPath: `${prefix}.bgLight`, value: l });
+    } else {
+        // Background pattern
+        emit('propChangeValue', { propertyPath: `${prefix}.hue`, value: h });
+        emit('propChangeValue', { propertyPath: `${prefix}.sat`, value: s });
+        emit('propChangeValue', { propertyPath: `${prefix}.light`, value: l });
+    }
+};
+
 </script>
 
 <template>
@@ -318,16 +500,6 @@ const highlightWordSearch = (e: Event) => {
                     Wireframe
                 </label>
                 <label>
-                    Rotation (RPM)
-                    <input type="number" min="0" step="0.1"
-                        :value="Number(((((sceneParams && (sceneParams as any).rotationRpm) != null)
-                            ? (sceneParams as any).rotationRpm
-                            : ((((sceneParams && (sceneParams as any).rotationSpeed) != null)
-                                ? (sceneParams as any).rotationSpeed
-                                : 0.2) * 60 / (Math.PI * 2))) as number).toFixed(2))"
-                        @input="(e:any)=>{ const rpm = Math.max(0, Number(e.target.value)||0); emit('update:sceneParams', { ...(sceneParams||{}), rotationRpm: rpm }); }" />
-                </label>
-                <label>
                     Energy response (0..1)
                     <input type="number" min="0" max="1" step="0.05" :value="Number((sceneParams && (sceneParams as any).energyResponse) ?? 0.25)" @input="(e:any)=>{ const v=Math.min(1,Math.max(0,Number(e.target.value)||0)); emit('update:sceneParams', { ...(sceneParams||{}), energyResponse: v }); }" />
                 </label>
@@ -352,26 +524,49 @@ const highlightWordSearch = (e: Event) => {
                 </div>
             </div>
 
-            <!-- Generic animatable properties for current scene type -->
+            <!-- Generic animatable properties for current scene type (grouped) -->
             <div v-if="sceneAnimatables.length > 0" class="animatable-properties">
                 <div class="section-title">Animatable Properties</div>
-                <label v-for="meta in sceneAnimatables" :key="meta.propertyPath" class="property">
-                    <span class="property-header">
-                        <span>{{ meta.label || meta.propertyPath }}</span>
-                        <span class="value-display">
-                            {{ typeof getAnimatedValue(meta.propertyPath) === 'number' ? getAnimatedValue(meta.propertyPath).toFixed(3) : '—' }}
-                        </span>
-                    </span>
-                    <input 
-                        v-if="meta.type === 'number' || !meta.type"
-                        type="number" 
-                        :step="meta.step ?? 0.1" 
-                        :min="meta.min ?? undefined" 
-                        :max="meta.max ?? undefined"
-                        :value="typeof getAnimatedValue(meta.propertyPath) === 'number' ? getAnimatedValue(meta.propertyPath).toFixed(3) : meta.default"
-                        @input="(e:any)=>{ const v=Number(e.target.value) ?? meta.default; emit('propChangeValue', { propertyPath: meta.propertyPath, value: v }); }" 
-                    />
-                </label>
+                <details v-for="(properties, groupName) in groupedAnimatables" :key="groupName" class="property-group" open>
+                    <summary class="group-header">{{ groupName }}</summary>
+                    <div v-for="meta in properties" :key="meta.propertyPath" 
+                         class="property"
+                         :data-property-path="meta.propertyPath">
+                        <div class="property-header">
+                            <span class="scrub-handle" 
+                                  title="Drag left/right to adjust; Shift=fast, Alt=slow"
+                                  @pointerdown.prevent.stop="(e:any)=>startScrub(e, meta)">⟷</span>
+                            <span class="property-label-text" @click.stop="(e) => { console.log('[Inspector] Label clicked', meta.propertyPath, e); scrollToLane(meta.propertyPath); }">{{ meta.label || meta.propertyPath }}</span>
+                            <span class="value-display" @click.stop="(e) => { console.log('[Inspector] Value display clicked', meta.propertyPath, e); scrollToLane(meta.propertyPath); }">
+                                {{ typeof getAnimatedValue(meta.propertyPath) === 'number' ? getAnimatedValue(meta.propertyPath).toFixed(3) : '—' }}
+                            </span>
+                            <span class="property-buttons">
+                                <button class="small" title="Set default at current frame" @click.prevent.stop="(e) => { console.log('[Inspector] Reset button clicked', meta.propertyPath, e); resetAnimatableToDefault(meta); }">Reset</button>
+                                <button class="small danger" title="Remove all keyframes for this property" @click.prevent.stop="(e) => { console.log('[Inspector] Clear button clicked', meta.propertyPath, e); clearAnimatableTrack(meta.propertyPath); }">Clear</button>
+                            </span>
+                        </div>
+                        <div class="input-with-picker">
+                            <input 
+                                v-if="meta.type === 'number' || !meta.type"
+                                type="number" 
+                                :step="meta.step ?? 0.1" 
+                                :min="meta.min ?? undefined" 
+                                :max="meta.max ?? undefined"
+                                :value="typeof getAnimatedValue(meta.propertyPath) === 'number' ? getAnimatedValue(meta.propertyPath).toFixed(3) : meta.default"
+                                @input="(e:any)=>{ console.log('[Inspector] Input changed', meta.propertyPath, 'value:', e.target.value); const v=Number(e.target.value) ?? meta.default; emit('propChangeValue', { propertyPath: meta.propertyPath, value: v }); }"
+                            />
+                            <!-- Show color picker for Hue properties (part of HSL triplet) -->
+                            <input 
+                                v-if="meta.propertyPath.endsWith('.bgHue') || meta.propertyPath.endsWith('.hue')"
+                                type="color"
+                                class="color-picker"
+                                :value="hslToHex(getHslColor(meta.propertyPath.replace('.bgHue', '').replace('.hue', '')).h, getHslColor(meta.propertyPath.replace('.bgHue', '').replace('.hue', '')).s, getHslColor(meta.propertyPath.replace('.bgHue', '').replace('.hue', '')).l)"
+                                @input="(e:any)=>setColorFromPicker(meta.propertyPath.replace('.bgHue', '').replace('.hue', ''), e.target.value)"
+                                title="Color picker"
+                            />
+                        </div>
+                    </div>
+                </details>
             </div>
         </div>
 
@@ -397,5 +592,97 @@ const highlightWordSearch = (e: Event) => {
 
     </div>
 </template>
+
+
+<style scoped>
+.scrub-handle {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 4px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 3px;
+  cursor: ew-resize;
+  font-size: 10px;
+  color: #ddd;
+}
+
+.property-group {
+  margin: 8px 0;
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.property-group .group-header {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(0, 212, 255, 0.9);
+  cursor: pointer;
+  user-select: none;
+  background: rgba(0, 212, 255, 0.05);
+}
+
+.property-group .group-header:hover {
+  background: rgba(0, 212, 255, 0.1);
+}
+
+.property-group .property {
+  transition: background 0.15s;
+}
+
+.property-group .property .property-label-text {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.property-group .property .property-label-text:hover {
+  background: rgba(0, 212, 255, 0.12);
+}
+
+.property-group .property .value-display {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.property-group .property .value-display:hover {
+  background: rgba(0, 212, 255, 0.12);
+}
+
+.input-with-picker {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.input-with-picker input[type="number"] {
+  flex: 1;
+}
+
+.color-picker {
+  width: 40px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  padding: 0;
+}
+
+.color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+</style>
 
 

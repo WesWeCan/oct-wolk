@@ -86,41 +86,42 @@
       .prop-label-header {
         display: flex;
         align-items: center;
+        gap: 6px;
         width: 100%; // Full width
         padding: 6px 12px;
-        cursor: pointer;
         user-select: none;
         position: relative;
         flex-shrink: 0;
         height: 28px; // Fixed header height
         box-sizing: border-box;
         
+        .collapse-icon {
+          font-size: 10px;
+          color: rgba(0, 212, 255, 0.7);
+          cursor: pointer;
+          transition: color 0.15s;
+          flex-shrink: 0;
+          
+          &:hover {
+            color: rgba(0, 212, 255, 1);
+          }
+        }
+        
         .prop-name {
           font-size: 10px;
           font-weight: 700;
           letter-spacing: 0.5px;
           text-transform: uppercase;
-        }
-        
-        &::after {
-          content: '▼';
-          font-size: 8px;
-          margin-left: auto;
-          transition: transform 200ms;
-          color: #666;
-        }
-        
-        &:hover {
-          background: rgba(0, 212, 255, 0.08);
+          flex: 1;
+          cursor: pointer;
+          padding: 2px 4px;
+          border-radius: 3px;
+          transition: background 0.15s;
           
-          &::after {
-            color: #00d4ff;
+          &:hover {
+            background: rgba(0, 212, 255, 0.12);
           }
         }
-      }
-      
-      &.collapsed .prop-label-header::after {
-        transform: rotate(-90deg);
       }
       
       .prop-controls {
@@ -201,5 +202,15 @@
         letter-spacing: normal;
       }
     }
+  }
+}
+
+// Lane styles for collapsed state
+.timeline .lane.collapsed {
+  overflow: visible !important; // Allow keyframes to show
+  
+  // Hide controls but show keyframes
+  .lane-resizer {
+    display: none;
   }
 }

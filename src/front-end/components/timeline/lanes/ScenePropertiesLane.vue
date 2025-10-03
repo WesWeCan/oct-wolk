@@ -20,9 +20,16 @@ const emit = defineEmits<{
   (e: 'deleteKeyframe', payload: { propertyPath: string; index: number }): void;
   (e: 'selectKeyframe', payload: any): void;
   (e: 'navigate', payload: { dir: 'prevKf' | 'nextKf'; propertyPath: string }): void;
+  (e: 'scrollToInspector', payload: { propertyPath: string }): void;
 }>();
 
-const propertyLanes = computed(() => Array.isArray(props.tracks) ? props.tracks : []);
+// Collapsible state for each property
+const collapsed = ref<Record<string, boolean>>({});
+
+const propertyLanes = computed(() => {
+  const arr = Array.isArray(props.tracks) ? props.tracks : [];
+  return arr.filter(t => Array.isArray((t as any).keyframes) && (t as any).keyframes.length > 0);
+});
 const metaMap = computed<Record<string, any>>(() => {
   const out: Record<string, any> = {};
   (props.metas || []).forEach(m => { out[m.propertyPath] = m; });
@@ -117,12 +124,41 @@ const handleAddKf = (propertyPath: string) => {
   emit('addKeyframe', { propertyPath, frame, value });
 };
 
+const handleResetToDefault = (propertyPath: string) => {
+  const frame = props.currentFrame || 0;
+  const meta = metaMap.value[propertyPath];
+  const def = (meta && 'default' in meta) ? meta.default : 0;
+  emit('addKeyframe', { propertyPath, frame, value: def });
+};
+
+const handleClearTrack = (propertyPath: string) => {
+  const track = propertyLanes.value.find(t => t.propertyPath === propertyPath);
+  if (!track || !Array.isArray(track.keyframes)) return;
+  // Delete from end to start to preserve indices
+  for (let i = track.keyframes.length - 1; i >= 0; i--) {
+    emit('deleteKeyframe', { propertyPath, index: i });
+  }
+  
+  // After clearing, add a keyframe with the default value at the current frame
+  const meta = metaMap.value[propertyPath];
+  if (meta) {
+    const frame = props.currentFrame || 0;
+    const def = (meta && 'default' in meta) ? meta.default : 0;
+    emit('addKeyframe', { propertyPath, frame, value: def });
+  }
+};
+
 const handleNavPrev = (propertyPath: string) => {
   onNavigate('prevKf', propertyPath);
 };
 
 const handleNavNext = (propertyPath: string) => {
   onNavigate('nextKf', propertyPath);
+};
+
+// Toggle collapse state
+const toggleCollapse = (propertyPath: string) => {
+  collapsed.value = { ...collapsed.value, [propertyPath]: !collapsed.value[propertyPath] };
 };
 
 // Expose for parent
@@ -133,13 +169,27 @@ defineExpose({ onDeleteSelected, onNavigate, hasSelection });
 <template>
   <div class="scene-properties" tabindex="0" @keydown="onKeyDown">
     <div v-if="propertyLanes.length > 0" class="properties-grid">
-      <div v-for="t in propertyLanes" :key="t.propertyPath" class="property-row">
-        <div class="property-label">
-          <div class="label-text">{{ metaMap[t.propertyPath]?.label || t.propertyPath }}</div>
-          <div class="property-controls">
-            <button type="button" class="small" @click="handleNavPrev(t.propertyPath)" title="Previous keyframe">◀</button>
-            <button type="button" class="small primary" @click="handleAddKf(t.propertyPath)" title="Add keyframe">◆</button>
-            <button type="button" class="small" @click="handleNavNext(t.propertyPath)" title="Next keyframe">▶</button>
+      <div v-for="t in propertyLanes" 
+           :key="t.propertyPath" 
+           class="property-row"
+           :class="{ 'collapsed': collapsed[t.propertyPath] }"
+           :data-property-path="t.propertyPath">
+        <div class="property-label" @click="emit('scrollToInspector', { propertyPath: t.propertyPath })">
+          <div class="label-header">
+            <button type="button" 
+                    class="collapse-btn" 
+                    @click.stop="toggleCollapse(t.propertyPath)"
+                    :title="collapsed[t.propertyPath] ? 'Expand' : 'Collapse'">
+              {{ collapsed[t.propertyPath] ? '▸' : '▾' }}
+            </button>
+            <div class="label-text">{{ metaMap[t.propertyPath]?.label || t.propertyPath }}</div>
+          </div>
+          <div v-if="!collapsed[t.propertyPath]" class="property-controls">
+            <button type="button" class="small" @click.stop="handleNavPrev(t.propertyPath)" title="Previous keyframe">◀</button>
+            <button type="button" class="small primary" @click.stop="handleAddKf(t.propertyPath)" title="Add keyframe">◆</button>
+            <button type="button" class="small" @click.stop="handleNavNext(t.propertyPath)" title="Next keyframe">▶</button>
+            <button type="button" class="small" @click.stop="handleResetToDefault(t.propertyPath)" title="Set to default at playhead">Reset</button>
+            <button type="button" class="small danger" @click.stop="handleClearTrack(t.propertyPath)" title="Remove all keyframes for this property">Clear</button>
           </div>
         </div>
         <div class="property-lane">
@@ -183,11 +233,21 @@ defineExpose({ onDeleteSelected, onNavigate, hasSelection });
 .property-row {
   display: grid;
   grid-template-columns: 220px 1fr;
-  height: 32px;
+  min-height: 32px;
   border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+  transition: all 0.2s;
   
   &:hover {
     background: rgba(255, 255, 255, 0.02);
+  }
+  
+  &.collapsed {
+    height: 24px;
+    min-height: 24px;
+    
+    .property-lane {
+      pointer-events: all;
+    }
   }
 }
 
@@ -199,6 +259,33 @@ defineExpose({ onDeleteSelected, onNavigate, hasSelection });
   padding: 4px 12px;
   background: rgba(20, 20, 25, 0.95);
   border-right: 1px solid rgba(0, 212, 255, 0.2);
+  cursor: pointer;
+  transition: background 0.15s;
+  
+  &:hover {
+    background: rgba(0, 212, 255, 0.08);
+  }
+  
+  .label-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .collapse-btn {
+    background: none;
+    border: none;
+    color: rgba(0, 212, 255, 0.7);
+    padding: 0;
+    font-size: 10px;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.15s;
+    
+    &:hover {
+      color: rgba(0, 212, 255, 1);
+    }
+  }
   
   .label-text {
     font-size: 10px;

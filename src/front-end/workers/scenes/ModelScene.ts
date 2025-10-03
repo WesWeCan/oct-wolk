@@ -2,11 +2,7 @@ import type { SceneContext, WorkerScene } from '../engine/types';
 import * as THREE from 'three';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-
-export const MODEL_SCENE_ANIMATABLES = [
-    { path: 'model.scale', label: 'Scale', type: 'number', min: 0.001, max: 10, default: 1 },
-    { path: 'model.rotationRPM', label: 'Rotation RPM', type: 'vec3', default: [0, 15, 0], perAxis: true }
-];
+import { OrbitRig } from '../engine/OrbitRig';
 
 export class ModelScene implements WorkerScene {
     private width = 0;
@@ -28,20 +24,13 @@ export class ModelScene implements WorkerScene {
     private mtlUrl: string | null = null; // kept optional but UI can restrict; we don't require it
     private diffuseMapUrl: string | null = null;
     private normalMapUrl: string | null = null;
-    private rotationRpm: number = 3; // default gentle spin
     private modelScale: number = 10; // user scale multiplier
     private words: string[] = [];
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
     private connectToModelOnBeat = false;
     private beatThreshold = 0.07;
     private lastBeatVal = 0;
-    private beatIndex = 0;
-    private modelAnchors: THREE.Vector3[] = [];
-    private spokesGeo: THREE.BufferGeometry | null = null;
-    private scopedRng: ((key: string) => (() => number)) | null = null;
     private lastWordIndex = -1;
-    private raycaster: THREE.Raycaster = new THREE.Raycaster();
-    private bboxCache: THREE.Box3 = new THREE.Box3();
     // spokes are static now (toward center, halfway)
 
     // Smoothed feature values
@@ -52,6 +41,25 @@ export class ModelScene implements WorkerScene {
     private smSat = 30;
     private smLight = 12;
 
+    // New: orbit camera and rotation accumulator
+    private orbit: OrbitRig = new OrbitRig();
+    private accumulatedRotation = new THREE.Vector3(); // radians
+
+    // New: parameters (0-safe)
+    private camYaw = 0; private camPitch = 0; private camDistance = 6; private camFov = 45;
+    private camTargetX = 0; private camTargetY = 0; private camTargetZ = 0;
+    private posX = 0; private posY = 0; private posZ = 0;
+    private scaleX = 1; private scaleY = 1; private scaleZ = 1;
+    private rotXDeg = 0; private rotYDeg = 0; private rotZDeg = 0;
+    private rpmX = 0; private rpmY = 0; private rpmZ = 0; // per-axis rpm
+    private labelsSize = 1; private labelsOpacity = 1; private labelsPulseAmount = 1;
+    private labelsBgHue = 0; private labelsBgSat = 0; private labelsBgLight = 100; // white background
+    private labelsTextHue = 0; private labelsTextSat = 0; private labelsTextLight = 0; // black text
+    private plexusOpacityMin = 0.08; private plexusOpacityMax = 0.7; private plexusK = 3; private plexusMaxDist = 4;
+    private spokesOpacity = 0.35; private spokesLengthFactor = 0.5; private lastSpokesLengthFactor = 0.5;
+    private bgHue = 210; private bgSat = 30; private bgLight = 12; private bgOpacity = 1; // manual override when animated present
+    private reactModel = 1; private reactLabels = 1;
+
     initialize(context: SceneContext): void {
         this.width = context.resolution.width;
         this.height = context.resolution.height;
@@ -61,7 +69,6 @@ export class ModelScene implements WorkerScene {
         // Initialize smoothing state
         this.smLow = 0; this.smMid = 0; this.smHigh = 0;
         this.smHue = 210; this.smSat = 30; this.smLight = 12;
-        this.scopedRng = context.createScopedRng;
     }
 
     configure(params: Record<string, any>): void {
@@ -71,7 +78,6 @@ export class ModelScene implements WorkerScene {
         const nextDiffuse = typeof p.diffuseMapUrl === 'string' ? p.diffuseMapUrl : null;
         const nextNormal = typeof p.normalMapUrl === 'string' ? p.normalMapUrl : null;
         const nextScale = Number(p.modelScale);
-        const nextRpm = Number(p.rotationRpm);
         const nextWords = Array.isArray((p as any).words) ? (p as any).words.map((w: any) => String(w)) : null;
         const nextFont = typeof p.fontFamilyChain === 'string' ? String(p.fontFamilyChain) : null;
         if (typeof (p as any).connectToModelOnBeat === 'boolean') this.connectToModelOnBeat = !!(p as any).connectToModelOnBeat;
@@ -79,7 +85,6 @@ export class ModelScene implements WorkerScene {
 
         const urlsChanged = (this.objUrl !== nextObj) || (this.mtlUrl !== nextMtl) || (this.diffuseMapUrl !== nextDiffuse) || (this.normalMapUrl !== nextNormal);
         if (Number.isFinite(nextScale)) this.modelScale = Math.max(0.001, Number(nextScale));
-        if (Number.isFinite(nextRpm)) this.rotationRpm = Math.max(0, Number(nextRpm));
         let wordsChanged = false;
         if (Array.isArray(nextWords)) {
             wordsChanged = (this.words.length !== nextWords.length) || nextWords.some((w, i) => w !== this.words[i]);
@@ -97,7 +102,7 @@ export class ModelScene implements WorkerScene {
             this.normalMapUrl = nextNormal;
             try {
                 // Helpful logs to trace param issues
-                console.log('[ModelScene] Loading model with params', { obj: this.objUrl, mtl: this.mtlUrl, diffuse: this.diffuseMapUrl, normal: this.normalMapUrl, scale: this.modelScale, rpm: this.rotationRpm });
+                console.log('[ModelScene] Loading model with params', { obj: this.objUrl, mtl: this.mtlUrl, diffuse: this.diffuseMapUrl, normal: this.normalMapUrl, scale: this.modelScale });
             } catch {}
             this.loadModel().catch((e) => { try { console.error('[ModelScene] loadModel error', e); } catch {} });
         } else {
@@ -105,7 +110,50 @@ export class ModelScene implements WorkerScene {
             try { if (this.modelGroup) this.modelGroup.scale.set(this.modelScale, this.modelScale, this.modelScale); } catch {}
         }
 
-        // Rebuild overlays if words or font changed
+        // Read additional params (persist for defaults)
+        if (Number.isFinite((p as any)['camera.yaw'])) this.camYaw = Number((p as any)['camera.yaw']);
+        if (Number.isFinite((p as any)['camera.pitch'])) this.camPitch = Number((p as any)['camera.pitch']);
+        if (Number.isFinite((p as any)['camera.distance'])) this.camDistance = Math.max(0, Number((p as any)['camera.distance']));
+        if (Number.isFinite((p as any)['camera.fov'])) this.camFov = Math.max(1, Math.min(170, Number((p as any)['camera.fov'])));
+        if (Number.isFinite((p as any)['camera.targetX'])) this.camTargetX = Number((p as any)['camera.targetX']);
+        if (Number.isFinite((p as any)['camera.targetY'])) this.camTargetY = Number((p as any)['camera.targetY']);
+        if (Number.isFinite((p as any)['camera.targetZ'])) this.camTargetZ = Number((p as any)['camera.targetZ']);
+        if (Number.isFinite((p as any)['model.positionX'])) this.posX = Number((p as any)['model.positionX']);
+        if (Number.isFinite((p as any)['model.positionY'])) this.posY = Number((p as any)['model.positionY']);
+        if (Number.isFinite((p as any)['model.positionZ'])) this.posZ = Number((p as any)['model.positionZ']);
+        if (Number.isFinite((p as any)['model.scaleX'])) this.scaleX = Math.max(0, Number((p as any)['model.scaleX']));
+        if (Number.isFinite((p as any)['model.scaleY'])) this.scaleY = Math.max(0, Number((p as any)['model.scaleY']));
+        if (Number.isFinite((p as any)['model.scaleZ'])) this.scaleZ = Math.max(0, Number((p as any)['model.scaleZ']));
+        if (Number.isFinite((p as any)['model.rotationX'])) this.rotXDeg = Number((p as any)['model.rotationX']);
+        if (Number.isFinite((p as any)['model.rotationY'])) this.rotYDeg = Number((p as any)['model.rotationY']);
+        if (Number.isFinite((p as any)['model.rotationZ'])) this.rotZDeg = Number((p as any)['model.rotationZ']);
+        if (Number.isFinite((p as any)['model.rotationRPMX'])) this.rpmX = Number((p as any)['model.rotationRPMX']);
+        if (Number.isFinite((p as any)['model.rotationRPMY'])) this.rpmY = Number((p as any)['model.rotationRPMY']);
+        if (Number.isFinite((p as any)['model.rotationRPMZ'])) this.rpmZ = Number((p as any)['model.rotationRPMZ']);
+        if (Number.isFinite((p as any)['labels.size'])) this.labelsSize = Math.max(0, Number((p as any)['labels.size']));
+        if (Number.isFinite((p as any)['labels.opacity'])) this.labelsOpacity = Math.max(0, Math.min(1, Number((p as any)['labels.opacity'])));
+        if (Number.isFinite((p as any)['labels.pulseAmount'])) this.labelsPulseAmount = Math.max(0, Math.min(1, Number((p as any)['labels.pulseAmount'])));
+        // Label colors (now dynamic via material.color - no rebuild needed)
+        if (Number.isFinite((p as any)['labels.bgHue'])) this.labelsBgHue = Math.max(0, Math.min(360, Number((p as any)['labels.bgHue'])));
+        if (Number.isFinite((p as any)['labels.bgSat'])) this.labelsBgSat = Math.max(0, Math.min(100, Number((p as any)['labels.bgSat'])));
+        if (Number.isFinite((p as any)['labels.bgLight'])) this.labelsBgLight = Math.max(0, Math.min(100, Number((p as any)['labels.bgLight'])));
+        if (Number.isFinite((p as any)['labels.textHue'])) this.labelsTextHue = Math.max(0, Math.min(360, Number((p as any)['labels.textHue'])));
+        if (Number.isFinite((p as any)['labels.textSat'])) this.labelsTextSat = Math.max(0, Math.min(100, Number((p as any)['labels.textSat'])));
+        if (Number.isFinite((p as any)['labels.textLight'])) this.labelsTextLight = Math.max(0, Math.min(100, Number((p as any)['labels.textLight'])));
+        if (Number.isFinite((p as any)['plexus.opacityMin'])) this.plexusOpacityMin = Math.max(0, Math.min(1, Number((p as any)['plexus.opacityMin'])));
+        if (Number.isFinite((p as any)['plexus.opacityMax'])) this.plexusOpacityMax = Math.max(0, Math.min(1, Number((p as any)['plexus.opacityMax'])));
+        if (Number.isFinite((p as any)['plexus.kNeighbors'])) this.plexusK = Math.max(1, Math.min(8, Number((p as any)['plexus.kNeighbors']) | 0));
+        if (Number.isFinite((p as any)['plexus.maxDistance'])) this.plexusMaxDist = Math.max(0, Number((p as any)['plexus.maxDistance']));
+        if (Number.isFinite((p as any)['spokes.opacity'])) this.spokesOpacity = Math.max(0, Math.min(1, Number((p as any)['spokes.opacity'])));
+        if (Number.isFinite((p as any)['spokes.lengthFactor'])) this.spokesLengthFactor = Math.max(0, Math.min(1, Number((p as any)['spokes.lengthFactor'])));
+        if (Number.isFinite((p as any)['background.hue'])) this.bgHue = Math.max(0, Math.min(360, Number((p as any)['background.hue'])));
+        if (Number.isFinite((p as any)['background.sat'])) this.bgSat = Math.max(0, Math.min(100, Number((p as any)['background.sat'])));
+        if (Number.isFinite((p as any)['background.light'])) this.bgLight = Math.max(0, Math.min(100, Number((p as any)['background.light'])));
+        if (Number.isFinite((p as any)['background.opacity'])) this.bgOpacity = Math.max(0, Math.min(1, Number((p as any)['background.opacity'])));
+        if (Number.isFinite((p as any)['reactivity.model'])) this.reactModel = Math.max(0, Math.min(1, Number((p as any)['reactivity.model'])));
+        if (Number.isFinite((p as any)['reactivity.labels'])) this.reactLabels = Math.max(0, Math.min(1, Number((p as any)['reactivity.labels'])));
+
+        // Rebuild overlays if words or font changed (colors are now dynamic)
         if (!urlsChanged && wordsChanged) {
             this.buildLabelsAroundModel();
             this.buildPlexus();
@@ -121,34 +169,28 @@ export class ModelScene implements WorkerScene {
         const animated = (context.extras && (context.extras as any).animated) ? (context.extras as any).animated : undefined;
         
         // Priority: 1) animated keyframe value, 2) inspector param (this.rotationRpm), 3) registry default
-        const rotationRpmVal = (animated && Number.isFinite(animated['model.rotationRPM'])) 
-            ? Number(animated['model.rotationRPM']) 
-            : this.rotationRpm; // Falls back to class property (set by configure() from inspector)
-
-        const omega = (rotationRpmVal * Math.PI * 2) / 60; // rad/s
-        const angle = omega * t;
-        const twoPi = Math.PI * 2;
+        // Absolute Euler-only rotation (deterministic)
+        const absX = (animated && Number.isFinite(animated['model.rotationX'])) ? Number(animated['model.rotationX']) : this.rotXDeg;
+        const absY = (animated && Number.isFinite(animated['model.rotationY'])) ? Number(animated['model.rotationY']) : this.rotYDeg;
+        const absZ = (animated && Number.isFinite(animated['model.rotationZ'])) ? Number(animated['model.rotationZ']) : this.rotZDeg;
+        const rx = THREE.MathUtils.degToRad(absX);
+        const ry = THREE.MathUtils.degToRad(absY);
+        const rz = THREE.MathUtils.degToRad(absZ);
         if (this.rootGroup) {
-            this.rootGroup.rotation.y = angle % twoPi;
+            this.rootGroup.rotation.set(rx, ry, rz);
         }
 
         // Smooth band-driven parameters
         const beat = Math.max(0, Math.min(1, Number(context.extras?.beat || 0)));
-        // Beat index advance if crossing threshold (like SingleWordScene)
-        // Prefer purple beat markers: wordIndex increments on each timeline beat
+        // Track word index for beat detection (if connectToModelOnBeat is enabled)
         const wi = (typeof context.extras?.wordIndex === 'number') ? Math.max(0, (context.extras!.wordIndex as number) | 0) : null;
         if (this.connectToModelOnBeat && wi != null) {
-            if (wi !== this.lastWordIndex) {
-                this.beatIndex = wi;
-                // spokes are static now; no per-beat updates
-            }
             this.lastWordIndex = wi;
         } else {
             // Fallback to envelope threshold when wordIndex not available
             const thr = this.beatThreshold;
             if (beat > thr && this.lastBeatVal <= thr) {
-                this.beatIndex++;
-                // spokes are static now; no per-beat updates
+                // Beat detected (reserved for future use)
             }
             this.lastBeatVal = beat;
         }
@@ -161,36 +203,118 @@ export class ModelScene implements WorkerScene {
         this.smLow += a * (clamp01(low) - this.smLow);
         this.smMid += a * (clamp01(mid) - this.smMid);
         this.smHigh += a * (clamp01(high) - this.smHigh);
-        // Background tint
-        const targetHue = (210 + 80 * (this.smHigh - this.smLow) + 360) % 360;
-        const targetSat = Math.max(20, Math.min(65, 30 + 35 * this.smHigh));
-        const targetLight = Math.max(10, Math.min(30, 12 + 12 * this.smHigh + 6 * this.smMid));
-        const dh = ((targetHue - this.smHue + 540) % 360) - 180;
-        this.smHue = (this.smHue + a * dh + 360) % 360;
-        this.smSat += a * (targetSat - this.smSat);
-        this.smLight += a * (targetLight - this.smLight);
-        try {
-            if (this.scene && (this.scene as any).background && (this.scene as any).background.setHSL) {
-                (this.scene as any).background.setHSL((this.smHue % 360) / 360, Math.max(0, Math.min(1, this.smSat / 100)), Math.max(0, Math.min(1, this.smLight / 100)));
-            }
-        } catch {}
+        // Background color: use animated manual HSL if provided, else energy tint
+        const bgHueAnim = (animated && Number.isFinite(animated['background.hue'])) ? Number(animated['background.hue']) : null;
+        const bgSatAnim = (animated && Number.isFinite(animated['background.sat'])) ? Number(animated['background.sat']) : null;
+        const bgLightAnim = (animated && Number.isFinite(animated['background.light'])) ? Number(animated['background.light']) : null;
+        const bgOpacityAnim = (animated && Number.isFinite(animated['background.opacity'])) ? Math.max(0, Math.min(1, Number(animated['background.opacity']))) : this.bgOpacity;
+        
+        if (bgHueAnim != null || bgSatAnim != null || bgLightAnim != null) {
+            const h = (bgHueAnim != null ? bgHueAnim : this.bgHue) % 360;
+            const s = Math.max(0, Math.min(100, bgSatAnim != null ? bgSatAnim : this.bgSat));
+            const l = Math.max(0, Math.min(100, bgLightAnim != null ? bgLightAnim : this.bgLight));
+            try { 
+                if (this.scene && this.renderer) {
+                    // If opacity < 1, use clear color instead of scene.background for transparency
+                    if (bgOpacityAnim < 1) {
+                        this.scene.background = null;
+                        const color = new THREE.Color().setHSL(h / 360, s / 100, l / 100);
+                        this.renderer.setClearColor(color, bgOpacityAnim);
+                    } else {
+                        // Opaque: use scene.background for better quality
+                        if (!this.scene.background) this.scene.background = new THREE.Color();
+                        this.scene.background.setHSL(h / 360, s / 100, l / 100);
+                        this.renderer.setClearAlpha(1);
+                    }
+                }
+            } catch {}
+        } else {
+            const targetHue = (210 + 80 * (this.smHigh - this.smLow) + 360) % 360;
+            const targetSat = Math.max(20, Math.min(65, 30 + 35 * this.smHigh));
+            const targetLight = Math.max(10, Math.min(30, 12 + 12 * this.smHigh + 6 * this.smMid));
+            const dh = ((targetHue - this.smHue + 540) % 360) - 180;
+            this.smHue = (this.smHue + a * dh + 360) % 360;
+            this.smSat += a * (targetSat - this.smSat);
+            this.smLight += a * (targetLight - this.smLight);
+            try { 
+                if (this.scene && this.renderer) {
+                    // If opacity < 1, use clear color instead of scene.background for transparency
+                    if (bgOpacityAnim < 1) {
+                        this.scene.background = null;
+                        const color = new THREE.Color().setHSL((this.smHue % 360) / 360, Math.max(0, Math.min(1, this.smSat / 100)), Math.max(0, Math.min(1, this.smLight / 100)));
+                        this.renderer.setClearColor(color, bgOpacityAnim);
+                    } else {
+                        // Opaque: use scene.background for better quality
+                        if (!this.scene.background) this.scene.background = new THREE.Color();
+                        this.scene.background.setHSL((this.smHue % 360) / 360, Math.max(0, Math.min(1, this.smSat / 100)), Math.max(0, Math.min(1, this.smLight / 100)));
+                        this.renderer.setClearAlpha(1);
+                    }
+                }
+            } catch {}
+        }
 
-        // Spokes are static now; no per-frame refinement
-
-        // Pulse labels with energy
-        const pulse = 1 + 0.18 * beat + 0.10 * this.smLow;
+        // Pulse labels with energy, scaled by reactivity
+        const reactLabels = (animated && Number.isFinite(animated['reactivity.labels'])) 
+            ? Math.max(0, Math.min(1, Number(animated['reactivity.labels']))) 
+            : this.reactLabels;
+        const labelsPulseAmount = (animated && Number.isFinite(animated['labels.pulseAmount'])) 
+            ? Math.max(0, Math.min(1, Number(animated['labels.pulseAmount']))) 
+            : this.labelsPulseAmount;
+        const labelsSize = (animated && Number.isFinite(animated['labels.size'])) 
+            ? Math.max(0, Number(animated['labels.size'])) 
+            : this.labelsSize;
+        const labelsOpacity = (animated && Number.isFinite(animated['labels.opacity'])) 
+            ? Math.max(0, Math.min(1, Number(animated['labels.opacity']))) 
+            : this.labelsOpacity;
+        const pulse = 1 + (0.18 * beat + 0.10 * this.smLow) * reactLabels * labelsPulseAmount;
+        
+        // Get label color (animated or default)
+        const labelBgHue = (animated && Number.isFinite(animated['labels.bgHue'])) 
+            ? Math.max(0, Math.min(360, Number(animated['labels.bgHue']))) 
+            : this.labelsBgHue;
+        const labelBgSat = (animated && Number.isFinite(animated['labels.bgSat'])) 
+            ? Math.max(0, Math.min(100, Number(animated['labels.bgSat']))) 
+            : this.labelsBgSat;
+        const labelBgLight = (animated && Number.isFinite(animated['labels.bgLight'])) 
+            ? Math.max(0, Math.min(100, Number(animated['labels.bgLight']))) 
+            : this.labelsBgLight;
+        
         if (this.labelGroup && Array.isArray((this.labelGroup as any).children)) {
             const children = (this.labelGroup as any).children as any[];
             for (const child of children) {
                 const baseX = child?.userData?.baseScaleX ?? child?.scale?.x ?? 1;
                 const baseY = child?.userData?.baseScaleY ?? child?.scale?.y ?? 1;
-                try { child.scale.set(baseX * pulse, baseY * pulse, 1); } catch {}
+                try { child.scale.set(baseX * labelsSize * pulse, baseY * labelsSize * pulse, 1); } catch {}
+                
+                // Update material opacity and color
+                try { 
+                    const mat: any = child.material; 
+                    if (mat) {
+                        if ('opacity' in mat) { 
+                            mat.opacity = labelsOpacity; 
+                            mat.transparent = mat.opacity < 1; 
+                        }
+                        // Dynamically tint sprite with current color
+                        if (mat.color) {
+                            mat.color.setHSL(labelBgHue / 360, labelBgSat / 100, labelBgLight / 100);
+                        }
+                    }
+                } catch {}
             }
         }
 
-        // Modulate plexus opacity
+        // Modulate plexus opacity (clamped to min/max)
+        const plexusOpacityMin = (animated && Number.isFinite(animated['plexus.opacityMin'])) 
+            ? Math.max(0, Math.min(1, Number(animated['plexus.opacityMin']))) 
+            : this.plexusOpacityMin;
+        const plexusOpacityMax = (animated && Number.isFinite(animated['plexus.opacityMax'])) 
+            ? Math.max(0, Math.min(1, Number(animated['plexus.opacityMax']))) 
+            : this.plexusOpacityMax;
         if (this.plexusGroup && Array.isArray((this.plexusGroup as any).children)) {
-            const alpha = Math.max(0.08, Math.min(0.7, 0.12 + 0.28 * this.smMid + 0.24 * beat));
+            const raw = 0.12 + 0.28 * this.smMid + 0.24 * beat;
+            const minA = Math.max(0, Math.min(1, plexusOpacityMin));
+            const maxA = Math.max(minA, Math.min(1, plexusOpacityMax));
+            const alpha = Math.max(minA, Math.min(maxA, raw));
             const children = (this.plexusGroup as any).children as any[];
             for (const child of children) {
                 const mat: any = (child as any).material;
@@ -198,15 +322,38 @@ export class ModelScene implements WorkerScene {
             }
         }
 
-        // Model scale with subtle pulse
+        // Update spokes opacity per-frame
+        const spokesOpacity = (animated && Number.isFinite(animated['spokes.opacity'])) 
+            ? Math.max(0, Math.min(1, Number(animated['spokes.opacity']))) 
+            : this.spokesOpacity;
+        if (this.spokeGroup && Array.isArray((this.spokeGroup as any).children)) {
+            const children = (this.spokeGroup as any).children as any[];
+            for (const child of children) {
+                const mat: any = (child as any).material;
+                if (mat && 'opacity' in mat) { mat.opacity = spokesOpacity; }
+            }
+        }
+
+        // Model transform and subtle pulse
         try {
             if (this.modelGroup) {
                 // Priority: 1) animated keyframe value, 2) inspector param (this.modelScale), 3) registry default
                 const baseScale = (animated && Number.isFinite(animated['model.scale'])) 
                     ? Math.max(0.001, Number(animated['model.scale'])) 
                     : this.modelScale; // Falls back to class property (set by configure() from inspector)
-                const s = baseScale * (1 + 0.03 * (0.6 * this.smLow + 0.4 * beat));
-                this.modelGroup.scale.set(s, s, s);
+                const reactModel = (animated && Number.isFinite(animated['reactivity.model'])) 
+                    ? Math.max(0, Math.min(1, Number(animated['reactivity.model']))) 
+                    : this.reactModel;
+                const pulseAmt = (0.6 * this.smLow + 0.4 * beat) * reactModel;
+                const s = baseScale * (1 + 0.03 * pulseAmt);
+                const sx = (animated && Number.isFinite(animated['model.scaleX'])) ? Math.max(0, Number(animated['model.scaleX'])) : this.scaleX;
+                const sy = (animated && Number.isFinite(animated['model.scaleY'])) ? Math.max(0, Number(animated['model.scaleY'])) : this.scaleY;
+                const sz = (animated && Number.isFinite(animated['model.scaleZ'])) ? Math.max(0, Number(animated['model.scaleZ'])) : this.scaleZ;
+                this.modelGroup.scale.set(s * sx, s * sy, s * sz);
+                const px = (animated && Number.isFinite(animated['model.positionX'])) ? Number(animated['model.positionX']) : this.posX;
+                const py = (animated && Number.isFinite(animated['model.positionY'])) ? Number(animated['model.positionY']) : this.posY;
+                const pz = (animated && Number.isFinite(animated['model.positionZ'])) ? Number(animated['model.positionZ']) : this.posZ;
+                this.modelGroup.position.set(px, py, pz);
                 
                 // Scale overlay group (labels, plexus, spokes) to match model scale and radius multiplier
                 const radiusMultiplier = (animated && Number.isFinite(animated['labels.radiusMultiplier'])) 
@@ -218,6 +365,27 @@ export class ModelScene implements WorkerScene {
                 }
             }
         } catch {}
+
+        // Camera orbit application (after transforms)
+        try {
+            const yaw = (animated && Number.isFinite(animated['camera.yaw'])) ? Number(animated['camera.yaw']) : this.camYaw;
+            const pitch = (animated && Number.isFinite(animated['camera.pitch'])) ? Number(animated['camera.pitch']) : this.camPitch;
+            const dist = (animated && Number.isFinite(animated['camera.distance'])) ? Number(animated['camera.distance']) : this.camDistance;
+            const fov = (animated && Number.isFinite(animated['camera.fov'])) ? Number(animated['camera.fov']) : this.camFov;
+            const tx = (animated && Number.isFinite(animated['camera.targetX'])) ? Number(animated['camera.targetX']) : this.camTargetX;
+            const ty = (animated && Number.isFinite(animated['camera.targetY'])) ? Number(animated['camera.targetY']) : this.camTargetY;
+            const tz = (animated && Number.isFinite(animated['camera.targetZ'])) ? Number(animated['camera.targetZ']) : this.camTargetZ;
+            this.orbit.setFromParams({ yawDeg: yaw, pitchDeg: pitch, distance: dist, fovDeg: fov, targetX: tx, targetY: ty, targetZ: tz });
+            if (this.camera) this.orbit.applyTo(this.camera as any);
+        } catch {}
+
+        // Rebuild spokes if length factor changed
+        const lf = (animated && Number.isFinite(animated['spokes.lengthFactor'])) ? Number(animated['spokes.lengthFactor']) : this.spokesLengthFactor;
+        if (Math.abs(lf - this.lastSpokesLengthFactor) > 1e-4) {
+            this.spokesLengthFactor = Math.max(0, Math.min(1, lf));
+            this.lastSpokesLengthFactor = this.spokesLengthFactor;
+            this.buildSpokes();
+        }
     }
 
     render(target: OffscreenCanvasRenderingContext2D, _context: SceneContext): void {
@@ -254,7 +422,13 @@ export class ModelScene implements WorkerScene {
             diffuseMapUrl: this.diffuseMapUrl,
             normalMapUrl: this.normalMapUrl,
             modelScale: this.modelScale,
-            rotationRpm: this.rotationRpm,
+            camera: { yaw: this.camYaw, pitch: this.camPitch, distance: this.camDistance, fov: this.camFov, targetX: this.camTargetX, targetY: this.camTargetY, targetZ: this.camTargetZ },
+            model: { positionX: this.posX, positionY: this.posY, positionZ: this.posZ, scaleX: this.scaleX, scaleY: this.scaleY, scaleZ: this.scaleZ, rotationX: this.rotXDeg, rotationY: this.rotYDeg, rotationZ: this.rotZDeg, rotationRPMX: this.rpmX, rotationRPMY: this.rpmY, rotationRPMZ: this.rpmZ },
+            background: { hue: this.bgHue, sat: this.bgSat, light: this.bgLight, opacity: this.bgOpacity },
+            labels: { size: this.labelsSize, opacity: this.labelsOpacity, pulseAmount: this.labelsPulseAmount, bgHue: this.labelsBgHue, bgSat: this.labelsBgSat, bgLight: this.labelsBgLight, textHue: this.labelsTextHue, textSat: this.labelsTextSat, textLight: this.labelsTextLight },
+            plexus: { opacityMin: this.plexusOpacityMin, opacityMax: this.plexusOpacityMax, kNeighbors: this.plexusK, maxDistance: this.plexusMaxDist },
+            spokes: { opacity: this.spokesOpacity, lengthFactor: this.spokesLengthFactor },
+            reactivity: { model: this.reactModel, labels: this.reactLabels },
         };
     }
 
@@ -265,7 +439,53 @@ export class ModelScene implements WorkerScene {
             if (typeof data?.diffuseMapUrl === 'string') this.diffuseMapUrl = data.diffuseMapUrl;
             if (typeof data?.normalMapUrl === 'string') this.normalMapUrl = data.normalMapUrl;
             if (Number.isFinite(data?.modelScale)) this.modelScale = Math.max(0.001, Number(data.modelScale));
-            if (Number.isFinite(data?.rotationRpm)) this.rotationRpm = Math.max(0, Number(data.rotationRpm));
+            const c = data?.camera || {};
+            if (Number.isFinite(c.yaw)) this.camYaw = Number(c.yaw);
+            if (Number.isFinite(c.pitch)) this.camPitch = Number(c.pitch);
+            if (Number.isFinite(c.distance)) this.camDistance = Math.max(0, Number(c.distance));
+            if (Number.isFinite(c.fov)) this.camFov = Math.max(1, Math.min(170, Number(c.fov)));
+            if (Number.isFinite(c.targetX)) this.camTargetX = Number(c.targetX);
+            if (Number.isFinite(c.targetY)) this.camTargetY = Number(c.targetY);
+            if (Number.isFinite(c.targetZ)) this.camTargetZ = Number(c.targetZ);
+            const m = data?.model || {};
+            if (Number.isFinite(m.positionX)) this.posX = Number(m.positionX);
+            if (Number.isFinite(m.positionY)) this.posY = Number(m.positionY);
+            if (Number.isFinite(m.positionZ)) this.posZ = Number(m.positionZ);
+            if (Number.isFinite(m.scaleX)) this.scaleX = Math.max(0, Number(m.scaleX));
+            if (Number.isFinite(m.scaleY)) this.scaleY = Math.max(0, Number(m.scaleY));
+            if (Number.isFinite(m.scaleZ)) this.scaleZ = Math.max(0, Number(m.scaleZ));
+            if (Number.isFinite(m.rotationX)) this.rotXDeg = Number(m.rotationX);
+            if (Number.isFinite(m.rotationY)) this.rotYDeg = Number(m.rotationY);
+            if (Number.isFinite(m.rotationZ)) this.rotZDeg = Number(m.rotationZ);
+            if (Number.isFinite(m.rotationRPMX)) this.rpmX = Number(m.rotationRPMX);
+            if (Number.isFinite(m.rotationRPMY)) this.rpmY = Number(m.rotationRPMY);
+            if (Number.isFinite(m.rotationRPMZ)) this.rpmZ = Number(m.rotationRPMZ);
+            const b = data?.background || {};
+            if (Number.isFinite(b.hue)) this.bgHue = Math.max(0, Math.min(360, Number(b.hue)));
+            if (Number.isFinite(b.sat)) this.bgSat = Math.max(0, Math.min(100, Number(b.sat)));
+            if (Number.isFinite(b.light)) this.bgLight = Math.max(0, Math.min(100, Number(b.light)));
+            if (Number.isFinite(b.opacity)) this.bgOpacity = Math.max(0, Math.min(1, Number(b.opacity)));
+            const l = data?.labels || {};
+            if (Number.isFinite(l.size)) this.labelsSize = Math.max(0, Number(l.size));
+            if (Number.isFinite(l.opacity)) this.labelsOpacity = Math.max(0, Math.min(1, Number(l.opacity)));
+            if (Number.isFinite(l.pulseAmount)) this.labelsPulseAmount = Math.max(0, Math.min(1, Number(l.pulseAmount)));
+            if (Number.isFinite(l.bgHue)) this.labelsBgHue = Math.max(0, Math.min(360, Number(l.bgHue)));
+            if (Number.isFinite(l.bgSat)) this.labelsBgSat = Math.max(0, Math.min(100, Number(l.bgSat)));
+            if (Number.isFinite(l.bgLight)) this.labelsBgLight = Math.max(0, Math.min(100, Number(l.bgLight)));
+            if (Number.isFinite(l.textHue)) this.labelsTextHue = Math.max(0, Math.min(360, Number(l.textHue)));
+            if (Number.isFinite(l.textSat)) this.labelsTextSat = Math.max(0, Math.min(100, Number(l.textSat)));
+            if (Number.isFinite(l.textLight)) this.labelsTextLight = Math.max(0, Math.min(100, Number(l.textLight)));
+            const px = data?.plexus || {};
+            if (Number.isFinite(px.opacityMin)) this.plexusOpacityMin = Math.max(0, Math.min(1, Number(px.opacityMin)));
+            if (Number.isFinite(px.opacityMax)) this.plexusOpacityMax = Math.max(0, Math.min(1, Number(px.opacityMax)));
+            if (Number.isFinite(px.kNeighbors)) this.plexusK = Math.max(1, Math.min(8, Number(px.kNeighbors) | 0));
+            if (Number.isFinite(px.maxDistance)) this.plexusMaxDist = Math.max(0, Number(px.maxDistance));
+            const sp = data?.spokes || {};
+            if (Number.isFinite(sp.opacity)) this.spokesOpacity = Math.max(0, Math.min(1, Number(sp.opacity)));
+            if (Number.isFinite(sp.lengthFactor)) this.spokesLengthFactor = Math.max(0, Math.min(1, Number(sp.lengthFactor)));
+            const r = data?.reactivity || {};
+            if (Number.isFinite(r.model)) this.reactModel = Math.max(0, Math.min(1, Number(r.model)));
+            if (Number.isFinite(r.labels)) this.reactLabels = Math.max(0, Math.min(1, Number(r.labels)));
         } catch {}
     }
 
@@ -378,7 +598,6 @@ export class ModelScene implements WorkerScene {
             // Rebuild overlays now that we have bounds
             this.buildLabelsAroundModel();
             this.buildPlexus();
-            this.buildModelAnchors();
             this.buildSpokes();
             return;
         }
@@ -462,16 +681,16 @@ export class ModelScene implements WorkerScene {
             tctx.font = `${fontSize}px ${this.fontFamilyChain}`;
             const metrics = tctx.measureText(text);
             const textW = Math.ceil(metrics.width);
-            const textH = Math.ceil(fontSize * 1.2);
+            const textHeight = Math.ceil(fontSize * 1.2);
             const w = Math.max(1, textW + padding * 2);
-            const h = Math.max(1, textH + padding * 2);
+            const h = Math.max(1, textHeight + padding * 2);
             const canvas = new OffscreenCanvas(w, h);
             const ctx = canvas.getContext('2d');
             if (!ctx) return null;
-            // white background
+            
+            // Draw white background and black text - we'll tint dynamically with material.color
             ctx.fillStyle = '#fff';
             ctx.fillRect(0, 0, w, h);
-            // black text
             ctx.fillStyle = '#000';
             ctx.font = `${fontSize}px ${this.fontFamilyChain}`;
             ctx.textAlign = 'center';
@@ -480,7 +699,19 @@ export class ModelScene implements WorkerScene {
 
             const tex = new THREE.CanvasTexture(canvas as any);
             tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
-            const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true });
+            
+            // Create material with initial color from HSL properties
+            const bgColor = new THREE.Color().setHSL(
+                this.labelsBgHue / 360, 
+                this.labelsBgSat / 100, 
+                this.labelsBgLight / 100
+            );
+            const mat = new THREE.SpriteMaterial({ 
+                map: tex, 
+                transparent: true, 
+                depthTest: true,
+                color: bgColor // This will tint the entire sprite
+            });
             const sprite = new THREE.Sprite(mat);
             const base = 0.45;
             const scaleX = base * (w / 256);
@@ -515,8 +746,8 @@ export class ModelScene implements WorkerScene {
         if (!children || !children.length) return;
         const positions: number[] = [];
         const radius = 2.5;
-        const k = 3;
-        const maxDist = Math.max(0.1, 1.6 * radius);
+        const k = Math.max(1, Math.min(8, this.plexusK | 0));
+        const maxDist = Math.max(0, this.plexusMaxDist || 0);
         for (let i = 0; i < children.length; i++) {
             const a = children[i].position;
             const neighbors: { j: number; d2: number }[] = [];
@@ -541,33 +772,10 @@ export class ModelScene implements WorkerScene {
         if (!positions.length) return;
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(positions), 3));
-        const mat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.28, transparent: true, depthTest: false });
+        const mat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: Math.max(0, Math.min(1, this.plexusOpacityMax)), transparent: true, depthTest: false });
         const lines = new THREE.LineSegments(geo, mat);
         (lines as any).renderOrder = 1;
         this.plexusGroup.add(lines);
-    }
-
-    private buildModelAnchors() {
-        this.modelAnchors = [];
-        if (!this.modelGroup) return;
-        const bbox = new THREE.Box3().setFromObject(this.modelGroup);
-        const size = new THREE.Vector3(); bbox.getSize(size);
-        const hx = Math.max(1e-4, size.x / 2);
-        const hy = Math.max(1e-4, size.y / 2);
-        const hz = Math.max(1e-4, size.z / 2);
-        const count = 256; // anchor density
-        for (let i = 0; i < count; i++) {
-            const phi = Math.acos(-1 + (2 * i) / count);
-            const theta = Math.sqrt(count * Math.PI) * phi;
-            const dx = Math.cos(theta) * Math.sin(phi);
-            const dy = Math.sin(theta) * Math.sin(phi);
-            const dz = Math.cos(phi);
-            const ax = Math.abs(dx) / hx;
-            const ay = Math.abs(dy) / hy;
-            const az = Math.abs(dz) / hz;
-            const s = 1 / Math.max(ax, ay, az);
-            this.modelAnchors.push(new THREE.Vector3(dx * s, dy * s, dz * s));
-        }
     }
 
     private buildSpokes() {
@@ -575,69 +783,24 @@ export class ModelScene implements WorkerScene {
         // Clear existing spokes
         try { this.disposeGroup(this.spokeGroup); } catch {}
         const children = this.labelGroup.children as any[];
-        if (!children || !children.length || !this.modelAnchors.length) return;
+        if (!children || !children.length) return;
         const positions = new Float32Array(children.length * 2 * 3);
-        if (this.modelGroup) this.bboxCache.setFromObject(this.modelGroup);
-        // assign anchors deterministically; target is center; spokes end halfway
+        // Static spokes: from label toward center, ending at configurable fraction
         for (let i = 0; i < children.length; i++) {
             const lbl = children[i];
             const p = lbl.position as THREE.Vector3;
-            const a = new THREE.Vector3(0, 0, 0);
-            const end = new THREE.Vector3().copy(p).lerp(a, 0.5);
+            const center = new THREE.Vector3(0, 0, 0);
+            const end = new THREE.Vector3().copy(p).lerp(center, Math.max(0, Math.min(1, this.spokesLengthFactor)));
             const offset = i * 6;
             positions[offset + 0] = p.x; positions[offset + 1] = p.y; positions[offset + 2] = p.z;
             positions[offset + 3] = end.x; positions[offset + 4] = end.y; positions[offset + 5] = end.z;
         }
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        this.spokesGeo = geo;
-        const mat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.35, transparent: true, depthTest: true });
+        const mat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: Math.max(0, Math.min(1, this.spokesOpacity)), transparent: true, depthTest: true });
         const lines = new THREE.LineSegments(geo, mat);
         (lines as any).renderOrder = 2;
         this.spokeGroup.add(lines);
-    }
-
-    private updateSpokesForBeat() {
-        // Static spokes toward center; no updates needed
-        return;
-    }
-
-    private pickAnchorIndexForLabel(i: number, beatIdx: number): number {
-        const n = Math.max(1, this.modelAnchors.length);
-        if (!this.scopedRng) return i % n;
-        const rng = this.scopedRng(`model.spoke.${i}.${beatIdx}`);
-        const r = (rng() || 0) * 4294967296; // widen range
-        const idx = Math.floor(r) % n;
-        return (idx + n) % n;
-    }
-
-    private raycastToModel(from: THREE.Vector3, toward: THREE.Vector3): THREE.Vector3 | null {
-        try {
-            const dir = new THREE.Vector3().subVectors(toward, from).normalize();
-            this.raycaster.set(from, dir);
-            const meshes: any[] = [];
-            if (this.modelGroup) this.modelGroup.traverse((obj: any) => { if (obj && obj.isMesh) meshes.push(obj); });
-            const hits = this.raycaster.intersectObjects(meshes, true);
-            if (hits && hits.length) return hits[0].point.clone();
-        } catch {}
-        return null;
-    }
-
-    private intersectRayWithAABB(from: THREE.Vector3, toward: THREE.Vector3, box: THREE.Box3): THREE.Vector3 {
-        const dir = new THREE.Vector3().subVectors(toward, from).normalize();
-        let tmin = -Infinity, tmax = Infinity;
-        const inv = new THREE.Vector3(1 / dir.x, 1 / dir.y, 1 / dir.z);
-        const checkAxis = (start: number, invD: number, minB: number, maxB: number) => {
-            let t1 = (minB - start) * invD;
-            let t2 = (maxB - start) * invD;
-            if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
-            tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
-        };
-        checkAxis(from.x, inv.x, box.min.x, box.max.x);
-        checkAxis(from.y, inv.y, box.min.y, box.max.y);
-        checkAxis(from.z, inv.z, box.min.z, box.max.z);
-        const t = (tmin > 0 && tmin !== Infinity) ? tmin : (tmax > 0 ? tmax : 0);
-        return new THREE.Vector3(from.x + dir.x * t, from.y + dir.y * t, from.z + dir.z * t);
     }
 }
 

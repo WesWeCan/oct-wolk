@@ -121,13 +121,16 @@ onMounted(() => {
     // Make sure we start with the right text
     displayCombined.value = texts[currentIndex][0] + texts[currentIndex][1];
     splitIndex.value = texts[currentIndex][0].length;
-    
-    interval = setInterval(async () => {
+
+    interval = window.setInterval(() => {
         if (isAnimating.value) return;
-        
+
         currentIndex = (currentIndex + 1) % texts.length;
-        await animateToNewText(texts[currentIndex]);
+        // animateToNewText returns a Promise, but setInterval does not await it.
+        // This is intentional to avoid unhandled Promise rejections.
+        animateToNewText(texts[currentIndex]);
     }, 3000);
+ 
 });
 
 onBeforeUnmount(() => {

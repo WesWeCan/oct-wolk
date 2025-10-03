@@ -53,6 +53,7 @@ const emit = defineEmits<{
     (e: 'propMoveKf', payload: { propertyPath: string; index: number; frame: number }): void;
     (e: 'propDeleteKf', payload: { propertyPath: string; index: number }): void;
     (e: 'propChangeValue', payload: { propertyPath: string; value: any }): void;
+    (e: 'scrollToInspector', payload: { propertyPath: string }): void;
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -162,7 +163,11 @@ const handlePropPrev = (propertyPath: string) => {
     for (let i = frames.length - 1; i >= 0; i--) {
         if (frames[i] < current) {
             const targetFrame = frames[i];
+            // Find the actual index in the original keyframes array
+            const actualIndex = track.keyframes.findIndex((k: any) => k.frame === targetFrame);
             emit('scrub', { timeSec: targetFrame / Math.max(1, props.fps), frame: targetFrame });
+            // Select the keyframe we navigated to
+            selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: actualIndex };
             return;
         }
     }
@@ -176,7 +181,11 @@ const handlePropNext = (propertyPath: string) => {
     for (let i = 0; i < frames.length; i++) {
         if (frames[i] > current) {
             const targetFrame = frames[i];
+            // Find the actual index in the original keyframes array
+            const actualIndex = track.keyframes.findIndex((k: any) => k.frame === targetFrame);
             emit('scrub', { timeSec: targetFrame / Math.max(1, props.fps), frame: targetFrame });
+            // Select the keyframe we navigated to
+            selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: actualIndex };
             return;
         }
     }
@@ -293,11 +302,13 @@ watch(() => vp.viewport.value, (v) => {
                     :class="{ collapsed: collapsed[propLane.key] }"
                     :style="{ height: `${collapsed[propLane.key] ? 28 : (laneHeights[propLane.key] || PROPERTY_LANE_MIN_HEIGHT)}px` }"
                 >
-                    <div class="prop-label-header" @click="collapsed[propLane.key] = !collapsed[propLane.key]">
-                        <span class="prop-name">{{ propLane.label }}</span>
+                    <div class="prop-label-header">
+                        
+                        <span class="prop-name" @click="emit('scrollToInspector', { propertyPath: propLane.propertyPath })">{{ propLane.label }}</span>
+                        <span class="collapse-icon" @click="collapsed[propLane.key] = !collapsed[propLane.key]">{{ collapsed[propLane.key] ? '▸' : '▾' }}</span>
                     </div>
                     <div v-if="!collapsed[propLane.key]" class="prop-controls" @click.stop>
-                        <div class="prop-value-display">{{ getPropertyValue(propLane.propertyPath).toFixed(3) }}</div>
+                        <!-- <div class="prop-value-display">{{ getPropertyValue(propLane.propertyPath).toFixed(3) }}</div> -->
                         <div class="prop-buttons">
                             <button type="button" class="small" @click="handlePropPrev(propLane.propertyPath)" title="Previous keyframe">◀</button>
                             <button type="button" class="small primary" @click="handlePropAdd(propLane.propertyPath)" title="Add keyframe">◆</button>
@@ -405,9 +416,10 @@ watch(() => vp.viewport.value, (v) => {
         <!-- Individual property lanes -->
         <div v-for="propLane in propertyLanes" :key="propLane.key" 
             class="lane" 
-            :style="{ height: `${collapsed[propLane.key] ? 28 : (laneHeights[propLane.key] || PROPERTY_LANE_MIN_HEIGHT)}px` }">
+            :class="{ 'collapsed': collapsed[propLane.key] }"
+            :style="{ height: `${collapsed[propLane.key] ? 28 : (laneHeights[propLane.key] || PROPERTY_LANE_MIN_HEIGHT)}px` }"
+            :data-property-path="propLane.propertyPath">
             <PropertyMiniLane
-                v-if="!collapsed[propLane.key]"
                 :viewport="vp.viewport.value"
                 :fps="fps"
                 :property-path="propLane.propertyPath"
@@ -422,7 +434,7 @@ watch(() => vp.viewport.value, (v) => {
                 @deleteKeyframe="({ index }) => handlePropDeleteKf({ propertyPath: propLane.propertyPath, index })"
                 @selectKeyframe="({ index }) => selectedPropertyKeyframes[propLane.propertyPath] = index"
             />
-            <div class="lane-resizer" @pointerdown="(e:any) => startResize(propLane.key, e)"></div>
+            <div v-if="!collapsed[propLane.key]" class="lane-resizer" @pointerdown="(e:any) => startResize(propLane.key, e)"></div>
         </div>
         <div class="lane" :style="{ height: `${collapsed.waveform ? 28 : laneHeights.waveform}px` }">
             <WaveformLane v-if="!collapsed.waveform" :viewport="vp.viewport.value" :fps="fps" :waveform="waveform || []" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" @scrub="(p:any) => emit('scrub', p)" />
