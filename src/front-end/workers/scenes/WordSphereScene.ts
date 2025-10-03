@@ -1,6 +1,9 @@
 import type { SceneContext, WorkerScene } from '../engine/types';
 import * as THREE from 'three';
 import { OrbitRig } from '../engine/OrbitRig';
+import { getAnimated } from '../engine/params';
+import { disposeGroup, makeLabelSprite, setBackground } from '../engine/graphics';
+import { buildPlexusFromPoints, updatePlexusOpacity } from '../engine/plexus';
 
 export class WordSphereScene implements WorkerScene {
     private width = 0;
@@ -12,6 +15,7 @@ export class WordSphereScene implements WorkerScene {
     private camera: any = null; // THREE.PerspectiveCamera
     private labelGroup: any = null; // THREE.Group
     private plexusGroup: any = null; // THREE.Group
+    private spokeGroup: any = null; // THREE.Group
     private sphereMesh: any = null; // THREE.Mesh
     private rootGroup: any = null; // THREE.Group
     private glCanvas: OffscreenCanvas | null = null;
@@ -25,6 +29,13 @@ export class WordSphereScene implements WorkerScene {
     private rotationFpsOverride: number | null = null; // if set, use this for deterministic rotation mapping
     private plexusNeighbors = 3; // number of nearest neighbors per node
     private plexusMaxDistScale = 1.6; // max chord distance relative to radius
+    private plexusOpacityMin = 0.08;
+    private plexusOpacityMax = 0.7;
+    private labelsSize = 1; private labelsOpacity = 1; private labelsPulseAmount = 1;
+    private labelsBgHue = 0; private labelsBgSat = 0; private labelsBgLight = 100; // white bg
+    private labelsTextHue = 0; private labelsTextSat = 0; private labelsTextLight = 0; // black text
+    private bgHue = 210; private bgSat = 30; private bgLight = 12; private bgOpacity = 1;
+    private spokesOpacity = 0.35; private spokesLengthFactor = 0.5; private lastSpokesLengthFactor = 0.5;
 
     // Smoothed feature values to avoid flicker (match SingleWordScene behavior)
     private smLow = 0;
@@ -74,6 +85,24 @@ export class WordSphereScene implements WorkerScene {
             const rf = Number((params as any).rotationFps);
             this.rotationFpsOverride = Number.isFinite(rf) ? Math.max(1, rf) : null;
         }
+        // UI params similar to ModelScene
+        if (Number.isFinite((params as any)['labels.size'])) this.labelsSize = Math.max(0, Number((params as any)['labels.size']));
+        if (Number.isFinite((params as any)['labels.opacity'])) this.labelsOpacity = Math.max(0, Math.min(1, Number((params as any)['labels.opacity'])));
+        if (Number.isFinite((params as any)['labels.pulseAmount'])) this.labelsPulseAmount = Math.max(0, Math.min(1, Number((params as any)['labels.pulseAmount'])));
+        if (Number.isFinite((params as any)['labels.bgHue'])) this.labelsBgHue = Math.max(0, Math.min(360, Number((params as any)['labels.bgHue'])));
+        if (Number.isFinite((params as any)['labels.bgSat'])) this.labelsBgSat = Math.max(0, Math.min(100, Number((params as any)['labels.bgSat'])));
+        if (Number.isFinite((params as any)['labels.bgLight'])) this.labelsBgLight = Math.max(0, Math.min(100, Number((params as any)['labels.bgLight'])));
+        if (Number.isFinite((params as any)['labels.textHue'])) this.labelsTextHue = Math.max(0, Math.min(360, Number((params as any)['labels.textHue'])));
+        if (Number.isFinite((params as any)['labels.textSat'])) this.labelsTextSat = Math.max(0, Math.min(100, Number((params as any)['labels.textSat'])));
+        if (Number.isFinite((params as any)['labels.textLight'])) this.labelsTextLight = Math.max(0, Math.min(100, Number((params as any)['labels.textLight'])));
+        if (Number.isFinite((params as any)['background.hue'])) this.bgHue = Math.max(0, Math.min(360, Number((params as any)['background.hue'])));
+        if (Number.isFinite((params as any)['background.sat'])) this.bgSat = Math.max(0, Math.min(100, Number((params as any)['background.sat'])));
+        if (Number.isFinite((params as any)['background.light'])) this.bgLight = Math.max(0, Math.min(100, Number((params as any)['background.light'])));
+        if (Number.isFinite((params as any)['background.opacity'])) this.bgOpacity = Math.max(0, Math.min(1, Number((params as any)['background.opacity'])));
+        if (Number.isFinite((params as any)['plexus.opacityMin'])) this.plexusOpacityMin = Math.max(0, Math.min(1, Number((params as any)['plexus.opacityMin'])));
+        if (Number.isFinite((params as any)['plexus.opacityMax'])) this.plexusOpacityMax = Math.max(0, Math.min(1, Number((params as any)['plexus.opacityMax'])));
+        if (Number.isFinite((params as any)['spokes.opacity'])) this.spokesOpacity = Math.max(0, Math.min(1, Number((params as any)['spokes.opacity'])));
+        if (Number.isFinite((params as any)['spokes.lengthFactor'])) this.spokesLengthFactor = Math.max(0, Math.min(1, Number((params as any)['spokes.lengthFactor'])));
 
         // Apply text/sizing params and selectively rebuild
         if (wordsChanged) this.words = incomingWords as string[];
@@ -124,32 +153,52 @@ export class WordSphereScene implements WorkerScene {
         this.smHue = (this.smHue + a * dh + 360) % 360;
         this.smSat += a * (targetSat - this.smSat);
         this.smLight += a * (targetLight - this.smLight);
-        // Apply background tint
+        // Background: allow animated override with opacity; else use smoothed HSL
         try {
-            if (this.scene && (this.scene as any).background && (this.scene as any).background.setHSL) {
-                (this.scene as any).background.setHSL((this.smHue % 360) / 360, Math.max(0, Math.min(1, this.smSat / 100)), Math.max(0, Math.min(1, this.smLight / 100)));
+            if (this.scene && this.renderer) {
+                const h = getAnimated(animated, 'background.hue', this.bgHue);
+                const s = getAnimated(animated, 'background.sat', this.bgSat);
+                const l = getAnimated(animated, 'background.light', this.bgLight);
+                const aBg = getAnimated(animated, 'background.opacity', this.bgOpacity);
+                if (animated && (Number.isFinite(animated['background.hue']) || Number.isFinite(animated['background.sat']) || Number.isFinite(animated['background.light']))) {
+                    setBackground(this.scene, this.renderer, h as number, s as number, l as number, aBg as number);
+                } else {
+                    setBackground(this.scene, this.renderer, this.smHue, this.smSat, this.smLight, aBg as number);
+                }
             }
         } catch {}
 
-        // Pulse labels with energy (beat + low band)
-        const pulse = 1 + 0.18 * beat + 0.10 * this.smLow;
+        // Pulse labels with energy (beat + low band) and animatable params
+        const labelsPulseAmount = getAnimated(animated, 'labels.pulseAmount', this.labelsPulseAmount) as number;
+        const labelsSize = getAnimated(animated, 'labels.size', this.labelsSize) as number;
+        const labelsOpacity = getAnimated(animated, 'labels.opacity', this.labelsOpacity) as number;
+        const labelBgHue = getAnimated(animated, 'labels.bgHue', this.labelsBgHue) as number;
+        const labelBgSat = getAnimated(animated, 'labels.bgSat', this.labelsBgSat) as number;
+        const labelBgLight = getAnimated(animated, 'labels.bgLight', this.labelsBgLight) as number;
+        const pulse = 1 + (0.18 * beat + 0.10 * this.smLow) * labelsPulseAmount;
         if (this.labelGroup && Array.isArray((this.labelGroup as any).children)) {
             const children = (this.labelGroup as any).children as any[];
             for (const child of children) {
                 const baseX = child?.userData?.baseScaleX ?? child?.scale?.x ?? 1;
                 const baseY = child?.userData?.baseScaleY ?? child?.scale?.y ?? 1;
-                try { child.scale.set(baseX * pulse, baseY * pulse, 1); } catch {}
+                try { child.scale.set(baseX * labelsSize * pulse, baseY * labelsSize * pulse, 1); } catch {}
+                try {
+                    const mat: any = child.material;
+                    if (mat) {
+                        if ('opacity' in mat) { mat.opacity = Math.max(0, Math.min(1, labelsOpacity)); mat.transparent = mat.opacity < 1; }
+                        if (mat.color) { mat.color.setHSL((labelBgHue % 360) / 360, Math.max(0, Math.min(1, labelBgSat / 100)), Math.max(0, Math.min(1, labelBgLight / 100))); }
+                    }
+                } catch {}
             }
         }
 
-        // Modulate plexus opacity with mid band + beat
+        // Modulate plexus opacity with min/max clamp
         if (this.plexusGroup && Array.isArray((this.plexusGroup as any).children)) {
-            const alpha = Math.max(0.08, Math.min(0.7, 0.12 + 0.28 * this.smMid + 0.24 * beat));
-            const children = (this.plexusGroup as any).children as any[];
-            for (const child of children) {
-                const mat: any = (child as any).material;
-                if (mat && 'opacity' in mat) { mat.opacity = alpha; }
-            }
+            const minA = Math.max(0, Math.min(1, getAnimated(animated, 'plexus.opacityMin', this.plexusOpacityMin) as number));
+            const maxA = Math.max(minA, Math.min(1, getAnimated(animated, 'plexus.opacityMax', this.plexusOpacityMax) as number));
+            const raw = 0.12 + 0.28 * this.smMid + 0.24 * beat;
+            const alpha = Math.max(minA, Math.min(maxA, raw));
+            updatePlexusOpacity(this.plexusGroup, alpha);
         }
 
         // Apply orbit camera (animated overrides defaults)
@@ -164,6 +213,22 @@ export class WordSphereScene implements WorkerScene {
             this.orbit.setFromParams({ yawDeg: yaw, pitchDeg: pitch, distance: dist, fovDeg: fov, targetX: tx, targetY: ty, targetZ: tz });
             if (this.camera) this.orbit.applyTo(this.camera as any);
         } catch {}
+
+        // Update spokes opacity and rebuild when length factor changes
+        const lf = (animated && Number.isFinite(animated['spokes.lengthFactor'])) ? Number(animated['spokes.lengthFactor']) : this.spokesLengthFactor;
+        if (Math.abs(lf - this.lastSpokesLengthFactor) > 1e-4) {
+            this.spokesLengthFactor = Math.max(0, Math.min(1, lf));
+            this.lastSpokesLengthFactor = this.spokesLengthFactor;
+            this.buildSpokes();
+        }
+        const spokesOpacity = (animated && Number.isFinite(animated['spokes.opacity'])) ? Math.max(0, Math.min(1, Number(animated['spokes.opacity']))) : this.spokesOpacity;
+        if (this.spokeGroup && Array.isArray((this.spokeGroup as any).children)) {
+            const children = (this.spokeGroup as any).children as any[];
+            for (const child of children) {
+                const mat: any = (child as any).material;
+                if (mat && 'opacity' in mat) { mat.opacity = spokesOpacity; }
+            }
+        }
     }
 
     render(target: OffscreenCanvasRenderingContext2D, _context: SceneContext): void {
@@ -215,13 +280,43 @@ export class WordSphereScene implements WorkerScene {
     }
 
     serialize(): any {
-        return { words: this.words, fontFamilyChain: this.fontFamilyChain };
+        return {
+            words: this.words,
+            fontFamilyChain: this.fontFamilyChain,
+            background: { hue: this.bgHue, sat: this.bgSat, light: this.bgLight, opacity: this.bgOpacity },
+            labels: { size: this.labelsSize, opacity: this.labelsOpacity, pulseAmount: this.labelsPulseAmount, bgHue: this.labelsBgHue, bgSat: this.labelsBgSat, bgLight: this.labelsBgLight, textHue: this.labelsTextHue, textSat: this.labelsTextSat, textLight: this.labelsTextLight },
+            plexus: { opacityMin: this.plexusOpacityMin, opacityMax: this.plexusOpacityMax, kNeighbors: this.plexusNeighbors, maxDistScale: this.plexusMaxDistScale },
+            spokes: { opacity: this.spokesOpacity, lengthFactor: this.spokesLengthFactor },
+        };
     }
 
     deserialize(data: any): void {
         try {
             if (Array.isArray(data?.words)) this.words = data.words.map((w: any) => String(w));
             if (typeof data?.fontFamilyChain === 'string') this.fontFamilyChain = data.fontFamilyChain;
+            const b = data?.background || {};
+            if (Number.isFinite(b.hue)) this.bgHue = Math.max(0, Math.min(360, Number(b.hue)));
+            if (Number.isFinite(b.sat)) this.bgSat = Math.max(0, Math.min(100, Number(b.sat)));
+            if (Number.isFinite(b.light)) this.bgLight = Math.max(0, Math.min(100, Number(b.light)));
+            if (Number.isFinite(b.opacity)) this.bgOpacity = Math.max(0, Math.min(1, Number(b.opacity)));
+            const l = data?.labels || {};
+            if (Number.isFinite(l.size)) this.labelsSize = Math.max(0, Number(l.size));
+            if (Number.isFinite(l.opacity)) this.labelsOpacity = Math.max(0, Math.min(1, Number(l.opacity)));
+            if (Number.isFinite(l.pulseAmount)) this.labelsPulseAmount = Math.max(0, Math.min(1, Number(l.pulseAmount)));
+            if (Number.isFinite(l.bgHue)) this.labelsBgHue = Math.max(0, Math.min(360, Number(l.bgHue)));
+            if (Number.isFinite(l.bgSat)) this.labelsBgSat = Math.max(0, Math.min(100, Number(l.bgSat)));
+            if (Number.isFinite(l.bgLight)) this.labelsBgLight = Math.max(0, Math.min(100, Number(l.bgLight)));
+            if (Number.isFinite(l.textHue)) this.labelsTextHue = Math.max(0, Math.min(360, Number(l.textHue)));
+            if (Number.isFinite(l.textSat)) this.labelsTextSat = Math.max(0, Math.min(100, Number(l.textSat)));
+            if (Number.isFinite(l.textLight)) this.labelsTextLight = Math.max(0, Math.min(100, Number(l.textLight)));
+            const px = data?.plexus || {};
+            if (Number.isFinite(px.opacityMin)) this.plexusOpacityMin = Math.max(0, Math.min(1, Number(px.opacityMin)));
+            if (Number.isFinite(px.opacityMax)) this.plexusOpacityMax = Math.max(0, Math.min(1, Number(px.opacityMax)));
+            if (Number.isFinite(px.kNeighbors)) this.plexusNeighbors = Math.max(1, Math.min(8, Number(px.kNeighbors) | 0));
+            if (Number.isFinite(px.maxDistScale)) this.plexusMaxDistScale = Math.max(0.5, Math.min(3, Number(px.maxDistScale)));
+            const sp = data?.spokes || {};
+            if (Number.isFinite(sp.opacity)) this.spokesOpacity = Math.max(0, Math.min(1, Number(sp.opacity)));
+            if (Number.isFinite(sp.lengthFactor)) this.spokesLengthFactor = Math.max(0, Math.min(1, Number(sp.lengthFactor)));
         } catch {}
     }
 
@@ -251,8 +346,10 @@ export class WordSphereScene implements WorkerScene {
         this.rootGroup = new THREE.Group();
         this.labelGroup = new THREE.Group();
         this.plexusGroup = new THREE.Group();
+        this.spokeGroup = new THREE.Group();
         this.rootGroup.add(this.plexusGroup);
         this.rootGroup.add(this.labelGroup);
+        this.rootGroup.add(this.spokeGroup);
         scene.add(this.rootGroup);
 
         // A neutral background so black text is visible if target clears to black
@@ -282,56 +379,15 @@ export class WordSphereScene implements WorkerScene {
 
     private buildLabelsOnSphere() {
         if (!this.scene || !this.labelGroup) return;
-        this.disposeGroup(this.labelGroup);
+        disposeGroup(this.labelGroup);
 
         const words = (this.words && this.words.length ? this.words : ['WOLK']).slice(0, 250);
         const radius = 2.5;
         const count = words.length;
         if (count === 0) return;
 
-        // Canvas-based sprite for each word: white rounded rectangle with black text
-        const makeLabelSprite = (text: string) => {
-            const padding = 12;
-            const fontSize = 48;
-            const tmp = new OffscreenCanvas(2, 2);
-            const tctx = tmp.getContext('2d');
-            if (!tctx) return null;
-            tctx.font = `${fontSize}px ${this.fontFamilyChain}`;
-            const metrics = tctx.measureText(text);
-            const textW = Math.ceil(metrics.width);
-            const textH = Math.ceil(fontSize * 1.2);
-            const w = Math.max(1, textW + padding * 2);
-            const h = Math.max(1, textH + padding * 2);
-            const canvas = new OffscreenCanvas(w, h);
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return null;
-            // white rectangular background
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(0, 0, w, h);
-            // text in black
-            ctx.fillStyle = '#000';
-            ctx.font = `${fontSize}px ${this.fontFamilyChain}`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(text, Math.floor(w / 2), Math.floor(h / 2));
-
-            const tex = new THREE.CanvasTexture(canvas as any);
-            tex.minFilter = THREE.LinearFilter;
-            tex.magFilter = THREE.LinearFilter;
-            tex.needsUpdate = true;
-            const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
-            const sprite = new THREE.Sprite(mat);
-            // scale roughly by canvas aspect to keep labels readable
-            const base = 0.9;
-            const scaleX = base * (w / 256);
-            const scaleY = base * (h / 256);
-            sprite.scale.set(scaleX, scaleY, 1);
-            // store base scale for energy pulsing
-            (sprite as any).userData = (sprite as any).userData || {};
-            (sprite as any).userData.baseScaleX = scaleX;
-            (sprite as any).userData.baseScaleY = scaleY;
-            return sprite;
-        };
+        // Use shared sprite factory; tint adjusted dynamically per frame
+        const makeSprite = (text: string) => makeLabelSprite(text, this.fontFamilyChain);
 
         for (let i = 0; i < count; i++) {
             const word = String(words[i]).toUpperCase();
@@ -340,7 +396,7 @@ export class WordSphereScene implements WorkerScene {
             const x = radius * Math.cos(theta) * Math.sin(phi);
             const y = radius * Math.sin(theta) * Math.sin(phi);
             const z = radius * Math.cos(phi);
-            const sprite = makeLabelSprite(word);
+            const sprite = makeSprite(word);
             if (!sprite) continue;
             sprite.position.set(x, y, z);
             // Face camera: always look at camera origin by making it billboard via Sprite
@@ -352,62 +408,42 @@ export class WordSphereScene implements WorkerScene {
 
     private buildPlexus() {
         if (!this.scene || !this.plexusGroup || !this.labelGroup) return;
-        this.disposeGroup(this.plexusGroup);
+        disposeGroup(this.plexusGroup);
 
         // Build a plexus: connect k-nearest neighbors with a dynamic distance cap
-        const positions: number[] = [];
         const children = this.labelGroup.children as any[];
+        const points = children.map(c => (c.position as THREE.Vector3).clone());
         const radius = 2.5;
         const k = Math.max(1, Math.min(8, this.plexusNeighbors | 0));
         const maxDist = Math.max(0.1, this.plexusMaxDistScale * radius);
-        for (let i = 0; i < children.length; i++) {
-            const a = children[i].position;
-            const neighbors: { j: number; d2: number }[] = [];
-            for (let j = i + 1; j < children.length; j++) {
-                const b = children[j].position;
-                const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
-                const d2 = dx * dx + dy * dy + dz * dz;
-                neighbors.push({ j, d2 });
-            }
-            neighbors.sort((u, v) => u.d2 - v.d2);
-            let added = 0;
-            for (const nb of neighbors) {
-                if (added >= k) break;
-                const d = Math.sqrt(nb.d2);
-                if (d <= maxDist) {
-                    const b = children[nb.j].position;
-                    positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
-                    added++;
-                }
-            }
-        }
-        if (!positions.length) return;
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(positions), 3));
-        const mat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.28, transparent: true, depthTest: false });
-        const lines = new THREE.LineSegments(geo, mat);
-        // Render on top of sphere
-        (lines as any).renderOrder = 1;
+        const lines = buildPlexusFromPoints(points, k, maxDist);
+        if (!lines) return;
         this.plexusGroup.add(lines);
         // Ensure plexus group local rotation is reset; rootGroup holds global rotation
         try { if (this.plexusGroup && this.plexusGroup.rotation) { this.plexusGroup.rotation.set(0, 0, 0); } } catch {}
     }
 
-    private disposeGroup(group: any) {
-        if (!group) return;
-        const children = [...group.children];
-        for (const obj of children) {
-            try {
-                if ((obj as any).material && (obj as any).material.dispose) (obj as any).material.dispose();
-            } catch {}
-            try {
-                // Dispose textures in sprite materials
-                const mat: any = (obj as any).material;
-                if (mat && mat.map && typeof mat.map.dispose === 'function') mat.map.dispose();
-            } catch {}
-            try { if ((obj as any).geometry && (obj as any).geometry.dispose) (obj as any).geometry.dispose(); } catch {}
-            try { group.remove(obj); } catch {}
+    private buildSpokes() {
+        if (!this.spokeGroup || !this.labelGroup) return;
+        try { disposeGroup(this.spokeGroup); } catch {}
+        const children = this.labelGroup.children as any[];
+        if (!children || !children.length) return;
+        const positions = new Float32Array(children.length * 2 * 3);
+        for (let i = 0; i < children.length; i++) {
+            const lbl = children[i];
+            const p = lbl.position as THREE.Vector3;
+            const center = new THREE.Vector3(0, 0, 0);
+            const end = new THREE.Vector3().copy(p).lerp(center, Math.max(0, Math.min(1, this.spokesLengthFactor)));
+            const offset = i * 6;
+            positions[offset + 0] = p.x; positions[offset + 1] = p.y; positions[offset + 2] = p.z;
+            positions[offset + 3] = end.x; positions[offset + 4] = end.y; positions[offset + 5] = end.z;
         }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        const mat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: Math.max(0, Math.min(1, this.spokesOpacity)), transparent: true, depthTest: true });
+        const lines = new THREE.LineSegments(geo, mat);
+        (lines as any).renderOrder = 2;
+        this.spokeGroup.add(lines);
     }
 }
 

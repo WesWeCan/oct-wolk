@@ -404,7 +404,7 @@ const wordPoolMarkers = useWordPoolMarkers(timeline, onTimelineUpdated);
 // ===== SCENE HANDLERS =====
 
 const addScene = async (type: 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d') => {
-    await scenes.addScene(type, audioPlayer.audioEl.value, fps.value);
+    await scenes.addScene(type, audioPlayer.audioEl.value, fps.value, { insertionFrame: playback.frame.value });
     await TimelineService.save(songId.value, timeline.value!);
     await configureWorkerScene();
 };

@@ -64,20 +64,47 @@ export function useSceneManagement(
     const addScene = async (
         type: SceneType,
         audioEl: HTMLAudioElement | null,
-        fps: number
+        fps: number,
+        opts?: { insertionFrame?: number; defaultDurationFrames?: number }
     ) => {
         if (!timeline.value) return;
         
         // Generate unique ID
         const id = crypto.randomUUID();
         
-        // Determine start frame and duration
+        // Determine insertion frame and base duration
         const totalFrames = Math.max(1, Math.floor((audioEl?.duration || 0) * fps));
-        const lastScene = timeline.value.scenes.at(-1);
         const isFirst = timeline.value.scenes.length === 0;
-        
-        const startFrame = isFirst ? 0 : (lastScene ? lastScene.startFrame + lastScene.durationFrames : 0);
-        const durationFrames = isFirst && totalFrames > 0 ? totalFrames : 300;
+        const requestedInsertion = Math.max(0, Math.floor(Number(opts?.insertionFrame ?? NaN)) || 0);
+        const insertionFrame = isFirst ? 0 : requestedInsertion;
+        const defaultDuration = Number.isFinite(opts?.defaultDurationFrames as any) ? Math.max(1, Number(opts?.defaultDurationFrames)) : 300;
+        const desiredDuration = isFirst && totalFrames > 0 ? totalFrames : defaultDuration;
+
+        // Overlap handling: trim left scene if playhead is inside it; clamp to next scene start
+        const scenes = [...timeline.value.scenes];
+
+        // Trim preceding scene if insertion is inside it
+        const prevIdx = scenes.findIndex(s => insertionFrame >= s.startFrame && insertionFrame < s.startFrame + s.durationFrames);
+        if (prevIdx >= 0) {
+            const prev = scenes[prevIdx];
+            const newDur = insertionFrame - prev.startFrame;
+            if (newDur <= 0) {
+                scenes.splice(prevIdx, 1);
+            } else {
+                scenes[prevIdx] = { ...prev, durationFrames: newDur };
+            }
+        }
+
+        // Find next scene after insertion
+        const nextScenes = scenes.filter(s => s.startFrame >= insertionFrame).sort((a, b) => a.startFrame - b.startFrame);
+        const next = nextScenes[0] || null;
+        let durationFrames = desiredDuration;
+        if (next) {
+            const available = Math.max(0, next.startFrame - insertionFrame);
+            durationFrames = Math.max(1, Math.min(durationFrames, available || durationFrames));
+        }
+
+        const startFrame = insertionFrame;
         
         // Create scene reference
         const sceneRef: SceneRef = {
@@ -106,8 +133,10 @@ export function useSceneManagement(
             console.error('Failed to save scene:', error);
         }
         
-        // Add to timeline
-        timeline.value.scenes.push(sceneRef);
+        // Add to timeline (keep sorted by startFrame)
+        scenes.push(sceneRef);
+        scenes.sort((a, b) => a.startFrame - b.startFrame);
+        timeline.value.scenes = scenes;
         
         // Select new scene
         selectedSceneId.value = id;

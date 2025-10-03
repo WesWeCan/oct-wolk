@@ -1,4 +1,5 @@
 import type { SceneContext, WorkerScene } from '../engine/types';
+import { getAnimated } from '../engine/params';
 
 export class SingleWordScene implements WorkerScene {
     private words: string[] = [];
@@ -85,18 +86,40 @@ export class SingleWordScene implements WorkerScene {
         const w = this.width;
         const h = this.height;
         const beat = Number(context.extras?.beat || 0);
-        // background to make transitions visible (smoothed HSL)
-        target.fillStyle = `hsl(${Math.floor(this.smHue)}, ${Math.floor(this.smSat)}%, ${Math.floor(this.smLight)}%)`;
+        const animated = (context.extras && (context.extras as any).animated) ? (context.extras as any).animated : undefined;
+        // Background: explicit override or smoothed HSL
+        const bgHue = getAnimated(animated, 'background.hue', this.smHue as number) as number;
+        const bgSat = getAnimated(animated, 'background.sat', this.smSat as number) as number;
+        const bgLight = getAnimated(animated, 'background.light', this.smLight as number) as number;
+        target.fillStyle = `hsl(${Math.floor(bgHue)}, ${Math.floor(bgSat)}%, ${Math.floor(bgLight)}%)`;
         target.fillRect(0, 0, w, h);
+        // Word transforms
         const text = this.words[this.currentIndex] || 'WOLK';
         const base = Math.min(w, h) * 0.2;
-        const size = base * (0.9 + 0.18 * beat + 0.12 * this.smLow);
+        const sizePulse = 0.9 + 0.18 * beat + 0.12 * this.smLow;
+        const wordScale = Math.max(0, Number(getAnimated(animated, 'word.scale', 1))) * sizePulse;
+        const size = base * wordScale;
         target.textAlign = 'center';
         target.textBaseline = 'middle';
         target.font = `${size}px ${this.fontFamilyChain}`;
         const whiteTint = Math.max(170, Math.min(250, Math.floor(200 + 40 * (1 - this.smLight / 100) + 30 * this.smMid)));
-        target.fillStyle = `rgb(${whiteTint}, ${whiteTint}, ${whiteTint})`;
-        target.fillText(text, Math.floor(w / 2), Math.floor(h / 2));
+        const opacity = Math.max(0, Math.min(1, Number(getAnimated(animated, 'word.opacity', 1))));
+        const r = Math.floor(whiteTint);
+        target.fillStyle = `rgba(${r}, ${r}, ${r}, ${opacity})`;
+        const offX = Number(getAnimated(animated, 'word.offsetX', 0)) || 0;
+        const offY = Number(getAnimated(animated, 'word.offsetY', 0)) || 0;
+        const rotationDeg = Number(getAnimated(animated, 'word.rotationDeg', 0)) || 0;
+        const cx = Math.floor(w / 2) + offX;
+        const cy = Math.floor(h / 2) + offY;
+        if (rotationDeg) {
+            target.save();
+            target.translate(cx, cy);
+            target.rotate((rotationDeg * Math.PI) / 180);
+            target.fillText(text, 0, 0);
+            target.restore();
+        } else {
+            target.fillText(text, cx, cy);
+        }
     }
 
     dispose(): void {
@@ -104,7 +127,12 @@ export class SingleWordScene implements WorkerScene {
     }
 
     serialize(): any {
-        return { words: this.words, fontFamilyChain: this.fontFamilyChain, beatThreshold: this.beatThreshold };
+        return {
+            words: this.words,
+            fontFamilyChain: this.fontFamilyChain,
+            beatThreshold: this.beatThreshold,
+            background: { hue: this.bgHue },
+        };
     }
 
     deserialize(data: any): void {
@@ -112,6 +140,8 @@ export class SingleWordScene implements WorkerScene {
             if (Array.isArray(data?.words)) this.words = data.words.map((w: any) => String(w));
             if (data?.fontFamilyChain) this.fontFamilyChain = String(data.fontFamilyChain);
             if (typeof data?.beatThreshold === 'number') this.beatThreshold = Math.min(1, Math.max(0, Number(data.beatThreshold)));
+            const b = data?.background || {};
+            if (Number.isFinite(b.hue)) this.bgHue = Math.max(0, Math.min(360, Number(b.hue)));
         } catch {}
     }
 }

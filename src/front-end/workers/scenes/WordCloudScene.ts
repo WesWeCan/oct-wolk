@@ -1,4 +1,5 @@
 import type { SceneContext, WorkerScene } from '../engine/types';
+import { getAnimated } from '../engine/params';
 
 export class WordCloudScene implements WorkerScene {
     private rng: () => number = () => 0.5;
@@ -8,6 +9,11 @@ export class WordCloudScene implements WorkerScene {
     private width = 0;
     private height = 0;
     private bgHue: number = 30;
+    // animation params
+    private globalHueShift: number = 0;
+    private cloudScale: number = 1;
+    private cloudRotationDeg: number = 0;
+    private jitter: number = 0; // 0..1 amount of frame jitter (seeded)
 
     initialize(context: SceneContext): void {
         this.width = context.resolution.width;
@@ -26,33 +32,74 @@ export class WordCloudScene implements WorkerScene {
     }
 
     update(frame: number, dt: number, context: SceneContext): void {
-        // no-op for now
+        const animated = (context.extras && (context.extras as any).animated) ? (context.extras as any).animated : undefined;
+        // Read overrides (do not mutate layout; consume during render)
+        this.globalHueShift = Number(getAnimated(animated, 'word.globalHueShift', 0)) || 0;
+        this.cloudScale = Math.max(0, Number(getAnimated(animated, 'cloud.scale', 1)) || 1);
+        this.cloudRotationDeg = Number(getAnimated(animated, 'cloud.rotationDeg', 0)) || 0;
+        this.jitter = Math.max(0, Math.min(1, Number(getAnimated(animated, 'cloud.jitter', 0)) || 0));
+        // Background explicit override
+        const bgHue = getAnimated(animated, 'background.hue', null as any);
+        if (Number.isFinite(bgHue as any)) this.bgHue = ((Number(bgHue) % 360) + 360) % 360;
     }
 
     render(target: OffscreenCanvasRenderingContext2D, context: SceneContext): void {
         if (!this.configured) return;
         // background to make transitions visible
-        target.fillStyle = `hsl(${this.bgHue}, 25%, 12%)`;
+        const animated = (context.extras && (context.extras as any).animated) ? (context.extras as any).animated : undefined;
+        const bgSat = Number.isFinite(getAnimated(animated, 'background.sat', NaN) as any) ? Number(getAnimated(animated, 'background.sat', 25)) : 25;
+        const bgLight = Number.isFinite(getAnimated(animated, 'background.light', NaN) as any) ? Number(getAnimated(animated, 'background.light', 12)) : 12;
+        target.fillStyle = `hsl(${this.bgHue}, ${bgSat}%, ${bgLight}%)`;
         target.fillRect(0, 0, this.width, this.height);
         target.textAlign = 'center';
         target.textBaseline = 'middle';
         const beat = Number(context.extras?.beat || 0);
+        // Cloud transform
+        const scale = this.cloudScale * (1 + 0.06 * beat);
+        const rot = (this.cloudRotationDeg * Math.PI) / 180;
+        const cx = this.width / 2;
+        const cy = this.height / 2;
+        target.save();
+        target.translate(cx, cy);
+        if (rot) target.rotate(rot);
+        target.scale(scale, scale);
+        target.translate(-cx, -cy);
         for (const w of this.layout) {
             const pulse = 0.9 + 0.3 * beat;
-            const size = w.size * pulse;
+            const sizeScale = Math.max(0, Number(getAnimated(animated, 'word.scale', 1))) * pulse;
+            const opacity = Math.max(0, Math.min(1, Number(getAnimated(animated, 'word.opacity', 1))));
+            const size = w.size * sizeScale;
             target.font = `${size}px ${this.fontFamilyChain}`;
-            target.fillStyle = `hsl(${w.hue}, 80%, 60%)`;
-            target.fillText(w.text, w.x, w.y);
+            const hue = (w.hue + this.globalHueShift) % 360;
+            target.fillStyle = `hsla(${hue < 0 ? hue + 360 : hue}, 80%, 60%, ${opacity})`;
+            if (this.jitter > 0) {
+                const jx = (this.rng() - 0.5) * 4 * this.jitter;
+                const jy = (this.rng() - 0.5) * 4 * this.jitter;
+                target.fillText(w.text, w.x + jx, w.y + jy);
+            } else {
+                target.fillText(w.text, w.x, w.y);
+            }
         }
+        target.restore();
     }
 
     dispose(): void {
         this.layout = [];
     }
 
-    serialize(): any { return { fontFamilyChain: this.fontFamilyChain, layout: this.layout }; }
+    serialize(): any {
+        return {
+            fontFamilyChain: this.fontFamilyChain,
+            layout: this.layout,
+            background: { hue: this.bgHue },
+        };
+    }
     deserialize(data: any): void {
-        try { if (data?.fontFamilyChain) this.fontFamilyChain = String(data.fontFamilyChain); } catch {}
+        try {
+            if (data?.fontFamilyChain) this.fontFamilyChain = String(data.fontFamilyChain);
+            const b = data?.background || {};
+            if (Number.isFinite(b.hue)) this.bgHue = ((Number(b.hue) % 360) + 360) % 360;
+        } catch {}
     }
 
     private computeLayout(config: { width: number; height: number; words: string[] }) {
