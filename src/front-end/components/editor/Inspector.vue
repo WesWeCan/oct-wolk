@@ -483,12 +483,7 @@ const setColorFromPicker = (prefix: string, hex: string) => {
                 <input type="text" :value="selectedScene.name" @input="updateSceneName" />
             </label>
             
-            <div v-if="selectedScene.type === 'singleWord'">
-                <label>
-                    Beat threshold (0..1)
-                    <input type="number" min="0" max="1" step="0.01" :value="Number((sceneParams && (sceneParams as any).beatThreshold) ?? 0.07)" @input="(e:any)=>{ const v=Math.min(1,Math.max(0,Number(e.target.value)||0)); emit('update:sceneParams', { ...(sceneParams||{}), beatThreshold: v }); }" />
-                </label>
-            </div>
+            
 
             <div v-if="selectedScene.type === 'wordSphere'" class="form-row">
                 <label class="inline">

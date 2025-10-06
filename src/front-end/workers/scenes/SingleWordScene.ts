@@ -46,6 +46,7 @@ export class SingleWordScene implements WorkerScene {
 
     update(frame: number, dt: number, context: SceneContext): void {
         const beat = Number(context.extras?.beat || 0);
+        const animated = (context.extras && (context.extras as any).animated) ? (context.extras as any).animated : undefined;
         const wordsLen = Math.max(1, this.words.length);
         if (typeof context.extras?.wordOverride === 'string' && context.extras?.wordOverride) {
             const w = String(context.extras.wordOverride).toUpperCase();
@@ -55,7 +56,10 @@ export class SingleWordScene implements WorkerScene {
             const idx = (context.extras!.wordIndex as number);
             this.currentIndex = ((idx % wordsLen) + wordsLen) % wordsLen;
         } else {
-            const threshold = this.beatThreshold;
+            // Completely override instance field if animatable is provided
+            const threshold = (animated && Number.isFinite(animated['beatThreshold']))
+                ? Math.max(0, Math.min(1, Number(animated['beatThreshold'])))
+                : this.beatThreshold;
             if (beat > threshold && this.lastBeat <= threshold) {
                 this.currentIndex = (this.currentIndex + 1) % wordsLen;
             }
@@ -87,39 +91,113 @@ export class SingleWordScene implements WorkerScene {
         const h = this.height;
         const beat = Number(context.extras?.beat || 0);
         const animated = (context.extras && (context.extras as any).animated) ? (context.extras as any).animated : undefined;
-        // Background: explicit override or smoothed HSL
+        // Helpers
+        const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+        const hsla = (hh: number, ss: number, ll: number, aa: number) => `hsla(${Math.floor((hh % 360 + 360) % 360)}, ${Math.floor(Math.max(0, Math.min(100, ss)))}%, ${Math.floor(Math.max(0, Math.min(100, ll)))}%, ${clamp01(aa)})`;
+        // Background: explicit override or smoothed HSL + opacity
         const bgHue = getAnimated(animated, 'background.hue', this.smHue as number) as number;
         const bgSat = getAnimated(animated, 'background.sat', this.smSat as number) as number;
         const bgLight = getAnimated(animated, 'background.light', this.smLight as number) as number;
-        target.fillStyle = `hsl(${Math.floor(bgHue)}, ${Math.floor(bgSat)}%, ${Math.floor(bgLight)}%)`;
+        const bgOpacity = Number(getAnimated(animated, 'background.opacity', 1)) || 0;
+        target.fillStyle = hsla(bgHue, bgSat, bgLight, bgOpacity);
         target.fillRect(0, 0, w, h);
         // Word transforms
         const text = this.words[this.currentIndex] || 'WOLK';
         const base = Math.min(w, h) * 0.2;
         const sizePulse = 0.9 + 0.18 * beat + 0.12 * this.smLow;
         const wordScale = Math.max(0, Number(getAnimated(animated, 'word.scale', 1))) * sizePulse;
-        const size = base * wordScale;
+        let size = base * wordScale;
         target.textAlign = 'center';
         target.textBaseline = 'middle';
-        target.font = `${size}px ${this.fontFamilyChain}`;
-        const whiteTint = Math.max(170, Math.min(250, Math.floor(200 + 40 * (1 - this.smLight / 100) + 30 * this.smMid)));
-        const opacity = Math.max(0, Math.min(1, Number(getAnimated(animated, 'word.opacity', 1))));
-        const r = Math.floor(whiteTint);
-        target.fillStyle = `rgba(${r}, ${r}, ${r}, ${opacity})`;
+        // Offsets and nudge
         const offX = Number(getAnimated(animated, 'word.offsetX', 0)) || 0;
-        const offY = Number(getAnimated(animated, 'word.offsetY', 0)) || 0;
-        const rotationDeg = Number(getAnimated(animated, 'word.rotationDeg', 0)) || 0;
+        let offY = Number(getAnimated(animated, 'word.offsetY', 0)) || 0;
+        const nudge = Number(getAnimated(animated, 'word.nudge', 0)) || 0;
+        const nudgeDisp = nudge * (0.18 * beat + 0.12 * this.smLow);
+        offY += nudgeDisp;
+        const rotationDeg = 0; // keep straight
         const cx = Math.floor(w / 2) + offX;
         const cy = Math.floor(h / 2) + offY;
-        if (rotationDeg) {
-            target.save();
-            target.translate(cx, cy);
-            target.rotate((rotationDeg * Math.PI) / 180);
-            target.fillText(text, 0, 0);
-            target.restore();
-        } else {
-            target.fillText(text, cx, cy);
+        // Set initial font for measurement
+        target.font = `${size}px ${this.fontFamilyChain}`;
+        const metrics = target.measureText(text);
+        const textW = Math.ceil(metrics.width || 0);
+        const textH = Math.ceil(((metrics as any).actualBoundingBoxAscent || 0) + ((metrics as any).actualBoundingBoxDescent || 0)) || Math.ceil(size * 1.2);
+        // Safe area: 5% margin per edge => 90% inner rect
+        const aw = w * 0.45; // half inner width
+        const ah = h * 0.45; // half inner height
+        const halfTextW = textW / 2;
+        const halfTextH = textH / 2;
+        const availW = Math.max(0, aw - Math.abs(offX));
+        const availH = Math.max(0, ah - Math.abs(offY));
+        const fit = Math.min(
+            halfTextW > 0 ? availW / halfTextW : 1,
+            halfTextH > 0 ? availH / halfTextH : 1,
+            1
+        );
+        if (fit < 1) {
+            size = size * Math.max(0, fit);
+            target.font = `${size}px ${this.fontFamilyChain}`;
         }
+
+        // Colors and opacities
+        const textHue = Number(getAnimated(animated, 'word.text.hue', 0)) || 0;
+        const textSat = Number(getAnimated(animated, 'word.text.sat', 0)) || 0;
+        const textLight = Number(getAnimated(animated, 'word.text.light', 95)) || 95;
+        const wordOpacity = Math.max(0, Math.min(1, Number(getAnimated(animated, 'word.opacity', 1)) || 0));
+        // Stroke
+        const strokeWidth = Math.max(0, Number(getAnimated(animated, 'word.stroke.width', 0)) || 0);
+        const strokeOpacity = clamp01(Number(getAnimated(animated, 'word.stroke.opacity', 0)) || 0);
+        const strokeHue = Number(getAnimated(animated, 'word.stroke.hue', 0)) || 0;
+        const strokeSat = Number(getAnimated(animated, 'word.stroke.sat', 0)) || 0;
+        const strokeLight = Number(getAnimated(animated, 'word.stroke.light', 0)) || 0;
+        // Shadow
+        const shadowBlur = Math.max(0, Number(getAnimated(animated, 'word.shadow.blur', 0)) || 0);
+        const shadowOpacity = clamp01(Number(getAnimated(animated, 'word.shadow.opacity', 0)) || 0);
+        const shadowHue = Number(getAnimated(animated, 'word.shadow.hue', 0)) || 0;
+        const shadowSat = Number(getAnimated(animated, 'word.shadow.sat', 0)) || 0;
+        const shadowLight = Number(getAnimated(animated, 'word.shadow.light', 0)) || 0;
+        // Glow
+        const glowSize = Math.max(0, Number(getAnimated(animated, 'word.glow.size', 0)) || 0);
+        const glowOpacity = clamp01(Number(getAnimated(animated, 'word.glow.opacity', 0)) || 0);
+        const glowHue = Number(getAnimated(animated, 'word.glow.hue', textHue)) || textHue;
+        const glowSat = Number(getAnimated(animated, 'word.glow.sat', textSat)) || textSat;
+        const glowLight = Number(getAnimated(animated, 'word.glow.light', Math.max(50, textLight))) || Math.max(50, textLight);
+
+        // Draw order: glow -> shadow -> stroke -> fill
+        // Glow pass (shadow-based glow)
+        if (glowSize > 0 && glowOpacity > 0) {
+            target.save();
+            target.shadowBlur = glowSize;
+            target.shadowColor = hsla(glowHue, glowSat, glowLight, glowOpacity);
+            target.fillStyle = hsla(textHue, textSat, textLight, 0);
+            target.fillText(text, cx, cy);
+            target.restore();
+        }
+
+        // Shadow pass
+        if (shadowBlur > 0 && shadowOpacity > 0) {
+            target.save();
+            target.shadowBlur = shadowBlur;
+            target.shadowColor = hsla(shadowHue, shadowSat, shadowLight, shadowOpacity);
+            target.fillStyle = hsla(textHue, textSat, textLight, 0);
+            target.fillText(text, cx, cy);
+            target.restore();
+        }
+
+        // Stroke pass
+        if (strokeWidth > 0 && strokeOpacity > 0) {
+            target.save();
+            target.lineWidth = strokeWidth;
+            target.lineJoin = 'round';
+            target.strokeStyle = hsla(strokeHue, strokeSat, strokeLight, strokeOpacity);
+            target.strokeText(text, cx, cy);
+            target.restore();
+        }
+
+        // Fill pass
+        target.fillStyle = hsla(textHue, textSat, textLight, wordOpacity);
+        target.fillText(text, cx, cy);
     }
 
     dispose(): void {

@@ -48,12 +48,12 @@ onMounted(() => {
     onUnmounted(() => { try { ro.disconnect(); } catch {} });
 });
 // Handlers (no inline functions in template)
-const handleDblClickAdd = () => {
-    const fps = Math.max(1, props.fps);
-    const midSec = props.viewport.startSec + props.viewport.durationSec * 0.5;
-    const frame = Math.max(0, Math.round(midSec * fps));
-    emit('addKeyframe', { frame, value: 0, propertyPath: props.propertyPath });
-};
+// const handleDblClickAdd = () => {
+//     const fps = Math.max(1, props.fps);
+//     const midSec = props.viewport.startSec + props.viewport.durationSec * 0.5;
+//     const frame = Math.max(0, Math.round(midSec * fps));
+//     emit('addKeyframe', { frame, value: 0, propertyPath: props.propertyPath });
+// };
 
 const isDragging = ref(false);
 
@@ -155,7 +155,7 @@ const onBackgroundPointerDown = (e: PointerEvent) => {
 </script>
 
 <template>
-    <svg ref="svgRef" class="property-mini-lane" @dblclick="handleDblClickAdd" @pointerdown.self="onBackgroundPointerDown">
+    <svg ref="svgRef" class="property-mini-lane"  @pointerdown.self="onBackgroundPointerDown">
         <rect x="0" y="0" :width="width" :height="height" fill="#111" @pointerdown="onBackgroundPointerDown" />
         <path v-if="pathD" :d="pathD" stroke="rgba(0, 212, 255, 0.5)" stroke-width="1.5" fill="none" opacity="0.8" pointer-events="none" />
         <template v-for="(kf, i) in keyframes" :key="i">
