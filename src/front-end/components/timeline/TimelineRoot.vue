@@ -175,7 +175,7 @@ const handlePropPrev = (propertyPath: string) => {
             const actualIndex = track.keyframes.findIndex((k: any) => k.frame === targetFrame);
             emit('scrub', { timeSec: targetFrame / Math.max(1, props.fps), frame: targetFrame });
             // Select the keyframe we navigated to
-            selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: actualIndex };
+            selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: (actualIndex != null && actualIndex >= 0 ? [actualIndex] : []) } as Record<string, number[]>;
             return;
         }
     }
@@ -193,7 +193,7 @@ const handlePropNext = (propertyPath: string) => {
             const actualIndex = track.keyframes.findIndex((k: any) => k.frame === targetFrame);
             emit('scrub', { timeSec: targetFrame / Math.max(1, props.fps), frame: targetFrame });
             // Select the keyframe we navigated to
-            selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: actualIndex };
+            selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: (actualIndex != null && actualIndex >= 0 ? [actualIndex] : []) } as Record<string, number[]>;
             return;
         }
     }
@@ -203,14 +203,33 @@ const handlePropValueChange = (propertyPath: string, value: any) => {
     handlePropChangeValue({ propertyPath, value });
 };
 
-// Track selected keyframes per property
-const selectedPropertyKeyframes = ref<Record<string, number>>({});
+// Track selected keyframes per property (multi-select)
+const selectedPropertyKeyframes = ref<Record<string, number[]>>({});
 
 const handlePropDelete = (propertyPath: string) => {
-    const selectedIdx = selectedPropertyKeyframes.value[propertyPath];
-    if (selectedIdx === undefined || selectedIdx === null || selectedIdx < 0) return;
-    handlePropDeleteKf({ propertyPath, index: selectedIdx });
-    selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: -1 };
+    const selected = selectedPropertyKeyframes.value[propertyPath];
+    if (!Array.isArray(selected) || selected.length === 0) return;
+    // Delete in descending order to avoid reindex issues
+    const toDelete = [...new Set(selected)].sort((a, b) => b - a);
+    for (const index of toDelete) {
+        if (index != null && index >= 0) handlePropDeleteKf({ propertyPath, index });
+    }
+    selectedPropertyKeyframes.value = { ...selectedPropertyKeyframes.value, [propertyPath]: [] };
+};
+
+// Batch move handler from mini-lane group drag
+const handlePropMoveKfs = ({ propertyPath, indices, deltaFrames }: { propertyPath: string; indices: number[]; deltaFrames: number }) => {
+    const track = props.scenePropertyTracks?.find((t: any) => t.propertyPath === propertyPath);
+    if (!track || !Array.isArray(track.keyframes) || indices.length === 0 || !Number.isFinite(deltaFrames)) return;
+    const sorted = track.keyframes.slice().sort((a: any, b: any) => (a.frame|0) - (b.frame|0));
+    for (const i of indices) {
+        const kf = sorted[i];
+        if (!kf) continue;
+        const origIndex = track.keyframes.indexOf(kf);
+        if (origIndex < 0) continue;
+        const newFrame = Math.max(0, (kf.frame|0) + (deltaFrames|0));
+        handlePropMoveKf({ propertyPath, index: origIndex, frame: newFrame });
+    }
 };
 
 // Lane vertical resize via drag handle
@@ -316,7 +335,7 @@ watch(() => vp.viewport.value, (v) => {}, { deep: true });
                             <button type="button" class="small" @click="handlePropPrev(propLane.propertyPath)" title="Previous keyframe">◀</button>
                             <button type="button" class="small primary" @click="handlePropAdd(propLane.propertyPath)" title="Add keyframe">◆</button>
                             <button type="button" class="small" @click="handlePropNext(propLane.propertyPath)" title="Next keyframe">▶</button>
-                            <button type="button" class="small danger" @click="handlePropDelete(propLane.propertyPath)" title="Delete selected keyframe">×</button>
+                        <button type="button" class="small danger" @click="handlePropDelete(propLane.propertyPath)" title="Delete selected keyframe(s)">×</button>
                         </div>
                         <input 
                             type="number" 
@@ -429,13 +448,15 @@ watch(() => vp.viewport.value, (v) => {}, { deep: true });
                 :track="propLane.track"
                 :meta="propLane.meta"
                 :current-frame="vp.playhead.value.frame"
-                :selected-index="selectedPropertyKeyframes[propLane.propertyPath] ?? null"
+                :selected-indices="selectedPropertyKeyframes[propLane.propertyPath] ?? []"
                 @pan="(sec:number) => vp.panBy(sec)"
                 @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)"
                 @scrub="(p:any) => emit('scrub', p)"
                 @moveKeyframe="({ index, frame }) => handlePropMoveKf({ propertyPath: propLane.propertyPath, index, frame })"
                 @deleteKeyframe="({ index }) => handlePropDeleteKf({ propertyPath: propLane.propertyPath, index })"
-                @selectKeyframe="({ index }) => selectedPropertyKeyframes[propLane.propertyPath] = index"
+                @selectKeyframe="({ index }) => selectedPropertyKeyframes[propLane.propertyPath] = (index != null && index >= 0 ? [index] : [])"
+                @selectKeyframes="({ indices }) => selectedPropertyKeyframes[propLane.propertyPath] = indices"
+                @moveKeyframesBatch="({ indices, deltaFrames }) => handlePropMoveKfs({ propertyPath: propLane.propertyPath, indices, deltaFrames })"
             />
             <div v-if="!collapsed[propLane.key]" class="lane-resizer" @pointerdown="(e:any) => startResize(propLane.key, e)"></div>
         </div>
