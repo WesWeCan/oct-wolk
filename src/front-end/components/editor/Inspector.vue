@@ -485,6 +485,132 @@ const setColorFromPicker = (prefix: string, hex: string) => {
             
             
 
+            <div v-if="selectedScene.type === 'wordcloud'" class="form-row">
+                <label>
+                    Layout
+                    <select :value="(sceneParams as any)?.layoutMode || 'spiral'" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), layoutMode: e.target.value === 'ring' ? 'ring' : (e.target.value === 'grid' ? 'grid' : 'spiral') })">
+                        <option value="spiral">Spiral (center-out)</option>
+                        <option value="ring">Ring bands</option>
+                        <option value="grid">Grid</option>
+                    </select>
+                </label>
+                <label class="inline">
+                    <input type="checkbox" :checked="!!(sceneParams && (sceneParams as any).gridSnap)" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), gridSnap: !!e.target.checked })" />
+                    Grid-snap
+                </label>
+                <label>
+                    Grid size
+                    <input type="number" min="1" step="1" :value="Number((sceneParams && (sceneParams as any).gridSize) ?? 8)" @input="(e:any)=>{ const v=Math.max(1, Number(e.target.value)||8); emit('update:sceneParams', { ...(sceneParams||{}), gridSize: v|0 }); }" />
+                </label>
+                <label class="inline">
+                    <input type="checkbox" :checked="!!(sceneParams && (sceneParams as any).fillSpace)" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), fillSpace: !!e.target.checked })" />
+                    Fill space (repeat words)
+                </label>
+                <label v-if="(sceneParams as any)?.layoutMode === 'ring'">
+                    Ring bands
+                    <input type="number" min="1" max="24" step="1" :value="Number((sceneParams && (sceneParams as any).ringBands) ?? 3)" @input="(e:any)=>{ const v=Math.min(24, Math.max(1, Number(e.target.value)||3)); emit('update:sceneParams', { ...(sceneParams||{}), ringBands: v|0 }); }" />
+                </label>
+                <template v-if="(sceneParams as any)?.layoutMode === 'grid'">
+                    <label>
+                        Columns
+                        <input type="number" min="1" step="1" :value="Number((sceneParams && (sceneParams as any).grid?.columns) ?? 6)"
+                               @input="(e:any)=>{ const v=Math.max(1, Number(e.target.value)||6); emit('update:sceneParams', { ...(sceneParams||{}), grid: { ...((sceneParams as any)?.grid||{}), columns: v|0 } }); }" />
+                    </label>
+                    <label>
+                        Row height
+                        <input type="number" min="0" step="1" :value="Number((sceneParams && (sceneParams as any).grid?.rowHeight) ?? 0)"
+                               @input="(e:any)=>{ const v=Math.max(0, Number(e.target.value)||0); emit('update:sceneParams', { ...(sceneParams||{}), grid: { ...((sceneParams as any)?.grid||{}), rowHeight: v|0 } }); }" />
+                    </label>
+                    <label>
+                        Justify
+                        <select :value="(sceneParams as any)?.grid?.justify || 'center'"
+                                @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), grid: { ...((sceneParams as any)?.grid||{}), justify: e.target.value } })">
+                            <option value="center">Center</option>
+                            <option value="start">Start</option>
+                            <option value="end">End</option>
+                            <option value="space">Space</option>
+                        </select>
+                    </label>
+                    <label>
+                        Random offset
+                        <input type="number" min="0" max="1" step="0.01" :value="Number((sceneParams && (sceneParams as any).grid?.randomOffset) ?? 0)"
+                               @input="(e:any)=>{ const v=Math.max(0, Math.min(1, Number(e.target.value)||0)); emit('update:sceneParams', { ...(sceneParams||{}), grid: { ...((sceneParams as any)?.grid||{}), randomOffset: v } }); }" />
+                    </label>
+                    <label>
+                        Cell padding
+                        <input type="number" min="0" step="1" :value="Number((sceneParams && (sceneParams as any).grid?.cellPadding) ?? 6)"
+                               @input="(e:any)=>{ const v=Math.max(0, Number(e.target.value)||6); emit('update:sceneParams', { ...(sceneParams||{}), grid: { ...((sceneParams as any)?.grid||{}), cellPadding: v|0 } }); }" />
+                    </label>
+                </template>
+
+                <details style="width:100%">
+                    <summary>Colors</summary>
+                    <label>
+                        Palette
+                        <select :value="(sceneParams as any)?.color?.palette || 'mono'"
+                                @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), color: { ...((sceneParams as any)?.color||{}), palette: e.target.value } })">
+                            <option value="mono">Mono</option>
+                            <option value="analogous">Analogous</option>
+                            <option value="complementary">Complementary</option>
+                            <option value="triad">Triad</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </label>
+                    <label>
+                        Assignment
+                        <select :value="(sceneParams as any)?.color?.assignment || 'order'"
+                                @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), color: { ...((sceneParams as any)?.color||{}), assignment: e.target.value } })">
+                            <option value="order">Order</option>
+                            <option value="hash">Hash (by word)</option>
+                            <option value="position">Position</option>
+                            <option value="band">Ring band (rings)</option>
+                        </select>
+                    </label>
+                    <label>
+                        Seed offset
+                        <input type="number" step="1" :value="Number((sceneParams && (sceneParams as any).color?.seedOffset) ?? 0)"
+                               @input="(e:any)=>{ const v=Number(e.target.value)||0; emit('update:sceneParams', { ...(sceneParams||{}), color: { ...((sceneParams as any)?.color||{}), seedOffset: v|0 } }); }" />
+                    </label>
+                    <label>
+                        Sat min
+                        <input type="number" min="0" max="100" step="1" :value="Number((sceneParams && (sceneParams as any).color?.satMin) ?? 70)"
+                               @input="(e:any)=>{ const v=Math.max(0, Math.min(100, Number(e.target.value)||70)); emit('update:sceneParams', { ...(sceneParams||{}), color: { ...((sceneParams as any)?.color||{}), satMin: v } }); }" />
+                    </label>
+                    <label>
+                        Sat max
+                        <input type="number" min="0" max="100" step="1" :value="Number((sceneParams && (sceneParams as any).color?.satMax) ?? 85)"
+                               @input="(e:any)=>{ const v=Math.max(0, Math.min(100, Number(e.target.value)||85)); emit('update:sceneParams', { ...(sceneParams||{}), color: { ...((sceneParams as any)?.color||{}), satMax: v } }); }" />
+                    </label>
+                    <label>
+                        Light min
+                        <input type="number" min="0" max="100" step="1" :value="Number((sceneParams && (sceneParams as any).color?.lightMin) ?? 50)"
+                               @input="(e:any)=>{ const v=Math.max(0, Math.min(100, Number(e.target.value)||50)); emit('update:sceneParams', { ...(sceneParams||{}), color: { ...((sceneParams as any)?.color||{}), lightMin: v } }); }" />
+                    </label>
+                    <label>
+                        Light max
+                        <input type="number" min="0" max="100" step="1" :value="Number((sceneParams && (sceneParams as any).color?.lightMax) ?? 65)"
+                               @input="(e:any)=>{ const v=Math.max(0, Math.min(100, Number(e.target.value)||65)); emit('update:sceneParams', { ...(sceneParams||{}), color: { ...((sceneParams as any)?.color||{}), lightMax: v } }); }" />
+                    </label>
+                </details>
+
+                <details style="width:100%">
+                    <summary>Beat-driven Swapping</summary>
+                    <label>
+                        Mode
+                        <select :value="(sceneParams as any)?.swapMode || 'all'"
+                                @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), swapMode: e.target.value === 'sequential' ? 'sequential' : 'all' })">
+                            <option value="all">All at once</option>
+                            <option value="sequential">Sequential</option>
+                        </select>
+                    </label>
+                    <label>
+                        Words per beat
+                        <input type="number" min="1" step="1" :value="Number((sceneParams && (sceneParams as any).swapStride) ?? 1)"
+                               @input="(e:any)=>{ const v=Math.max(1, Number(e.target.value)||1); emit('update:sceneParams', { ...(sceneParams||{}), swapStride: v|0 }); }" />
+                    </label>
+                </details>
+            </div>
+
             <div v-if="selectedScene.type === 'wordSphere'" class="form-row">
                 <label class="inline">
                     <input type="checkbox" :checked="!!(sceneParams && (sceneParams as any).showSphere !== false)" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), showSphere: !!e.target.checked })" />

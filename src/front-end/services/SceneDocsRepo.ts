@@ -58,8 +58,12 @@ export class SceneDocsRepo {
             case 'wordcloud':
                 return [
                     'background.hue','background.sat','background.light',
+                    'cloud.scale','cloud.rotationDeg','cloud.jitter',
                     'word.scale','word.opacity','word.globalHueShift',
-                    'cloud.scale','cloud.rotationDeg','cloud.jitter'
+                    'word.text.hue','word.text.sat','word.text.light',
+                    'word.stroke.width','word.stroke.opacity','word.stroke.hue','word.stroke.sat','word.stroke.light',
+                    'word.shadow.blur','word.shadow.opacity','word.shadow.hue','word.shadow.sat','word.shadow.light',
+                    'word.glow.size','word.glow.opacity','word.glow.hue','word.glow.sat','word.glow.light'
                 ];
             default:
                 return [];

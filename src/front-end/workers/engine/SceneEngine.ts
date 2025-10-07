@@ -66,8 +66,12 @@ export class SceneEngine {
             if (!this.sceneA || !this.target) return;
             this.sceneA.initialize(this.buildContext(0, 0, {}));
             this.sceneA.configure(this.paramsA);
+            // Render immediately so UI reflects changes even when paused
+            try { this.sceneA.render(this.target, this.buildContext(0, 0, {})); } catch {}
         } else {
             this.sceneA.configure(this.paramsA);
+            // Render immediately so UI reflects changes even when paused
+            try { this.sceneA.render(this.target, this.buildContext(0, 0, {})); } catch {}
         }
     }
 
@@ -120,9 +124,11 @@ export class SceneEngine {
             if (this.sceneA && this.target) {
                 this.sceneA.initialize(this.buildContext(0, 0, {}));
                 this.sceneA.configure(this.paramsA);
+                try { this.sceneA.render(this.target, this.buildContext(0, 0, {})); } catch {}
             }
         } else {
             this.sceneA.configure(this.paramsA);
+            if (this.target) { try { this.sceneA.render(this.target, this.buildContext(0, 0, {})); } catch {} }
         }
 
         // Handle scene B (optional)
@@ -145,9 +151,11 @@ export class SceneEngine {
                 if (this.sceneB && this.target) {
                     this.sceneB.initialize(this.buildContext(0, 0, {}));
                     this.sceneB.configure(this.paramsB || {});
+                    try { this.sceneB.render(this.target, this.buildContext(0, 0, {})); } catch {}
                 }
             } else {
                 this.sceneB.configure(this.paramsB || {});
+                if (this.target) { try { this.sceneB.render(this.target, this.buildContext(0, 0, {})); } catch {} }
             }
         }
     }

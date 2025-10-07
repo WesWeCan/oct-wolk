@@ -85,6 +85,50 @@ export const SCENE_ANIMATABLES: Record<string, AnimatablePropertyMeta[]> = {
         { propertyPath: 'labels.opacity', label: 'Label Opacity', type: 'number', default: 1, min: 0, max: 1, step: 0.01, group: 'Labels' },
         { propertyPath: 'labels.pulseAmount', label: 'Label Pulse', type: 'number', default: 1, min: 0, max: 1, step: 0.01, group: 'Labels' },
     ],
+    wordcloud: [
+        // Timing
+        { propertyPath: 'beatThreshold', label: 'Beat Threshold', type: 'number', default: 0.07, min: 0, max: 1, step: 0.001, group: 'Word Swapping' },
+        // Background
+        { propertyPath: 'background.hue', label: 'BG Hue', type: 'number', default: 210, min: 0, max: 360, step: 1, group: 'Background' },
+        { propertyPath: 'background.sat', label: 'BG Sat', type: 'number', default: 25, min: 0, max: 100, step: 1, group: 'Background' },
+        { propertyPath: 'background.light', label: 'BG Light', type: 'number', default: 12, min: 0, max: 100, step: 1, group: 'Background' },
+
+        // Cloud transform
+        { propertyPath: 'cloud.scale', label: 'Cloud Scale', type: 'number', default: 1, min: 0, max: 10, step: 0.01, group: 'Cloud' },
+        { propertyPath: 'cloud.rotationDeg', label: 'Cloud Rotation (deg)', type: 'number', default: 0, min: -180, max: 180, step: 0.5, group: 'Cloud' },
+        { propertyPath: 'cloud.jitter', label: 'Jitter', type: 'number', default: 0, min: 0, max: 1, step: 0.01, group: 'Cloud' },
+
+        // Word
+        { propertyPath: 'word.scale', label: 'Word Scale', type: 'number', default: 1, min: 0, max: 10, step: 0.01, group: 'Word' },
+        { propertyPath: 'word.opacity', label: 'Word Opacity', type: 'number', default: 1, min: 0, max: 1, step: 0.01, group: 'Word' },
+        { propertyPath: 'word.globalHueShift', label: 'Global Hue Shift', type: 'number', default: 0, min: -360, max: 360, step: 1, group: 'Word' },
+
+        // Text color (base values applied on top of palette hue)
+        { propertyPath: 'word.text.hue', label: 'Text Hue Offset', type: 'number', default: 0, min: -360, max: 360, step: 1, group: 'Text' },
+        { propertyPath: 'word.text.sat', label: 'Text Sat', type: 'number', default: 80, min: 0, max: 100, step: 1, group: 'Text' },
+        { propertyPath: 'word.text.light', label: 'Text Light', type: 'number', default: 60, min: 0, max: 100, step: 1, group: 'Text' },
+
+        // Stroke
+        { propertyPath: 'word.stroke.width', label: 'Stroke Width', type: 'number', default: 0, min: 0, max: 50, step: 0.5, group: 'Stroke' },
+        { propertyPath: 'word.stroke.opacity', label: 'Stroke Opacity', type: 'number', default: 0, min: 0, max: 1, step: 0.01, group: 'Stroke' },
+        { propertyPath: 'word.stroke.hue', label: 'Stroke Hue', type: 'number', default: 0, min: -360, max: 360, step: 1, group: 'Stroke' },
+        { propertyPath: 'word.stroke.sat', label: 'Stroke Sat', type: 'number', default: 0, min: 0, max: 100, step: 1, group: 'Stroke' },
+        { propertyPath: 'word.stroke.light', label: 'Stroke Light', type: 'number', default: 0, min: 0, max: 100, step: 1, group: 'Stroke' },
+
+        // Shadow
+        { propertyPath: 'word.shadow.blur', label: 'Shadow Blur', type: 'number', default: 0, min: 0, max: 200, step: 1, group: 'Shadow' },
+        { propertyPath: 'word.shadow.opacity', label: 'Shadow Opacity', type: 'number', default: 0, min: 0, max: 1, step: 0.01, group: 'Shadow' },
+        { propertyPath: 'word.shadow.hue', label: 'Shadow Hue', type: 'number', default: 0, min: -360, max: 360, step: 1, group: 'Shadow' },
+        { propertyPath: 'word.shadow.sat', label: 'Shadow Sat', type: 'number', default: 0, min: 0, max: 100, step: 1, group: 'Shadow' },
+        { propertyPath: 'word.shadow.light', label: 'Shadow Light', type: 'number', default: 0, min: 0, max: 100, step: 1, group: 'Shadow' },
+
+        // Glow
+        { propertyPath: 'word.glow.size', label: 'Glow Size', type: 'number', default: 0, min: 0, max: 300, step: 1, group: 'Glow' },
+        { propertyPath: 'word.glow.opacity', label: 'Glow Opacity', type: 'number', default: 0, min: 0, max: 1, step: 0.01, group: 'Glow' },
+        { propertyPath: 'word.glow.hue', label: 'Glow Hue', type: 'number', default: 0, min: -360, max: 360, step: 1, group: 'Glow' },
+        { propertyPath: 'word.glow.sat', label: 'Glow Sat', type: 'number', default: 0, min: 0, max: 100, step: 1, group: 'Glow' },
+        { propertyPath: 'word.glow.light', label: 'Glow Light', type: 'number', default: 100, min: 0, max: 100, step: 1, group: 'Glow' },
+    ],
     singleWord: [
         // Background
         { propertyPath: 'background.hue', label: 'BG Hue', type: 'number', default: 210, min: 0, max: 360, step: 1, group: 'Background' },
