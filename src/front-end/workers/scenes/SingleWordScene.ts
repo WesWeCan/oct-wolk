@@ -9,6 +9,8 @@ export class SingleWordScene implements WorkerScene {
     private lastBeat = 0;
     private beatThreshold = 0.07;
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    private fontStyle: 'normal' | 'italic' | 'oblique' = 'normal';
+    private fontWeight: number | string = 400;
     private seededPick: () => number = () => 0.5;
     private bgHue: number = 210;
     // Smoothed feature values to avoid flicker
@@ -37,6 +39,8 @@ export class SingleWordScene implements WorkerScene {
         this.currentIndex = Math.floor((this.seededPick() || 0) * wordsLen) % wordsLen;
         this.lastBeat = 0;
         if (params.fontFamilyChain) this.fontFamilyChain = String(params.fontFamilyChain);
+        if (params.fontStyle) this.fontStyle = String(params.fontStyle) as any;
+        if (params.fontWeight != null) this.fontWeight = params.fontWeight as any;
         // background hue can be configured or derived from seed
         const pHue = Number(params.bgHue);
         this.bgHue = Number.isFinite(pHue) ? (Math.floor(pHue) % 360 + 360) % 360 : Math.floor(this.seededPick() * 360);
@@ -119,7 +123,7 @@ export class SingleWordScene implements WorkerScene {
         const cx = Math.floor(w / 2) + offX;
         const cy = Math.floor(h / 2) + offY;
         // Set initial font for measurement
-        target.font = `${size}px ${this.fontFamilyChain}`;
+        target.font = `${this.fontStyle} ${this.fontWeight} ${size}px ${this.fontFamilyChain}`;
         const metrics = target.measureText(text);
         const textW = Math.ceil(metrics.width || 0);
         const textH = Math.ceil(((metrics as any).actualBoundingBoxAscent || 0) + ((metrics as any).actualBoundingBoxDescent || 0)) || Math.ceil(size * 1.2);
@@ -137,7 +141,7 @@ export class SingleWordScene implements WorkerScene {
         );
         if (fit < 1) {
             size = size * Math.max(0, fit);
-            target.font = `${size}px ${this.fontFamilyChain}`;
+            target.font = `${this.fontStyle} ${this.fontWeight} ${size}px ${this.fontFamilyChain}`;
         }
 
         // Colors and opacities

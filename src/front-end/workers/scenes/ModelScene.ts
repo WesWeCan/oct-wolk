@@ -27,6 +27,8 @@ export class ModelScene implements WorkerScene {
     private modelScale: number = 10; // user scale multiplier
     private words: string[] = [];
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    private fontStyle: 'normal' | 'italic' | 'oblique' = 'normal';
+    private fontWeight: number | string = 400;
     private connectToModelOnBeat = false;
     private beatThreshold = 0.07;
     private lastBeatVal = 0;
@@ -80,6 +82,8 @@ export class ModelScene implements WorkerScene {
         const nextScale = Number(p.modelScale);
         const nextWords = Array.isArray((p as any).words) ? (p as any).words.map((w: any) => String(w)) : null;
         const nextFont = typeof p.fontFamilyChain === 'string' ? String(p.fontFamilyChain) : null;
+        if (p.fontStyle) this.fontStyle = String(p.fontStyle) as any;
+        if (p.fontWeight != null) this.fontWeight = p.fontWeight as any;
         if (typeof (p as any).connectToModelOnBeat === 'boolean') this.connectToModelOnBeat = !!(p as any).connectToModelOnBeat;
         if (Number.isFinite((p as any).beatThreshold)) this.beatThreshold = Math.max(0, Math.min(1, Number((p as any).beatThreshold)));
 
@@ -678,7 +682,7 @@ export class ModelScene implements WorkerScene {
             const tmp = new OffscreenCanvas(2, 2);
             const tctx = tmp.getContext('2d');
             if (!tctx) return null;
-            tctx.font = `${fontSize}px ${this.fontFamilyChain}`;
+            tctx.font = `${this.fontStyle} ${this.fontWeight} ${fontSize}px ${this.fontFamilyChain}`;
             const metrics = tctx.measureText(text);
             const textW = Math.ceil(metrics.width);
             const textHeight = Math.ceil(fontSize * 1.2);
@@ -692,7 +696,7 @@ export class ModelScene implements WorkerScene {
             ctx.fillStyle = '#fff';
             ctx.fillRect(0, 0, w, h);
             ctx.fillStyle = '#000';
-            ctx.font = `${fontSize}px ${this.fontFamilyChain}`;
+            ctx.font = `${this.fontStyle} ${this.fontWeight} ${fontSize}px ${this.fontFamilyChain}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(text, Math.floor(w / 2), Math.floor(h / 2));

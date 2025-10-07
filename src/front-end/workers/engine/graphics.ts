@@ -33,13 +33,15 @@ export function setBackground(scene: any, renderer: any, hueDeg: number, satPct:
     } catch {}
 }
 
-export function makeLabelSprite(text: string, fontFamilyChain: string, opts?: { padding?: number; fontSize?: number; tint?: THREE.Color | null }) {
+export function makeLabelSprite(text: string, fontFamilyChain: string, opts?: { padding?: number; fontSize?: number; tint?: THREE.Color | null; fontStyle?: 'normal'|'italic'|'oblique'; fontWeight?: number|string }) {
     const padding = Math.max(0, Math.floor(opts?.padding ?? 12));
     const fontSize = Math.max(1, Math.floor(opts?.fontSize ?? 48));
+    const fontStyle = (opts?.fontStyle || 'normal') as any;
+    const fontWeight = (opts?.fontWeight ?? 400) as any;
     const tmp = new OffscreenCanvas(2, 2);
     const tctx = tmp.getContext('2d');
     if (!tctx) return null as any;
-    tctx.font = `${fontSize}px ${fontFamilyChain}`;
+    tctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamilyChain}`;
     const metrics = tctx.measureText(text);
     const textW = Math.ceil(metrics.width);
     const textH = Math.ceil(fontSize * 1.2);
@@ -51,7 +53,7 @@ export function makeLabelSprite(text: string, fontFamilyChain: string, opts?: { 
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#000';
-    ctx.font = `${fontSize}px ${fontFamilyChain}`;
+    ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamilyChain}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, Math.floor(w / 2), Math.floor(h / 2));

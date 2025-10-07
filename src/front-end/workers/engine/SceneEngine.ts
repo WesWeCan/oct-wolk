@@ -5,6 +5,8 @@ export interface EngineConfig {
     seed: string;
     resolution: { width: number; height: number };
     fontFamilyChain?: string;
+    fontStyle?: 'normal' | 'italic' | 'oblique';
+    fontWeight?: number | 'normal' | 'bold' | 'bolder' | 'lighter';
     fps: number;
     analysis?: SceneContext['analysis'];
     sceneType: SceneType;
@@ -22,6 +24,8 @@ export class SceneEngine {
     private height = 0;
     private fps = 60;
     private fontFamilyChain: string | undefined;
+    private fontStyle: 'normal' | 'italic' | 'oblique' | undefined;
+    private fontWeight: number | 'normal' | 'bold' | 'bolder' | 'lighter' | undefined;
     private analysis: SceneContext['analysis'] | undefined;
     private sceneTypeA: SceneType = 'wordcloud';
     private paramsA: Record<string, any> = {};
@@ -54,6 +58,8 @@ export class SceneEngine {
         this.height = nextHeight;
         this.fps = nextFps;
         this.fontFamilyChain = nextFontFamilyChain;
+        this.fontStyle = cfg.fontStyle;
+        this.fontWeight = cfg.fontWeight;
         this.analysis = nextAnalysis;
         this.sceneTypeA = nextSceneType;
         this.paramsA = nextParams;
@@ -102,6 +108,7 @@ export class SceneEngine {
             createScopedRng,
             resolution: { width: this.width, height: this.height },
             fontFamilyChain: this.fontFamilyChain,
+            // style/weight can be added into extras if needed by scenes later
             analysis: this.analysis,
             time: { frame, fps: this.fps, dt },
             extras,

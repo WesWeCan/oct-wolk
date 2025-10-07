@@ -33,7 +33,7 @@ declare global {
                 saveCache: (songId: string, cache: any) => Promise<{ ok: boolean }>;
             },
             fonts: {
-                list: () => Promise<{ familyGuess: string; filePath: string; fileName: string; }[]>;
+                list: () => Promise<{ familyGuess: string; filePath: string; fileName: string; guessStyle?: 'normal'|'italic'|'oblique'; guessWeight?: number; }[]>;
             }
         };
     }

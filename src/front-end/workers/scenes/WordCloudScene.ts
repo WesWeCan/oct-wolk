@@ -6,6 +6,8 @@ export class WordCloudScene implements WorkerScene {
     private layout: { text: string; x: number; y: number; size: number; hue: number; sat: number; light: number; w: number; h: number; wi: number }[] = [];
     private configured = false;
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    private fontStyle: 'normal' | 'italic' | 'oblique' = 'normal';
+    private fontWeight: number | string = 400;
     private width = 0;
     private height = 0;
     private bgHue: number = 30;
@@ -57,6 +59,8 @@ export class WordCloudScene implements WorkerScene {
 
     configure(params: Record<string, any>): void {
         this.fontFamilyChain = String(params.fontFamilyChain || this.fontFamilyChain);
+        if (params.fontStyle) this.fontStyle = String(params.fontStyle) as any;
+        if (params.fontWeight != null) this.fontWeight = params.fontWeight as any;
         // core params
         const lm = String((params as any)?.layoutMode || this.layoutMode);
         this.layoutMode = lm === 'ring' ? 'ring' : (lm === 'grid' ? 'grid' : 'spiral');
@@ -186,7 +190,7 @@ export class WordCloudScene implements WorkerScene {
             const sizeScale = Math.max(0, Number(getAnimated(animated, 'word.scale', 1))) * pulse;
             const opacity = Math.max(0, Math.min(1, Number(getAnimated(animated, 'word.opacity', 1))));
             const size = w.size * sizeScale;
-            target.font = `${size}px ${this.fontFamilyChain}`;
+            target.font = `${this.fontStyle} ${this.fontWeight} ${size}px ${this.fontFamilyChain}`;
             // Resolve current word text deterministically from offsets
             let displayText = 'WOLK';
             if (this.words && this.words.length) {
@@ -325,7 +329,7 @@ export class WordCloudScene implements WorkerScene {
                 return { w, h };
             }
             try {
-                ctx.font = `${size}px ${this.fontFamilyChain}`;
+                ctx.font = `${this.fontStyle} ${this.fontWeight} ${size}px ${this.fontFamilyChain}`;
                 const m = ctx.measureText(text);
                 const w = Math.ceil(m.width || size * 0.6 * Math.max(1, text.length));
                 const h = Math.ceil(((m as any).actualBoundingBoxAscent || 0) + ((m as any).actualBoundingBoxDescent || 0)) || Math.ceil(size * 1.1);
@@ -393,7 +397,7 @@ export class WordCloudScene implements WorkerScene {
             const ctx = this.measureCtx;
             if (!ctx) return { w: Math.ceil(size * 0.58 * Math.max(1, text.length)), h: Math.ceil(size * 1.0) };
             try {
-                ctx.font = `${size}px ${this.fontFamilyChain}`;
+                ctx.font = `${this.fontStyle} ${this.fontWeight} ${size}px ${this.fontFamilyChain}`;
                 const m = ctx.measureText(text);
                 const w = Math.ceil(m.width || size * 0.6 * Math.max(1, text.length));
                 const h = Math.ceil(((m as any).actualBoundingBoxAscent || 0) + ((m as any).actualBoundingBoxDescent || 0)) || Math.ceil(size * 1.1);
@@ -476,7 +480,7 @@ export class WordCloudScene implements WorkerScene {
             const ctx = this.measureCtx;
             if (!ctx) return Math.ceil(size * 1.2);
             try {
-                ctx.font = `${size}px ${this.fontFamilyChain}`;
+                ctx.font = `${this.fontStyle} ${this.fontWeight} ${size}px ${this.fontFamilyChain}`;
                 const m = ctx.measureText('Hg');
                 return Math.ceil(((m as any).actualBoundingBoxAscent || size * 0.8) + ((m as any).actualBoundingBoxDescent || size * 0.3));
             } catch { return Math.ceil(size * 1.2); }
@@ -493,7 +497,7 @@ export class WordCloudScene implements WorkerScene {
             const ctx = this.measureCtx;
             if (!ctx) return { w: Math.ceil(size * 0.58 * Math.max(1, text.length)), h: Math.ceil(size * 1.0) };
             try {
-                ctx.font = `${size}px ${this.fontFamilyChain}`;
+                ctx.font = `${this.fontStyle} ${this.fontWeight} ${size}px ${this.fontFamilyChain}`;
                 const m = ctx.measureText(text);
                 const w = Math.ceil(m.width || size * 0.6 * Math.max(1, text.length));
                 const h = Math.ceil(((m as any).actualBoundingBoxAscent || 0) + ((m as any).actualBoundingBoxDescent || 0)) || Math.ceil(size * 1.1);

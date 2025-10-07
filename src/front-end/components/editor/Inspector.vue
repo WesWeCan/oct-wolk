@@ -4,12 +4,12 @@ import { useRoute, useRouter } from 'vue-router';
 import type { TimelineDocument, SceneRef, SceneDocumentBase, PropertyTrack } from '@/types/timeline_types';
 import type { WordGroup } from '@/types/song_types';
 import InspectorAllowedWords from './InspectorAllowedWords.vue';
-import { FontsService } from '@/front-end/services/FontsService';
+import { FontsService, FontName } from '@/front-end/services/FontsService';
 import { SongService } from '@/front-end/services/SongService';
 import { SCENE_ANIMATABLES } from '@/front-end/workers/scenes/animatables';
 import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 
-interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; }
+interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; guessStyle?: 'normal'|'italic'|'oblique'; guessWeight?: number; }
 
 const props = defineProps<{ timeline: TimelineDocument | null; selectedScene: SceneRef | null; sceneParams?: Record<string, any> | null; overlayOpts?: { showEnergy: boolean; showOnsets: boolean; showBeats?: boolean }; currentFrame?: number; wordBank?: string[]; wordGroups?: WordGroup[]; allowedTrack?: PropertyTrack<string[]> | null; sceneTracks?: PropertyTrack<any>[] | null }>();
 const emit = defineEmits<{
@@ -131,10 +131,64 @@ const filteredFonts = computed(() => {
 
 const primaryFont = computed(() => props.timeline?.settings.fontFamily || 'system-ui');
 const fallbacks = computed(() => props.timeline?.settings.fontFallbacks || []);
+const fontStyle = computed(() => props.timeline?.settings.fontStyle || 'normal');
+const fontWeight = computed(() => props.timeline?.settings.fontWeight ?? 400);
+const fontLocalPath = computed(() => props.timeline?.settings.fontLocalPath || '');
 
-const setPrimaryFont = (family: string) => {
+// Primary font is abstracted away; when project font is set we always use "ProjectFont"
+
+const setStyle = (style: 'normal'|'italic'|'oblique') => {
     if (!props.timeline) return;
-    const updated = { ...props.timeline, settings: { ...props.timeline.settings, fontFamily: family } } as TimelineDocument;
+    emit('update:timeline', { ...props.timeline, settings: { ...props.timeline.settings, fontStyle: style } } as TimelineDocument);
+};
+
+const setWeight = (weight: number) => {
+    if (!props.timeline) return;
+    const w = Math.min(900, Math.max(100, Math.round(weight/100)*100));
+    emit('update:timeline', { ...props.timeline, settings: { ...props.timeline.settings, fontWeight: w } } as TimelineDocument);
+};
+
+// Fallback family type selection
+const fallbackType = computed<'sans'|'serif'|'mono'|'display'>(() => {
+    const list = fallbacks.value.map(s => s.toLowerCase());
+    if (list.includes('monospace')) return 'mono';
+    if (list.includes('serif')) return 'serif';
+    if (list.includes('fantasy') || list.includes('cursive')) return 'display';
+    return 'sans';
+});
+const setFallbackType = (type: 'sans'|'serif'|'mono'|'display') => {
+    if (!props.timeline) return;
+    let chain: string[] = [];
+    if (type === 'mono') chain = ['SF Mono', 'Monaco', 'Roboto Mono', 'Courier New', 'monospace'];
+    else if (type === 'serif') chain = ['Georgia', 'Times New Roman', 'serif'];
+    else if (type === 'display') chain = ['Impact', 'Haettenschweiler', 'fantasy', 'sans-serif'];
+    else chain = ['-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'];
+    const updated = { ...props.timeline, settings: { ...props.timeline.settings, fontFallbacks: chain } } as TimelineDocument;
+    emit('update:timeline', updated);
+};
+
+const copyingFontPath = ref<string | null>(null);
+const copyError = ref<string | null>(null);
+const setFontFromSystem = async (f: SystemFontFile) => {
+    if (!props.timeline) return;
+    const songId = (route.params.songId as string) || '';
+    copyingFontPath.value = f.filePath; copyError.value = null;
+    // We copy a single font file (single face); treat it as fixed face. Clear style/weight to defaults.
+    emit('update:timeline', { ...props.timeline, settings: { ...props.timeline.settings, fontStyle: 'normal', fontWeight: 400 } } as TimelineDocument);
+    const wolkUrl = await FontsService.addToProject(songId, f.filePath);
+    if (wolkUrl) {
+        const fontName = FontName.fromFileName(f.fileName);
+        const updated: TimelineDocument = { ...props.timeline, settings: { ...props.timeline.settings, fontLocalPath: wolkUrl, fontFamily: 'ProjectFont', fontName } } as any;
+        emit('update:timeline', updated);
+    } else {
+        copyError.value = 'Failed to copy font into project.';
+    }
+    copyingFontPath.value = null;
+};
+
+const removeProjectFont = async () => {
+    if (!props.timeline) return;
+    const updated: TimelineDocument = { ...props.timeline, settings: { ...props.timeline.settings, fontLocalPath: undefined as any } } as any;
     emit('update:timeline', updated);
 };
 
@@ -146,28 +200,11 @@ const addFallback = (family: string) => {
     emit('update:timeline', updated);
 };
 
-const removeFallback = (idx: number) => {
-    if (!props.timeline) return;
-    const current = Array.isArray(props.timeline.settings.fontFallbacks) ? props.timeline.settings.fontFallbacks.slice() : [];
-    if (idx >= 0 && idx < current.length) current.splice(idx, 1);
-    const updated = { ...props.timeline, settings: { ...props.timeline.settings, fontFallbacks: current } } as TimelineDocument;
-    emit('update:timeline', updated);
-};
-
-const moveFallback = (idx: number, dir: -1 | 1) => {
-    if (!props.timeline) return;
-    const current = Array.isArray(props.timeline.settings.fontFallbacks) ? props.timeline.settings.fontFallbacks.slice() : [];
-    const newIdx = idx + dir;
-    if (newIdx < 0 || newIdx >= current.length) return;
-    const tmp = current[idx];
-    current[idx] = current[newIdx];
-    current[newIdx] = tmp;
-    const updated = { ...props.timeline, settings: { ...props.timeline.settings, fontFallbacks: current } } as TimelineDocument;
-    emit('update:timeline', updated);
-};
+// Removed individual fallback editing; replaced by type dropdown
 
 const fontFamilyChain = computed(() => {
     const names = [primaryFont.value, ...fallbacks.value];
+    if (fontLocalPath.value) names.unshift('ProjectFont');
     const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
     return names.filter(Boolean).map(quote).join(', ');
 });
@@ -418,39 +455,41 @@ const setColorFromPicker = (prefix: string, hex: string) => {
             </label>
             <details class="font-management">
                 <summary>Font Settings</summary>
+                <div class="font-preview" :style="{ fontFamily: fontFamilyChain, fontStyle: fontStyle, fontWeight: String(fontWeight) }">
+                    <div class="preview-label">Preview: <strong>{{ timeline?.settings.fontName || 'System chain' }}</strong></div>
+                    <div class="preview-text">The quick brown fox jumps over the lazy dog 0123456789</div>
+                    <div class="actions" v-if="fontLocalPath">
+                        <button @click="removeProjectFont">Remove project font</button>
+                    </div>
+                </div>
                 <div class="form-row">
                     <label>
-                    Primary font
-                    <input type="text" :value="primaryFont" @input="(e:any) => setPrimaryFont(e.target.value)" placeholder="e.g., Inter" />
-                </label>
+                        Fallback
+                        <select :value="fallbackType" @change="(e:any)=> setFallbackType(e.target.value)">
+                            <option value="sans">sans-serif</option>
+                            <option value="serif">serif</option>
+                            <option value="mono">monospace</option>
+                            <option value="display">display</option>
+                        </select>
+                    </label>
                 </div>
+
+                
           
-                <div class="fallback-list">
-                    <div class="list-title">Fallbacks</div>
-                    <div v-for="(ff, i) in fallbacks" :key="ff + ':' + i" class="fallback-item">
-                        <input type="text" :value="ff" @input="(e:any) => { const v=e.target.value; const arr = fallbacks.slice(); arr[i]=v; emit('update:timeline', { ...timeline, settings: { ...timeline.settings, fontFallbacks: arr } } as any); }" />
-                        <button title="Up" @click="() => moveFallback(i, -1)">↑</button>
-                        <button title="Down" @click="() => moveFallback(i, 1)">↓</button>
-                        <button title="Remove" @click="() => removeFallback(i)">Remove</button>
-                    </div>
-                    <button @click="() => addFallback('sans-serif')">Add fallback</button>
-                </div>
+                
                 <div>
                     <div>Search system fonts</div>
                     <input type="search" v-model="query" class="search-input" placeholder="Search fonts..." />
                     <div class="font-list">
                         <div v-for="f in filteredFonts" :key="f.filePath" class="font-item">
                             <div class="font-name">{{ f.familyGuess }} <span class="file-name">({{ f.fileName }})</span></div>
+                            <div class="font-guess">Style guess: {{ f.guessStyle || 'normal' }}, Weight guess: {{ f.guessWeight ?? '—' }}</div>
                             <div class="actions">
-                                <button @click="() => setPrimaryFont(f.familyGuess)">Set primary</button>
-                                <button @click="() => addFallback(f.familyGuess)">Add fallback</button>
+                                <button :disabled="copyingFontPath===f.filePath" @click="() => setFontFromSystem(f)">Set font</button>
                             </div>
                         </div>
+                        <div v-if="copyError" class="error">{{ copyError }}</div>
                     </div>
-                </div>
-                <div class="font-preview" :style="{ fontFamily: fontFamilyChain }">
-                    <div class="preview-label">Preview (font-family): {{ fontFamilyChain }}</div>
-                    <div class="preview-text">The quick brown fox jumps over the lazy dog 0123456789</div>
                 </div>
             </details>
             <details>

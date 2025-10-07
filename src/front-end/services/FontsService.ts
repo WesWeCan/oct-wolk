@@ -2,6 +2,8 @@ export interface SystemFontFile {
     familyGuess: string;
     filePath: string;
     fileName: string;
+    guessStyle?: 'normal' | 'italic' | 'oblique';
+    guessWeight?: number;
 }
 
 export const FontsService = {
@@ -9,6 +11,26 @@ export const FontsService = {
         const list = await window.electronAPI.fonts.list();
         return Array.isArray(list) ? list as SystemFontFile[] : [];
     },
+    async addToProject(songId: string, systemFontFilePath: string): Promise<string | null> {
+        try {
+            const res = await window.electronAPI.export.copyFontsForExport(songId, [systemFontFilePath]);
+            const absPath = Array.isArray(res?.copied) && res.copied[0] ? String(res.copied[0]) : '';
+            if (!absPath) return null;
+            // Build wolk:// URL relative to songs root: wolk://{songId}/fonts/{fileName}
+            const fileName = absPath.split('/').pop() || '';
+            return `wolk://${songId}/fonts/${fileName}`;
+        } catch {
+            return null;
+        }
+    }
+};
+
+export const FontName = {
+    fromFileName(fileName: string): string {
+        const base = (fileName || '').split('/').pop() || '';
+        const noExt = base.replace(/\.(ttf|otf|woff2?|TTF|OTF|WOFF2?)$/, '');
+        return noExt;
+    }
 };
 
 

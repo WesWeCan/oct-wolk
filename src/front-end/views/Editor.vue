@@ -136,8 +136,14 @@ const computeConfigKeyForFrame = (f: number): string => {
     const aKey = stableStringify(aParams, exclude);
     const bKey = stableStringify(bParams, exclude);
     const paramsKey = `a:${aKey}|b:${bKey}`;
-    
-    return pairKey + '|' + wordsKey + '|' + paramsKey;
+
+    // Ensure font changes also trigger reconfiguration
+    const ffPrimary = String(timeline.value?.settings.fontFamily || '');
+    const ffFallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value?.settings.fontFallbacks as string[]).join('|') : '';
+    const ffLocal = String(timeline.value?.settings.fontLocalPath || '');
+    const fontKey = `font:${ffPrimary}|${ffFallbacks}|${ffLocal}`;
+
+    return pairKey + '|' + wordsKey + '|' + paramsKey + '|' + fontKey;
 };
 
 /**
@@ -154,8 +160,12 @@ const configureWorkerScene = async () => {
         ? timeline.value.settings.fontFallbacks as string[]
         : [];
     const names = [primary, ...fallbacks].filter(Boolean);
-    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? `"${s.replace(/"/g, '"')}"` : s;
+    // Prepend project font if available
+    if (timeline.value.settings.fontLocalPath) names.unshift('ProjectFont');
+    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
     const fontFamilyChain = names.map(quote).join(', ');
+    const style = String(timeline.value.settings.fontStyle || 'normal');
+    const weight = (timeline.value.settings.fontWeight ?? 400) as any;
     
     const frame = playback.frame.value;
     const active = frameEval.getActiveScenesAtFrame(frame);
@@ -171,8 +181,9 @@ const configureWorkerScene = async () => {
     const aParamsBase = active.a && active.a.id !== 'none' ? (scenes.sceneDocs.value[active.a.id]?.params || {}) : null;
     const bParamsBase = active.b && active.b.id !== 'none' ? (scenes.sceneDocs.value[active.b.id]?.params || {}) : null;
     
-    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain } : null;
-    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain } : null;
+    const localPath = timeline.value.settings.fontLocalPath || null;
+    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
+    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
     
     const configKey = computeConfigKeyForFrame(frame);
     

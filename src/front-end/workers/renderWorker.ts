@@ -56,6 +56,7 @@ let canvasWidth = 0;
 let canvasHeight = 0;
 let fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
 let fps = 60;
+const loadedFonts = new Map<string, boolean>();
 
 // Engine
 import { SceneEngine } from './engine/SceneEngine';
@@ -73,6 +74,17 @@ registerScene('wordSphere', () => new WordSphereScene());
 registerScene('model3d', () => new ModelScene());
 
 const engine = new SceneEngine();
+async function ensureWorkerFont(localUrl: string, familyName: string): Promise<void> {
+    try {
+        if (!localUrl) return;
+        if (loadedFonts.get(localUrl)) return;
+        // FontFace API available in worker with OffscreenCanvas in modern browsers/electron
+        const ff = new (self as any).FontFace(familyName, `url("${localUrl}")`);
+        await ff.load();
+        (self as any).fonts.add(ff);
+        loadedFonts.set(localUrl, true);
+    } catch {}
+}
 
 // Simple seeded PRNG (Mulberry32)
 const mulberry32 = (a: number) => {
@@ -137,7 +149,7 @@ const handleDispose = () => {
     configured = false;
 };
 
-self.onmessage = (event: MessageEvent<WorkerMessage>) => {
+self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     const msg = event.data;
     switch (msg.type) {
         case 'init':
@@ -154,6 +166,9 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
             fps = Math.max(1, (msg.fps as any) | 0) || 60;
             if (ctx2d) {
                 engine.attachTarget(ctx2d);
+                // Try load project font if provided via params
+                const localUrl = (msg as any)?.a?.params?.fontLocalPath || (msg as any)?.b?.params?.fontLocalPath || '';
+                await ensureWorkerFont(String(localUrl || ''), 'ProjectFont');
                 engine.configure({
                     seed: String(msg.seed || 'seed'),
                     resolution: { width: canvasWidth, height: canvasHeight },
@@ -170,6 +185,8 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
             fps = Math.max(1, ((msg as any).fps as any) | 0) || 60;
             if (ctx2d) {
                 engine.attachTarget(ctx2d);
+                const localUrl = (msg as any)?.a?.params?.fontLocalPath || (msg as any)?.b?.params?.fontLocalPath || '';
+                await ensureWorkerFont(String(localUrl || ''), 'ProjectFont');
                 engine.configure({
                     seed: String((msg as any).seed || 'seed'),
                     resolution: { width: canvasWidth, height: canvasHeight },

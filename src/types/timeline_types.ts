@@ -6,6 +6,10 @@ export interface ProjectSettings {
     seed: string;
     fontFamily?: string;
     fontFallbacks?: string[];
+    fontStyle?: 'normal' | 'italic' | 'oblique';
+    fontWeight?: number | 'normal' | 'bold' | 'bolder' | 'lighter';
+    fontName?: string; // human-friendly name of the chosen project font
+    fontLocalPath?: string; // copied font file within song storage (primary)
     includeAudio?: boolean;
     exportBitrateMbps?: number;
 }
@@ -75,6 +79,8 @@ export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
     seed: 'wolk-default',
     fontFamily: 'system-ui',
     fontFallbacks: ['-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+    fontStyle: 'normal',
+    fontWeight: 400,
 };
 
 

@@ -153,6 +153,11 @@ function getContentType(filePath: string): string {
     '.gif': 'image/gif',
     '.svg': 'image/svg+xml',
     '.json': 'application/json',
+    // fonts
+    '.ttf': 'font/ttf',
+    '.otf': 'font/otf',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
   };
   return types[ext] || 'application/octet-stream';
 }

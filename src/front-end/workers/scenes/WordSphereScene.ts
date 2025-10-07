@@ -9,6 +9,8 @@ export class WordSphereScene implements WorkerScene {
     private width = 0;
     private height = 0;
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    private fontStyle: 'normal' | 'italic' | 'oblique' = 'normal';
+    private fontWeight: number | string = 400;
     private words: string[] = [];
     private renderer: any = null; // THREE.WebGLRenderer
     private scene: any = null; // THREE.Scene
@@ -69,6 +71,8 @@ export class WordSphereScene implements WorkerScene {
             : false;
 
         const fontChanged = typeof params.fontFamilyChain === 'string' && params.fontFamilyChain !== this.fontFamilyChain;
+        if (params.fontStyle) this.fontStyle = String(params.fontStyle) as any;
+        if (params.fontWeight != null) this.fontWeight = params.fontWeight as any;
         const showSphereChanged = typeof params.showSphere === 'boolean' && !!params.showSphere !== this.showSphere;
         const wireframeChanged = typeof params.sphereWireframe === 'boolean' && !!params.sphereWireframe !== this.sphereWireframe;
 
@@ -387,7 +391,7 @@ export class WordSphereScene implements WorkerScene {
         if (count === 0) return;
 
         // Use shared sprite factory; tint adjusted dynamically per frame
-        const makeSprite = (text: string) => makeLabelSprite(text, this.fontFamilyChain);
+        const makeSprite = (text: string) => makeLabelSprite(text, this.fontFamilyChain, { fontStyle: this.fontStyle as any, fontWeight: this.fontWeight as any });
 
         for (let i = 0; i < count; i++) {
             const word = String(words[i]).toUpperCase();
