@@ -14,6 +14,7 @@ import type { TimelineDocument } from '@/types/timeline_types';
 import SceneList from '@/front-end/components/editor/SceneList.vue';
 import Inspector from '@/front-end/components/editor/Inspector.vue';
 import TimelineRoot from '@/front-end/components/timeline/TimelineRoot.vue';
+import ExportModal from '@/front-end/components/editor/ExportModal.vue';
 
 // Composables
 import { useAudioPlayer } from '@/front-end/composables/editor/useAudioPlayer';
@@ -99,7 +100,10 @@ const videoExport = useVideoExport(
     renderCanvas,
     audioPlayer.audioEl,
     timeline,
-    songId
+    songId,
+    renderWorker.isModelLoading,
+    renderWorker.isModelLoaded,
+    previewCanvas
 );
 const wolkImport = useWolkImport();
 
@@ -594,18 +598,80 @@ const reanalyze = async () => {
     } catch (e) {}
 };
 
-const exportWithOptions = async () => {
-    await videoExport.startExport(async () => {
-        await audioPlayer.seekTo(0);
-        playback.scrubToFrame(0);
-        await play();
-    });
+const startExportProcess = async () => {
+    const exportMode = timeline.value?.settings.exportMode || 'realtime';
+    
+    if (exportMode === 'frames') {
+        // Frame-by-frame export
+        await videoExport.startFrameExport(
+            renderWorker,
+            frameRenderer,
+            drawPreview,
+            fps.value,
+            maxFrame.value
+        );
+    } else {
+        // Real-time recording
+        await videoExport.startExport(async () => {
+            await audioPlayer.seekTo(0);
+            playback.scrubToFrame(0);
+            await play();
+        });
+    }
+};
+
+const exportWithOptions = () => {
+    videoExport.openExportModal();
 };
 
 const exportWolk = async () => {
     if (song.value) {
         await videoExport.exportWolk(song.value);
     }
+};
+
+const handleExportCancel = () => {
+    videoExport.stopExport();
+    videoExport.closeExportModal();
+};
+
+const handleExportStop = () => {
+    videoExport.stopExport();
+};
+
+const handleExportRetry = async () => {
+    videoExport.resetExport();
+    await startExportProcess();
+};
+
+const handleExportStart = async () => {
+    await startExportProcess();
+};
+
+const handleExportOpenFolder = async () => {
+    if (videoExport.exportState.value.folderPath) {
+        try {
+            await (window as any).electronAPI.export.openFolder(videoExport.exportState.value.folderPath);
+        } catch (error) {
+            console.error('Failed to open folder:', error);
+        }
+    }
+};
+
+const handleExportClose = () => {
+    videoExport.closeExportModal();
+};
+
+const handleUpdateExportMode = async (mode: 'realtime' | 'frames') => {
+    if (!timeline.value) return;
+    timeline.value = {
+        ...timeline.value,
+        settings: {
+            ...timeline.value.settings,
+            exportMode: mode
+        }
+    };
+    await TimelineService.save(songId.value, timeline.value);
 };
 
 // Monitor settings functions
@@ -1254,5 +1320,19 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
+
+    <!-- Export Modal -->
+    <ExportModal
+        :show="videoExport.showExportModal.value"
+        :state="videoExport.exportState.value"
+        :export-mode="timeline?.settings.exportMode || 'realtime'"
+        @cancel="handleExportCancel"
+        @stop="handleExportStop"
+        @start="handleExportStart"
+        @retry="handleExportRetry"
+        @openFolder="handleExportOpenFolder"
+        @close="handleExportClose"
+        @updateExportMode="handleUpdateExportMode"
+    />
     </div>
 </template>

@@ -374,5 +374,132 @@ ffmpeg -version`;
         } catch {}
         return { filePath: null };
     });
+    
+    ipcMain.handle('export:openFolder', async (_event, folderPath: string) => {
+        try {
+            if (fs.existsSync(folderPath)) {
+                await shell.openPath(folderPath);
+                return { success: true };
+            }
+            return { success: false, error: 'Folder not found' };
+        } catch (error) {
+            return { success: false, error: String(error) };
+        }
+    });
+    
+    ipcMain.handle('export:cleanupFrames', async (_event, framesDir: string) => {
+        try {
+            if (fs.existsSync(framesDir)) {
+                fs.rmSync(framesDir, { recursive: true, force: true });
+                return { success: true };
+            }
+            return { success: false, error: 'Frames directory not found' };
+        } catch (error) {
+            console.error('Failed to cleanup frames:', error);
+            return { success: false, error: String(error) };
+        }
+    });
+    
+    ipcMain.handle('export:createFrameExport', (_event, songId: string) => {
+        try {
+            const song = loadSong(songId);
+            const title = (song?.title || 'export').replace(/[^a-zA-Z0-9-_\.]+/g, '_');
+            const now = new Date();
+            const yyyy = String(now.getFullYear());
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const HH = String(now.getHours()).padStart(2, '0');
+            const MM = String(now.getMinutes()).padStart(2, '0');
+            const SS = String(now.getSeconds()).padStart(2, '0');
+            const folderName = `${title}_${yyyy}${mm}${dd}_${HH}${MM}${SS}`;
+            const rootDir = path.join(getDocStoragePath(DOCUMENT_STORAGE_FOLDER.EXPORTS), folderName);
+            const framesDir = path.join(rootDir, 'frames');
+            fs.mkdirSync(framesDir, { recursive: true });
+            return { rootDir, framesDir, folderName };
+        } catch (error) {
+            console.error('Failed to create frame export folder:', error);
+            return { rootDir: null, framesDir: null, error: String(error) };
+        }
+    });
+    
+    ipcMain.handle('export:saveFrame', (_event, framesDir: string, frameName: string, frameData: ArrayBuffer) => {
+        try {
+            const buf = Buffer.from(frameData);
+            const filePath = path.join(framesDir, frameName);
+            fs.writeFileSync(filePath, buf);
+            return { success: true, filePath };
+        } catch (error) {
+            console.error('Failed to save frame:', error);
+            return { success: false, error: String(error) };
+        }
+    });
+    
+    ipcMain.handle('export:assembleVideo', async (_event, framesDir: string, rootDir: string, fps: number, audioPath: string | null) => {
+        try {
+            // Check if ffmpeg is available
+            const ffmpegCheck = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+            if (ffmpegCheck.status !== 0) {
+                return { success: false, error: 'ffmpeg is not available' };
+            }
+            
+            const outputPath = path.join(rootDir, 'export.mp4');
+            
+            // Build ffmpeg arguments
+            const args = [
+                '-y', // Overwrite output file
+                '-framerate', String(fps),
+                '-i', path.join(framesDir, 'frame_%06d.png'), // Input pattern
+                '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', // Ensure dimensions are divisible by 2
+                '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p',
+                '-preset', 'medium',
+                '-crf', '18', // High quality
+                '-movflags', '+faststart'
+            ];
+            
+            // Add audio if provided
+            if (audioPath) {
+                // Handle wolk:// protocol by converting to file path
+                let actualAudioPath = audioPath;
+                if (audioPath.startsWith('wolk://')) {
+                    // Extract song ID and filename from wolk:// URL
+                    // Format: wolk://songs/{songId}/audio/{filename}
+                    const match = audioPath.match(/wolk:\/\/songs\/([^\/]+)\/audio\/(.+)/);
+                    if (match) {
+                        const [, songId, filename] = match;
+                        actualAudioPath = path.join(getDocStoragePath(DOCUMENT_STORAGE_FOLDER.SONGS), songId, 'audio', filename);
+                    }
+                } else if (audioPath.startsWith('file://')) {
+                    actualAudioPath = audioPath.replace('file://', '');
+                }
+                
+                if (fs.existsSync(actualAudioPath)) {
+                    args.push('-i', actualAudioPath);
+                    args.push('-c:a', 'aac');
+                    args.push('-b:a', '192k');
+                    args.push('-shortest'); // End when shortest stream ends
+                }
+            }
+            
+            args.push(outputPath);
+            
+            // Run ffmpeg
+            const result = spawnSync('ffmpeg', args, { encoding: 'utf-8', stdio: 'pipe' });
+            
+            if (result.status !== 0) {
+                console.error('ffmpeg error:', result.stderr);
+                return { success: false, error: result.stderr || 'ffmpeg failed' };
+            }
+            
+            if (!fs.existsSync(outputPath)) {
+                return { success: false, error: 'Output file was not created' };
+            }
+            
+            return { success: true, outputPath };
+        } catch (error) {
+            console.error('Failed to assemble video:', error);
+            return { success: false, error: String(error) };
+        }
+    });
 
 }

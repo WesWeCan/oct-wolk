@@ -12,6 +12,7 @@ export interface ProjectSettings {
     fontLocalPath?: string; // copied font file within song storage (primary)
     includeAudio?: boolean;
     exportBitrateMbps?: number;
+    exportMode?: 'realtime' | 'frames'; // Export mode: real-time recording or frame-by-frame
 }
 
 export type SceneType = 'wordcloud' | 'imageMaskFill' | 'wordSphere' | 'singleWord' | 'model3d';

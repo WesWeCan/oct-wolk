@@ -70,6 +70,8 @@ export function useRenderWorker(
 ) {
     const workerRef = shallowRef<Worker | null>(null);
     const isReady = shallowRef(false);
+    const isModelLoading = shallowRef(false);
+    const isModelLoaded = shallowRef(false);
     
     /**
      * Callback invoked when worker finishes rendering a frame.
@@ -104,11 +106,20 @@ export function useRenderWorker(
             { type: 'module' }
         );
         
-        // Listen for render completion
+        // Listen for render completion and model loading events
         worker.addEventListener('message', (e: MessageEvent) => {
             const data = e.data;
             if (data?.type === 'rendered') {
                 onRendered?.(data.frame);
+            } else if (data?.type === 'modelLoadingStarted') {
+                isModelLoading.value = true;
+                isModelLoaded.value = false;
+            } else if (data?.type === 'modelLoadingComplete') {
+                isModelLoading.value = false;
+                isModelLoaded.value = true;
+            } else if (data?.type === 'modelLoadingFailed') {
+                isModelLoading.value = false;
+                isModelLoaded.value = false;
             }
         });
         
@@ -211,6 +222,8 @@ export function useRenderWorker(
     return {
         workerRef,
         isReady,
+        isModelLoading,
+        isModelLoaded,
         start,
         configureScene,
         sendFrame,

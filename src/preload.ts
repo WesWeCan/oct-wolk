@@ -83,6 +83,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
         packageWolk: (songId: string, outputName: string) => ipcRenderer.invoke('export:packageWolk', songId, outputName),
         importWolk: (filePath: string, strategy: 'override' | 'copy') => ipcRenderer.invoke('export:importWolk', filePath, strategy),
         importWolkBytes: (fileData: ArrayBuffer, strategy: 'override' | 'copy') => ipcRenderer.invoke('export:importWolkBytes', fileData, strategy),
+        openFolder: (folderPath: string) => ipcRenderer.invoke('export:openFolder', folderPath),
+        cleanupFrames: (framesDir: string) => ipcRenderer.invoke('export:cleanupFrames', framesDir),
+        createFrameExport: (songId: string) => ipcRenderer.invoke('export:createFrameExport', songId),
+        saveFrame: (framesDir: string, frameName: string, frameData: ArrayBuffer) => ipcRenderer.invoke('export:saveFrame', framesDir, frameName, frameData),
+        assembleVideo: (framesDir: string, rootDir: string, fps: number, audioPath: string | null) => ipcRenderer.invoke('export:assembleVideo', framesDir, rootDir, fps, audioPath),
     },
 
     // Event methods

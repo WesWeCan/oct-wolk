@@ -18,6 +18,8 @@ export class ModelScene implements WorkerScene {
     private spokeGroup: any = null; // THREE.Group (label -> model spokes)
     private glCanvas: OffscreenCanvas | null = null;
     private initialized = false;
+    private isModelLoading = false;
+    private isModelLoaded = false;
 
     // params
     private objUrl: string | null = null;
@@ -534,6 +536,16 @@ export class ModelScene implements WorkerScene {
 
     private async loadModel() {
         if (!this.scene || !this.rootGroup) return;
+        
+        // Mark as loading and not loaded
+        this.isModelLoading = true;
+        this.isModelLoaded = false;
+        
+        // Notify main thread that loading started
+        try {
+            (self as any).postMessage({ type: 'modelLoadingStarted' });
+        } catch {}
+        
         // Dispose previous
         if (this.modelGroup) {
             try { this.disposeGroup(this.modelGroup); } catch {}
@@ -562,6 +574,12 @@ export class ModelScene implements WorkerScene {
                 objRoot = await objLoader.loadAsync(this.objUrl);
             } catch (e) {
                 try { console.error('[ModelScene] OBJ load failed', e); } catch {}
+                this.isModelLoading = false;
+                this.isModelLoaded = false;
+                // Notify main thread that loading failed
+                try {
+                    (self as any).postMessage({ type: 'modelLoadingFailed', error: String(e) });
+                } catch {}
                 return;
             }
             // If custom textures are provided, apply them to materials
@@ -603,9 +621,19 @@ export class ModelScene implements WorkerScene {
             this.buildLabelsAroundModel();
             this.buildPlexus();
             this.buildSpokes();
+            
+            // Mark as loaded and notify main thread
+            this.isModelLoading = false;
+            this.isModelLoaded = true;
+            try {
+                (self as any).postMessage({ type: 'modelLoadingComplete' });
+            } catch {}
+            
             return;
         }
         // Fallback: if no OBJ, nothing to load for now.
+        this.isModelLoading = false;
+        this.isModelLoaded = true; // Consider no model as "loaded"
     }
 
     private async loadBitmapTexture(url: string, kind: 'diffuse' | 'normal'): Promise<THREE.Texture | null> {
