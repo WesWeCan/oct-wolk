@@ -5,7 +5,7 @@ import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
 
 
 export const getInternalStoragePath = () => {
-    return path.join(app.getPath('documents'), '__oct_files', 'wolk');
+    return path.join(app.getPath('userData'), 'wolk');
 }
 
 export const getInternalStorageFilePath = (fileName: string) => {
@@ -21,7 +21,64 @@ export const openInternalStorageFolder = () => {
     shell.openPath(getInternalStoragePath());
 }
 
+const migrateFromOldLocation = async () => {
+    // Old location: ~/Documents/__oct_files/wolk
+    const oldBasePath = path.join(app.getPath('documents'), '__oct_files', 'wolk');
+    const newBasePath = getInternalStoragePath();
+
+    // If old location doesn't exist or new location already has data, skip migration
+    if (!fs.existsSync(oldBasePath)) {
+        console.log('No old storage to migrate');
+        return;
+    }
+
+    const newDocStoragePath = path.join(newBasePath, 'docStorage');
+    if (fs.existsSync(newDocStoragePath) && fs.readdirSync(newDocStoragePath).length > 0) {
+        console.log('New storage already has data, skipping migration');
+        return;
+    }
+
+    try {
+        console.log('Migrating data from Documents to userData...');
+        console.log('Old path:', oldBasePath);
+        console.log('New path:', newBasePath);
+
+        // Ensure new base path exists
+        fs.mkdirSync(newBasePath, { recursive: true });
+
+        // Copy entire directory tree
+        const copyRecursive = (src: string, dest: string) => {
+            if (!fs.existsSync(src)) return;
+            
+            const stats = fs.statSync(src);
+            if (stats.isDirectory()) {
+                fs.mkdirSync(dest, { recursive: true });
+                const entries = fs.readdirSync(src, { withFileTypes: true });
+                for (const entry of entries) {
+                    copyRecursive(
+                        path.join(src, entry.name),
+                        path.join(dest, entry.name)
+                    );
+                }
+            } else {
+                fs.copyFileSync(src, dest);
+            }
+        };
+
+        copyRecursive(oldBasePath, newBasePath);
+        console.log('Migration completed successfully');
+        console.log('Old data remains at:', oldBasePath);
+        console.log('You can safely delete it after verifying the app works correctly');
+    } catch (error) {
+        console.error('Migration failed:', error);
+        console.log('Continuing with fresh storage at new location');
+    }
+};
+
 export const initStorage = async () => {
+    // Migrate from old Documents location if needed
+    await migrateFromOldLocation();
+
     const storagePath = getInternalStoragePath();
     const songsPath = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.SONGS);
     const exportsPath = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.EXPORTS);

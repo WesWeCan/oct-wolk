@@ -19,8 +19,18 @@ const getSongJsonPath = (songId: string): string => {
 
 export const listSongs = (): Song[] => {
     const root = getSongsRoot();
-    if (!fs.existsSync(root)) return [];
-    const entries = fs.readdirSync(root, { withFileTypes: true });
+    try {
+        if (!fs.existsSync(root)) return [];
+    } catch {
+        return [];
+    }
+    let entries: fs.Dirent[] = [];
+    try {
+        entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch {
+        // EPERM/EACCES or other errors: treat as empty until permission is granted
+        return [];
+    }
     const songs: Song[] = [];
     for (const entry of entries) {
         if (!entry.isDirectory()) continue;

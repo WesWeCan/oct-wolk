@@ -302,13 +302,67 @@ export const registerInternalProcesses = async () => {
         }
     });
 
-    ipcMain.handle('export:ffmpegAvailable', () => {
+    // Helper to find ffmpeg executable, checking common install locations
+    const findFfmpegPath = (): string | null => {
+        // Try PATH first (works in dev and some packaged scenarios)
         try {
             const res = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-            return res.status === 0;
-        } catch {
-            return false;
+            if (res.status === 0) return 'ffmpeg';
+        } catch {}
+
+        // Check common installation paths for packaged apps
+        const commonPaths: string[] = [];
+        
+        if (process.platform === 'darwin') {
+            // macOS - Homebrew and common locations
+            commonPaths.push(
+                '/opt/homebrew/bin/ffmpeg',     // Apple Silicon Homebrew
+                '/usr/local/bin/ffmpeg',         // Intel Homebrew
+                '/opt/local/bin/ffmpeg',         // MacPorts
+                path.join(process.env.HOME || '', '.local', 'bin', 'ffmpeg')
+            );
+        } else if (process.platform === 'win32') {
+            // Windows - common install locations
+            commonPaths.push(
+                'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
+                'C:\\ffmpeg\\bin\\ffmpeg.exe',
+                path.join(process.env.LOCALAPPDATA || '', 'Programs', 'ffmpeg', 'bin', 'ffmpeg.exe'),
+                path.join(process.env.PROGRAMFILES || '', 'ffmpeg', 'bin', 'ffmpeg.exe')
+            );
+        } else {
+            // Linux - common install locations
+            commonPaths.push(
+                '/usr/bin/ffmpeg',
+                '/usr/local/bin/ffmpeg',
+                '/snap/bin/ffmpeg',
+                path.join(process.env.HOME || '', '.local', 'bin', 'ffmpeg')
+            );
         }
+
+        // Test each common path
+        for (const ffmpegPath of commonPaths) {
+            try {
+                if (fs.existsSync(ffmpegPath)) {
+                    const res = spawnSync(ffmpegPath, ['-version'], { stdio: 'ignore' });
+                    if (res.status === 0) {
+                        console.log('[ffmpeg] Found at:', ffmpegPath);
+                        return ffmpegPath;
+                    }
+                }
+            } catch {}
+        }
+
+        return null;
+    };
+
+    // Cache the ffmpeg path to avoid repeated searches
+    let cachedFfmpegPath: string | null | undefined = undefined;
+
+    ipcMain.handle('export:ffmpegAvailable', () => {
+        if (cachedFfmpegPath === undefined) {
+            cachedFfmpegPath = findFfmpegPath();
+        }
+        return cachedFfmpegPath !== null;
     });
     
     ipcMain.handle('export:getFfmpegInstructions', () => {
@@ -366,12 +420,24 @@ ffmpeg -version`;
     
     ipcMain.handle('export:encodeMp4FromWebM', (_event, inputWebMPath: string, outputMp4Path: string) => {
         try {
+            // Ensure we have the cached ffmpeg path
+            if (cachedFfmpegPath === undefined) {
+                cachedFfmpegPath = findFfmpegPath();
+            }
+            
+            if (!cachedFfmpegPath) {
+                console.error('[ffmpeg] Not found, cannot encode MP4');
+                return { filePath: null };
+            }
+
             const args = ['-y', '-i', inputWebMPath, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '192k', outputMp4Path];
-            const res = spawnSync('ffmpeg', args, { stdio: 'ignore' });
+            const res = spawnSync(cachedFfmpegPath, args, { stdio: 'ignore' });
             if (res.status === 0 && fs.existsSync(outputMp4Path)) {
                 return { filePath: outputMp4Path };
             }
-        } catch {}
+        } catch (error) {
+            console.error('[ffmpeg] Encoding error:', error);
+        }
         return { filePath: null };
     });
     
@@ -436,9 +502,12 @@ ffmpeg -version`;
     
     ipcMain.handle('export:assembleVideo', async (_event, framesDir: string, rootDir: string, fps: number, audioPath: string | null) => {
         try {
-            // Check if ffmpeg is available
-            const ffmpegCheck = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-            if (ffmpegCheck.status !== 0) {
+            // Ensure we have the cached ffmpeg path
+            if (cachedFfmpegPath === undefined) {
+                cachedFfmpegPath = findFfmpegPath();
+            }
+            
+            if (!cachedFfmpegPath) {
                 return { success: false, error: 'ffmpeg is not available' };
             }
             
@@ -484,7 +553,7 @@ ffmpeg -version`;
             args.push(outputPath);
             
             // Run ffmpeg
-            const result = spawnSync('ffmpeg', args, { encoding: 'utf-8', stdio: 'pipe' });
+            const result = spawnSync(cachedFfmpegPath, args, { encoding: 'utf-8', stdio: 'pipe' });
             
             if (result.status !== 0) {
                 console.error('ffmpeg error:', result.stderr);

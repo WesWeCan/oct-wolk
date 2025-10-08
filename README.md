@@ -259,16 +259,18 @@ Fonts are automatically loaded into the render worker for consistent rendering a
 
 W.O.L.K. stores project data locally in your application data directory:
 
-- **macOS**: `~/Library/Application Support/oct-wolk/`
-- **Windows**: `%APPDATA%/oct-wolk/`
-- **Linux**: `~/.config/oct-wolk/`
+- **macOS**: `~/Library/Application Support/Words On Live Kanvas - Open Culture Tech/wolk/`
+- **Windows**: `%APPDATA%/Words On Live Kanvas - Open Culture Tech/wolk/`
+- **Linux**: `~/.config/Words On Live Kanvas - Open Culture Tech/wolk/`
 
-Each song/project has its own folder containing:
-- `song.json`: Metadata and word bank
-- `timeline.json`: Timeline configuration
-- `scenes/`: Individual scene configurations
-- `assets/`: Uploaded files (audio, images, models)
-- `analysis/`: Audio analysis cache
+The structure includes:
+- `docStorage/songs/`: Each song/project has its own folder containing:
+  - `song.json`: Metadata and word bank
+  - `timeline.json`: Timeline configuration
+  - `scenes/`: Individual scene configurations
+  - `assets/`: Uploaded files (audio, images, models)
+  - `analysis/`: Audio analysis cache
+- `docStorage/exports/`: Video exports (accessible via "Open Folder" button after export)
 
 ## Troubleshooting
 

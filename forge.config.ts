@@ -11,6 +11,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     extraResource: ['./assets'],
+    icon: './src/build-resources/icons/icon', // Electron Forge will add .icns/.ico/.png automatically
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],

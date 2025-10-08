@@ -6,6 +6,13 @@ const openExternal = (url: string) => {
     //  window.electronAPI.openExternal(url);
  }
 
+const openStorageFolder = async () => {
+    try {
+        await window.electronAPI.openStorageFolder();
+    } catch (error) {
+        console.error('Error opening storage folder:', error);
+    }
+}
 
  const luckyNumber = ref(-1);
  const menuCounter = ref(0);
@@ -41,6 +48,10 @@ const getLuckyNumber = async () => {
         <router-link to="/" exact>Home</router-link>
         <router-link to="/song-bank">Song Bank</router-link>
         <router-link to="/editor">Editor</router-link>
+        <div class="spacer"></div>
+        <button @click="openStorageFolder" class="open-folder-btn" title="Open storage folder">
+            📁 Open Folder
+        </button>
     </header>
     <RouterView></RouterView>
 </template>
