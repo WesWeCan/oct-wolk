@@ -20,6 +20,9 @@ declare global {
                 list: () => Promise<any[]>;
                 uploadCover: (songId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<any>;
                 uploadAudio: (songId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<any>;
+                uploadAsset: (songId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => Promise<any>;
+                deleteAsset: (songId: string, fileName: string) => Promise<boolean>;
+                delete: (songId: string) => Promise<boolean>;
             };
             timeline: {
                 createOrLoad: (songId: string) => Promise<TimelineDocument>;
@@ -52,8 +55,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         list: () => ipcRenderer.invoke('songs:list'),
         uploadCover: (songId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('songs:uploadCover', songId, fileData, originalFileName),
         uploadAudio: (songId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('songs:uploadAudio', songId, fileData, originalFileName),
-            uploadAsset: (songId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => ipcRenderer.invoke('songs:uploadAsset', songId, fileData, originalFileName, preferredFileName),
-            deleteAsset: (songId: string, fileName: string) => ipcRenderer.invoke('songs:deleteAsset', songId, fileName),
+        uploadAsset: (songId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => ipcRenderer.invoke('songs:uploadAsset', songId, fileData, originalFileName, preferredFileName),
+        deleteAsset: (songId: string, fileName: string) => ipcRenderer.invoke('songs:deleteAsset', songId, fileName),
+        delete: (songId: string) => ipcRenderer.invoke('songs:delete', songId),
     },
     timeline: {
         createOrLoad: (songId: string) => ipcRenderer.invoke('timeline:createOrLoad', songId),
@@ -73,6 +77,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     export: {
         saveWebM: (songId: string, fileData: ArrayBuffer, suggestedName: string) => ipcRenderer.invoke('export:saveWebM', songId, fileData, suggestedName),
         ffmpegAvailable: () => ipcRenderer.invoke('export:ffmpegAvailable'),
+        getFfmpegInstructions: () => ipcRenderer.invoke('export:getFfmpegInstructions'),
         encodeMp4FromWebM: (inputWebMPath: string, outputMp4Path: string) => ipcRenderer.invoke('export:encodeMp4FromWebM', inputWebMPath, outputMp4Path),
         copyFontsForExport: (songId: string, fontFiles: string[]) => ipcRenderer.invoke('export:copyFonts', songId, fontFiles),
         packageWolk: (songId: string, outputName: string) => ipcRenderer.invoke('export:packageWolk', songId, outputName),

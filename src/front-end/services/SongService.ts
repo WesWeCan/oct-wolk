@@ -39,6 +39,10 @@ export const SongService = {
         const ok = await window.electronAPI.songs.deleteAsset(songId, fileName);
         return !!ok;
     },
+    async delete(songId: string): Promise<boolean> {
+        const ok = await window.electronAPI.songs.delete(songId);
+        return !!ok;
+    },
 };
 
 

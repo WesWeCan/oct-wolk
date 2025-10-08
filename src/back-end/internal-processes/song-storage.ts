@@ -206,4 +206,55 @@ export const deleteSongAsset = (songId: string, fileName: string): boolean => {
     return false;
 };
 
+/**
+ * Recursively deletes a directory and all its contents.
+ */
+const deleteDirRecursive = (dirPath: string): void => {
+    if (!fs.existsSync(dirPath)) return;
+    
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+            deleteDirRecursive(fullPath);
+        } else {
+            fs.unlinkSync(fullPath);
+        }
+    }
+    fs.rmdirSync(dirPath);
+};
+
+/**
+ * Deletes a song and all its associated files.
+ * @param songId - The ID of the song to delete
+ * @returns true if deletion was successful, false otherwise
+ */
+export const deleteSong = (songId: string): boolean => {
+    try {
+        if (!songId) return false;
+        
+        const songDir = getSongDir(songId);
+        
+        // Safety check: ensure we're deleting within the songs directory
+        const songsRoot = getSongsRoot();
+        if (!songDir.startsWith(songsRoot)) {
+            console.error('Security: Attempted to delete directory outside songs root');
+            return false;
+        }
+        
+        // Check if song exists
+        if (!fs.existsSync(songDir)) {
+            return false;
+        }
+        
+        // Delete the entire song directory recursively
+        deleteDirRecursive(songDir);
+        
+        return true;
+    } catch (error) {
+        console.error('Failed to delete song:', error);
+        return false;
+    }
+};
+
 

@@ -103,6 +103,26 @@ const videoExport = useVideoExport(
 );
 const wolkImport = useWolkImport();
 
+// ffmpeg Instructions
+const ffmpegInstructions = ref<string>('');
+const showFfmpegHelp = ref(false);
+
+const loadFfmpegInstructions = async () => {
+    try {
+        const result = await (window as any).electronAPI.export.getFfmpegInstructions();
+        ffmpegInstructions.value = result.instructions || '';
+    } catch {
+        ffmpegInstructions.value = 'Unable to load installation instructions.';
+    }
+};
+
+const recheckFfmpeg = async () => {
+    await videoExport.checkFfmpegAvailable();
+    if (videoExport.ffmpegAvailable.value) {
+        showFfmpegHelp.value = false;
+    }
+};
+
 // Scene Actions
 const sceneActions = useSceneActions(timeline, scenes, songId);
 
@@ -893,6 +913,7 @@ const handleScrollToInspector = (payload: { propertyPath: string }) => {
 onMounted(async () => {
     document.title = 'Editor - Words On Live Kanvas - Open Culture Tech';
     await videoExport.checkFfmpegAvailable();
+    await loadFfmpegInstructions();
     
     // Load saved panel widths from localStorage
     const savedSidebarWidth = localStorage.getItem('editor-sidebar-width');
@@ -1006,9 +1027,24 @@ onUnmounted(() => {
                 <button @click="reanalyze" :disabled="!audioPlayer.audioReady.value">Reanalyze</button>
                 <button @click="exportWolk" class="export">Export .wolk</button>
             </div>
-            <span v-if="videoExport.ffmpegAvailable.value === false" class="toolbar__notice">
-                ffmpeg not found. On macOS: install with <code>brew install ffmpeg</code>. Only WebM will be produced.
-            </span>
+            <div v-if="videoExport.ffmpegAvailable.value === false" class="toolbar__notice">
+                <div class="notice-header">
+                    <span class="notice-icon">⚠️</span>
+                    <span class="notice-title">ffmpeg not detected - MP4 export unavailable</span>
+                    <button @click="showFfmpegHelp = !showFfmpegHelp" class="notice-toggle">
+                        {{ showFfmpegHelp ? 'Hide' : 'Show' }} Instructions
+                    </button>
+                    <button @click="recheckFfmpeg" class="notice-recheck">
+                        Check Again
+                    </button>
+                </div>
+                <div v-if="showFfmpegHelp" class="notice-content">
+                    <p class="notice-description">
+                        WebM export is always available. Install ffmpeg to enable MP4 export with better compatibility.
+                    </p>
+                    <pre class="notice-instructions">{{ ffmpegInstructions }}</pre>
+                </div>
+            </div>
         </div>
 
         <div class="editor__sidebar">

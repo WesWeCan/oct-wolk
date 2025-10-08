@@ -3,7 +3,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { getInternalStoragePath } from './internal-storage';
 import { createOrLoadTimeline, saveTimeline, listScenes as listSceneFiles, saveScene, loadScene, resetTimeline } from './timeline-storage';
 import { listSystemFonts } from './fonts';
-import { createSong, loadSong, saveSong, listSongs, saveSongCover, saveSongAudio, saveSongAsset, deleteSongAsset } from './song-storage';
+import { createSong, loadSong, saveSong, listSongs, saveSongCover, saveSongAudio, saveSongAsset, deleteSongAsset, deleteSong } from './song-storage';
 import fs from 'fs';
 import path from 'path';
 import { getDocStoragePath } from './internal-storage';
@@ -55,6 +55,9 @@ export const registerInternalProcesses = async () => {
     });
     ipcMain.handle('songs:deleteAsset', (_event, songId: string, fileName: string) => {
         return deleteSongAsset(songId, fileName);
+    });
+    ipcMain.handle('songs:delete', (_event, songId: string) => {
+        return deleteSong(songId);
     });
 
     // Timeline API
@@ -307,6 +310,60 @@ export const registerInternalProcesses = async () => {
             return false;
         }
     });
+    
+    ipcMain.handle('export:getFfmpegInstructions', () => {
+        const platform = process.platform;
+        let instructions = '';
+        
+        if (platform === 'darwin') {
+            // macOS
+            instructions = `Install ffmpeg via Homebrew:
+
+brew install ffmpeg
+
+Verify installation:
+ffmpeg -version`;
+        } else if (platform === 'win32') {
+            // Windows
+            instructions = `Install ffmpeg via package manager:
+
+Option 1 - winget (Windows 10+):
+  winget install ffmpeg
+
+Option 2 - Chocolatey:
+  choco install ffmpeg
+
+Option 3 - Scoop:
+  scoop install ffmpeg
+
+Option 4 - Manual Download:
+  1. Download from: https://www.gyan.dev/ffmpeg/builds/
+  2. Extract the archive
+  3. Add the bin folder to your system PATH
+
+Verify installation:
+ffmpeg -version`;
+        } else {
+            // Linux
+            instructions = `Install ffmpeg via your package manager:
+
+Ubuntu/Debian:
+  sudo apt update
+  sudo apt install ffmpeg
+
+Fedora/RHEL/CentOS:
+  sudo dnf install ffmpeg
+
+Arch Linux:
+  sudo pacman -S ffmpeg
+
+Verify installation:
+ffmpeg -version`;
+        }
+        
+        return { platform, instructions };
+    });
+    
     ipcMain.handle('export:encodeMp4FromWebM', (_event, inputWebMPath: string, outputMp4Path: string) => {
         try {
             const args = ['-y', '-i', inputWebMPath, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '192k', outputMp4Path];

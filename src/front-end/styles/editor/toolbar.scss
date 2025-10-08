@@ -7,3 +7,76 @@
   }
 }
 
+// ffmpeg notice banner
+.toolbar__notice {
+  background: rgba(255, 152, 0, 0.15);
+  border: 1px solid rgba(255, 152, 0, 0.4);
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 12px;
+  
+  .notice-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    
+    .notice-icon {
+      font-size: 18px;
+    }
+    
+    .notice-title {
+      flex: 1;
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 500;
+    }
+    
+    .notice-toggle,
+    .notice-recheck {
+      padding: 4px 12px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+      color: rgba(255, 255, 255, 0.9);
+      cursor: pointer;
+      transition: all 0.2s;
+      
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.3);
+      }
+      
+      &:active {
+        transform: translateY(1px);
+      }
+    }
+  }
+  
+  .notice-content {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 152, 0, 0.3);
+    
+    .notice-description {
+      margin: 0 0 12px 0;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    
+    .notice-instructions {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      padding: 12px;
+      margin: 0;
+      color: rgba(255, 255, 255, 0.95);
+      font-size: 12px;
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+  }
+}
+

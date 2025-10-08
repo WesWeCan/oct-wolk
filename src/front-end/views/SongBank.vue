@@ -73,9 +73,21 @@ const cancelDelete = () => {
 };
 
 const deleteSong = async (id: string) => {
-    // TODO: Implement delete functionality when available in SongService
-    console.warn('Delete functionality not yet implemented');
-    deletingId.value = null;
+    try {
+        const success = await SongService.delete(id);
+        if (success) {
+            // Remove from local list
+            songs.value = songs.value.filter(s => s.id !== id);
+            deletingId.value = null;
+        } else {
+            alert('Failed to delete word bank. Please try again.');
+            deletingId.value = null;
+        }
+    } catch (error) {
+        console.error('Error deleting word bank:', error);
+        alert('Error deleting word bank. Please try again.');
+        deletingId.value = null;
+    }
 };
 
 const formatDate = (dateString: string | number) => {
