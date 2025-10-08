@@ -1,12 +1,24 @@
 import type { SceneContext, WorkerScene } from '../engine/types';
 import { getAnimated } from '../engine/params';
 
+// Helper: Count beats up to current frame (deterministic, frame-based)
+function countBeatsUpToFrame(context: SceneContext): number {
+    const beatTimes = context.analysis?.beatTimes;
+    if (!beatTimes || beatTimes.length === 0) return 0;
+    const currentTime = context.time.frame / context.time.fps;
+    let count = 0;
+    for (const beatTime of beatTimes) {
+        if (beatTime <= currentTime) count++;
+        else break;
+    }
+    return count;
+}
+
 export class SingleWordScene implements WorkerScene {
     private words: string[] = [];
     private width = 0;
     private height = 0;
     private currentIndex = 0;
-    private lastBeat = 0;
     private beatThreshold = 0.07;
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
     private fontStyle: 'normal' | 'italic' | 'oblique' = 'normal';
@@ -37,7 +49,6 @@ export class SingleWordScene implements WorkerScene {
         this.words = list.map(w => String(w).toUpperCase());
         const wordsLen = Math.max(1, this.words.length);
         this.currentIndex = Math.floor((this.seededPick() || 0) * wordsLen) % wordsLen;
-        this.lastBeat = 0;
         if (params.fontFamilyChain) this.fontFamilyChain = String(params.fontFamilyChain);
         if (params.fontStyle) this.fontStyle = String(params.fontStyle) as any;
         if (params.fontWeight != null) this.fontWeight = params.fontWeight as any;
@@ -60,14 +71,11 @@ export class SingleWordScene implements WorkerScene {
             const idx = (context.extras!.wordIndex as number);
             this.currentIndex = ((idx % wordsLen) + wordsLen) % wordsLen;
         } else {
-            // Completely override instance field if animatable is provided
-            const threshold = (animated && Number.isFinite(animated['beatThreshold']))
-                ? Math.max(0, Math.min(1, Number(animated['beatThreshold'])))
-                : this.beatThreshold;
-            if (beat > threshold && this.lastBeat <= threshold) {
-                this.currentIndex = (this.currentIndex + 1) % wordsLen;
-            }
-            this.lastBeat = beat;
+            // Frame-deterministic word cycling based on beat count
+            const beatCount = countBeatsUpToFrame(context);
+            // Get initial index from seeded pick (deterministic)
+            const initialIndex = Math.floor((this.seededPick() || 0) * wordsLen) % wordsLen;
+            this.currentIndex = (initialIndex + beatCount) % wordsLen;
         }
         // Smooth band-driven parameters (low-pass filter ~250ms)
         const low = (Number.isFinite(context.extras?.lowBand as any) ? Number((context.extras as any).lowBand) : 0) || 0;

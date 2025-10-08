@@ -1,8 +1,22 @@
 import type { SceneContext, WorkerScene } from '../engine/types';
 import { getAnimated } from '../engine/params';
 
+// Helper: Count beats up to current frame (deterministic, frame-based)
+function countBeatsUpToFrame(context: SceneContext): number {
+    const beatTimes = context.analysis?.beatTimes;
+    if (!beatTimes || beatTimes.length === 0) return 0;
+    const currentTime = context.time.frame / context.time.fps;
+    let count = 0;
+    for (const beatTime of beatTimes) {
+        if (beatTime <= currentTime) count++;
+        else break;
+    }
+    return count;
+}
+
 export class WordCloudScene implements WorkerScene {
     private rng: () => number = () => 0.5;
+    private createScopedRng: ((key: string) => () => number) | null = null;
     private layout: { text: string; x: number; y: number; size: number; hue: number; sat: number; light: number; w: number; h: number; wi: number }[] = [];
     private configured = false;
     private fontFamilyChain: string = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
@@ -36,12 +50,11 @@ export class WordCloudScene implements WorkerScene {
     private cloudRotationDeg: number = 0;
     private jitter: number = 0; // 0..1 amount of frame jitter (seeded)
 
-    // word set and beat-driven swapping
+    // word set and beat-driven swapping (deterministic)
     private words: string[] = [];
     private swapMode: 'all' | 'sequential' = 'all';
     private swapStride: number = 1;
     private beatThreshold = 0.07;
-    private lastBeat = 0;
     private globalOffset = 0;
     private perItemOffsets: number[] = [];
     private seqCursor = 0;
@@ -50,6 +63,7 @@ export class WordCloudScene implements WorkerScene {
         this.width = context.resolution.width;
         this.height = context.resolution.height;
         this.fontFamilyChain = context.fontFamilyChain || this.fontFamilyChain;
+        this.createScopedRng = context.createScopedRng;
         this.rng = context.createScopedRng('wordcloud.layout');
         try {
             const off = new OffscreenCanvas(2, 2);
@@ -95,11 +109,12 @@ export class WordCloudScene implements WorkerScene {
         if (Number.isFinite((params as any)?.swapStride)) this.swapStride = Math.max(1, Math.floor(Number((params as any).swapStride)));
         if (Number.isFinite((params as any)?.beatThreshold)) this.beatThreshold = Math.max(0, Math.min(1, Number((params as any).beatThreshold)));
 
+        // Reset RNG to ensure deterministic layout on each configure() call
+        this.rng = this.createScopedRng?.('wordcloud.layout') || (() => 0.5);
         this.layout = this.computeLayout({ width: this.width, height: this.height, words: this.words });
         this.perItemOffsets = new Array(this.layout.length).fill(0);
         this.globalOffset = 0;
         this.seqCursor = 0;
-        this.lastBeat = 0;
         this.configured = true;
         const pHue = Number(params.bgHue);
         this.bgHue = Number.isFinite(pHue) ? (Math.floor(pHue) % 360 + 360) % 360 : Math.floor(this.rng() * 360);
@@ -112,27 +127,28 @@ export class WordCloudScene implements WorkerScene {
         this.cloudScale = Math.max(0, Number(getAnimated(animated, 'cloud.scale', 1)) || 1);
         this.cloudRotationDeg = Number(getAnimated(animated, 'cloud.rotationDeg', 0)) || 0;
         this.jitter = Math.max(0, Math.min(1, Number(getAnimated(animated, 'cloud.jitter', 0)) || 0));
-        // Beat detection (like SingleWordScene)
-        const beatVal = Math.max(0, Math.min(1, Number(context.extras?.beat || 0)));
-        const thr = (animated && Number.isFinite((animated as any)['beatThreshold']))
-            ? Math.max(0, Math.min(1, Number((animated as any)['beatThreshold'])))
-            : this.beatThreshold;
-        if (beatVal > thr && this.lastBeat <= thr) {
-            const n = this.layout.length;
-            const wordsLen = this.words.length;
-            if (wordsLen > 0 && n > 0) {
-                if (this.swapMode === 'all') {
-                    this.globalOffset = (this.globalOffset + this.swapStride) % wordsLen;
-                } else {
-                    for (let k = 0; k < this.swapStride; k++) {
-                        const idx = this.seqCursor % n;
-                        this.perItemOffsets[idx] = (this.perItemOffsets[idx] + 1) % wordsLen;
-                        this.seqCursor = (this.seqCursor + 1) % n;
-                    }
+        
+        // Frame-deterministic word swapping based on beat count
+        const beatCount = countBeatsUpToFrame(context);
+        const n = this.layout.length;
+        const wordsLen = this.words.length;
+        
+        if (wordsLen > 0 && n > 0) {
+            if (this.swapMode === 'all') {
+                // All words swap at once on each beat
+                this.globalOffset = (beatCount * this.swapStride) % wordsLen;
+            } else {
+                // Sequential: distribute beat counts across layout slots
+                this.perItemOffsets = new Array(n).fill(0);
+                const totalSwaps = beatCount * this.swapStride;
+                for (let i = 0; i < totalSwaps; i++) {
+                    const idx = i % n;
+                    this.perItemOffsets[idx] = (this.perItemOffsets[idx] + 1) % wordsLen;
                 }
+                this.seqCursor = totalSwaps % n;
             }
         }
-        this.lastBeat = beatVal;
+        
         // Background explicit override
         const bgHue = getAnimated(animated, 'background.hue', null as any);
         if (Number.isFinite(bgHue as any)) this.bgHue = ((Number(bgHue) % 360) + 360) % 360;

@@ -172,6 +172,44 @@ export const SCENE_ANIMATABLES: Record<string, AnimatablePropertyMeta[]> = {
         { propertyPath: 'word.glow.sat', label: 'Glow Sat', type: 'number', default: 0, min: 0, max: 100, step: 1, group: 'Glow' },
         { propertyPath: 'word.glow.light', label: 'Glow Light', type: 'number', default: 100, min: 0, max: 100, step: 1, group: 'Glow' },
     ],
+    portraitMask: [
+        // Fit
+        { propertyPath: 'fit.scale', label: 'Fit Scale', type: 'number', default: 1, min: 0.2, max: 4, step: 0.01, group: 'Fit' },
+        // Layout basics
+        { propertyPath: 'layout.maxWords', label: 'Max Words', type: 'number', default: 120, min: 1, max: 1000, step: 1, group: 'Layout' },
+        { propertyPath: 'layout.minSize', label: 'Min Size (px)', type: 'number', default: 12, min: 6, max: 200, step: 1, group: 'Layout' },
+        { propertyPath: 'layout.maxSize', label: 'Max Size (px)', type: 'number', default: 64, min: 8, max: 400, step: 1, group: 'Layout' },
+    ],
+    // Alias for timeline type used by UI
+    imageMaskFill: [
+        // Scene transform (at top)
+        { propertyPath: 'scene.scale', label: 'Scene Scale (Zoom)', type: 'number', default: 1, min: 0.1, max: 10, step: 0.01, group: 'A_Scene' },
+
+        // Background (solid color layer over image)
+        { propertyPath: 'background.hue', label: 'BG Hue', type: 'number', default: 210, min: 0, max: 360, step: 1, group: 'Background' },
+        { propertyPath: 'background.sat', label: 'BG Sat', type: 'number', default: 30, min: 0, max: 100, step: 1, group: 'Background' },
+        { propertyPath: 'background.light', label: 'BG Light', type: 'number', default: 12, min: 0, max: 100, step: 1, group: 'Background' },
+        { propertyPath: 'background.opacity', label: 'BG Opacity', type: 'number', default: 0.25, min: 0, max: 1, step: 0.01, group: 'Background' },
+
+        // Image layer
+        { propertyPath: 'image.opacity', label: 'Image Opacity', type: 'number', default: 1, min: 0, max: 1, step: 0.01, group: 'Image' },
+        { propertyPath: 'image.desaturation', label: 'Image Desaturation', type: 'number', default: 0, min: 0, max: 1, step: 0.01, group: 'Image' },
+
+        // Mask morphing
+        { propertyPath: 'mask.thresholdOverride', label: 'Mask Threshold (anim)', type: 'number', default: 0.5, min: 0, max: 1, step: 0.01, group: 'Mask' },
+        
+        // Layout
+        { propertyPath: 'layout.maxWords', label: 'Max Words', type: 'number', default: 120, min: 1, max: 1000, step: 1, group: 'Layout' },
+        { propertyPath: 'layout.minSize', label: 'Min Size (px)', type: 'number', default: 12, min: 6, max: 200, step: 1, group: 'Layout' },
+        { propertyPath: 'layout.maxSize', label: 'Max Size (px)', type: 'number', default: 64, min: 8, max: 400, step: 1, group: 'Layout' },
+
+        // Word swapping
+        { propertyPath: 'beatThreshold', label: 'Beat Threshold', type: 'number', default: 0.07, min: 0, max: 1, step: 0.001, group: 'Word Swapping' },
+
+        // Words
+        { propertyPath: 'word.scale', label: 'Word Scale', type: 'number', default: 1, min: 0, max: 5, step: 0.01, group: 'Word' },
+        { propertyPath: 'word.opacity', label: 'Word Opacity', type: 'number', default: 1, min: 0, max: 1, step: 0.01, group: 'Word' },
+    ],
 };
 
 

@@ -73,6 +73,10 @@ const cancelRename = () => {
                         <span class="icon">🌥️</span>
                         <span>WordCloud</span>
                     </button>
+                    <button @click="handleAdd('imageMaskFill')" class="dropdown-item">
+                        <span class="icon">🖼️</span>
+                        <span>Portrait Mask Fill</span>
+                    </button>
                     <button @click="handleAdd('wordSphere')" class="dropdown-item">
                         <span class="icon">🌐</span>
                         <span>3D Sphere</span>
@@ -140,16 +144,12 @@ const cancelRename = () => {
                     <div class="shortcut-desc">Resize</div>
                 </div>
                 <div class="shortcut-box">
-                    <div class="shortcut-key">Alt + edge</div>
-                    <div class="shortcut-desc">Transition</div>
+                    <div class="shortcut-key">Shift-drag</div>
+                    <div class="shortcut-desc">Select multiple keyframes</div>
                 </div>
                 <div class="shortcut-box">
-                    <div class="shortcut-key">Double-click</div>
-                    <div class="shortcut-desc">Rename</div>
-                </div>
-                <div class="shortcut-box">
-                    <div class="shortcut-key">Space + drag</div>
-                    <div class="shortcut-desc">Pan</div>
+                    <div class="shortcut-key">Drag bottom</div>
+                    <div class="shortcut-desc">Resize lane</div>
                 </div>
                 <div class="shortcut-box">
                     <div class="shortcut-key">⌘ + wheel</div>

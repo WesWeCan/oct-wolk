@@ -31,7 +31,7 @@ export interface RenderConfigureMessage {
     type: 'configure';
     seed: string;
     words: string[];
-    sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d';
+    sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d' | 'portraitMask';
     fontFamilyChain?: string;
     fps?: number;
 }
@@ -39,8 +39,8 @@ export interface RenderConfigureMessage {
 export interface RenderConfigureMixMessage {
     type: 'configureMix';
     seed: string;
-    a: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d'; params: Record<string, any> };
-    b?: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d'; params: Record<string, any> };
+    a: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d' | 'portraitMask'; params: Record<string, any> };
+    b?: { sceneType: 'wordcloud' | 'singleWord' | 'wordSphere' | 'model3d' | 'portraitMask'; params: Record<string, any> };
     fontFamilyChain?: string;
     fps?: number;
 }
@@ -66,12 +66,14 @@ import { WordCloudScene } from './scenes/WordCloudScene';
 import { SingleWordScene } from './scenes/SingleWordScene';
 import { WordSphereScene } from './scenes/WordSphereScene';
 import { ModelScene } from './scenes/ModelScene';
+import { PortraitMaskScene } from './scenes/PortraitMaskScene';
 
 // register scenes
 registerScene('wordcloud', () => new WordCloudScene());
 registerScene('singleWord', () => new SingleWordScene());
 registerScene('wordSphere', () => new WordSphereScene());
 registerScene('model3d', () => new ModelScene());
+registerScene('portraitMask', () => new PortraitMaskScene());
 
 const engine = new SceneEngine();
 async function ensureWorkerFont(localUrl: string, familyName: string): Promise<void> {
@@ -149,6 +151,16 @@ const handleDispose = () => {
     configured = false;
 };
 
+// Keep last scene configs to allow hot-reconfigure on mask updates
+let lastConfigA: { sceneType: SceneType; params: Record<string, any> } | null = null;
+let lastConfigB: { sceneType: SceneType; params: Record<string, any> } | null = null;
+let currentMaskBitmap: ImageBitmap | null = null;
+
+const normalizeSceneType = (t: any): SceneType => {
+    if (t === 'imageMaskFill') return 'portraitMask';
+    return t as SceneType;
+};
+
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     const msg = event.data;
     switch (msg.type) {
@@ -161,7 +173,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         case 'configure':
             configured = true;
             words = Array.isArray(msg.words) ? msg.words.slice(0, 500) : [];
-            sceneType = msg.sceneType as any;
+            sceneType = normalizeSceneType(msg.sceneType) as any;
             fontFamilyChain = String(msg.fontFamilyChain || 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif');
             fps = Math.max(1, (msg.fps as any) | 0) || 60;
             if (ctx2d) {
@@ -169,13 +181,14 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
                 // Try load project font if provided via params
                 const localUrl = (msg as any)?.a?.params?.fontLocalPath || (msg as any)?.b?.params?.fontLocalPath || '';
                 await ensureWorkerFont(String(localUrl || ''), 'ProjectFont');
+                lastConfigA = { type: sceneType as any, params: { words, fontFamilyChain, maskBitmap: currentMaskBitmap } } as any;
                 engine.configure({
                     seed: String(msg.seed || 'seed'),
                     resolution: { width: canvasWidth, height: canvasHeight },
                     fontFamilyChain,
                     fps,
                     sceneType: sceneType as any,
-                    params: { words, fontFamilyChain },
+                    params: { words, fontFamilyChain, maskBitmap: currentMaskBitmap },
                 });
             }
             break;
@@ -187,15 +200,23 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
                 engine.attachTarget(ctx2d);
                 const localUrl = (msg as any)?.a?.params?.fontLocalPath || (msg as any)?.b?.params?.fontLocalPath || '';
                 await ensureWorkerFont(String(localUrl || ''), 'ProjectFont');
+                // Remember last configs to reapply mask updates
+                const aType = normalizeSceneType((msg as any).a.sceneType);
+                const bType = (msg as any).b ? normalizeSceneType((msg as any).b.sceneType) : null;
+                lastConfigA = { type: aType, params: { ...(msg as any).a.params, maskBitmap: currentMaskBitmap } } as any;
+                lastConfigB = (msg as any).b ? { type: bType as SceneType, params: { ...(msg as any).b.params, maskBitmap: currentMaskBitmap } } as any : null;
                 engine.configure({
                     seed: String((msg as any).seed || 'seed'),
                     resolution: { width: canvasWidth, height: canvasHeight },
                     fontFamilyChain,
                     fps,
-                    sceneType: (msg as any).a.sceneType,
-                    params: (msg as any).a.params,
+                    sceneType: aType,
+                    params: { ...(msg as any).a.params, maskBitmap: currentMaskBitmap },
                 });
-                engine.configureMix({ type: (msg as any).a.sceneType, params: (msg as any).a.params }, (msg as any).b ? { type: (msg as any).b.sceneType, params: (msg as any).b.params } : undefined);
+                engine.configureMix(
+                    { type: aType, params: { ...(msg as any).a.params, maskBitmap: currentMaskBitmap } },
+                    (msg as any).b ? { type: bType as SceneType, params: { ...(msg as any).b.params, maskBitmap: currentMaskBitmap } } : undefined
+                );
             }
             break;
         case 'dispose':

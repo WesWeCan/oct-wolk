@@ -442,6 +442,41 @@ const setColorFromPicker = (prefix: string, hex: string) => {
     }
 };
 
+const uploadPortrait = async () => {
+    try {
+        uploadError.value = null; uploading.value = true;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.jpg,.jpeg,.png,image/jpeg,image/png,webp,image/webp';
+        const picked = await new Promise<File | null>((resolve) => {
+            input.onchange = () => resolve(input.files && input.files[0] ? input.files[0] : null);
+            input.click();
+        });
+        if (!picked) { uploading.value = false; return; }
+        const songId = (route.params.songId as string) || '';
+        // Delete old mask if one exists
+        const currentUrl = (props.sceneParams as any)?.maskImageUrl;
+        if (currentUrl) { 
+            try { 
+                const name = String(currentUrl).split('/').pop() || ''; 
+                await SongService.deleteAsset(songId, name); 
+            } catch {} 
+        }
+        const ext = (picked.name.split('.').pop() || '').toLowerCase();
+        const preferred = `mask_${Date.now()}.${ext || 'png'}`;
+        const res = await SongService.uploadAsset(songId, picked, preferred);
+        const p: Record<string, any> = { ...(props.sceneParams || {}) };
+        p.maskImageUrl = res.url;
+        p.mask = { ...(p.mask || {}), preview: false }; // switch to word view after upload
+        emit('update:sceneParams', p);
+        // Scene will load image from maskImageUrl via loadMaskFromUrl()
+    } catch (e: any) {
+        uploadError.value = String(e?.message || 'Upload failed');
+    } finally {
+        uploading.value = false;
+    }
+};
+
 </script>
 
 <template>
@@ -523,7 +558,44 @@ const setColorFromPicker = (prefix: string, hex: string) => {
             </label>
             
             
-
+            <div v-if="selectedScene.type === 'imageMaskFill'" class="form-row">
+                <div class="section-title">Portrait Mask</div>
+                <button @click="uploadPortrait" :disabled="uploading">{{ uploading ? 'Uploading…' : 'Upload portrait image…' }}</button>
+                <div class="hint">JPG/PNG/WebP. Large images will be scaled to render size.</div>
+                <div v-if="uploadError" class="error">{{ uploadError }}</div>
+                <div v-if="(sceneParams as any)?.maskImageUrl" class="current-assets">
+                    Mask: {{ (sceneParams as any)?.maskImageUrl || '—' }}
+                </div>
+                <div class="form-row">
+                    <label class="inline"><input type="checkbox" :checked="!!(sceneParams as any)?.mask?.preview" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), mask: { ...((sceneParams as any)?.mask||{}), preview: !!e.target.checked } })"/> Preview mask overlay</label>
+                </div>
+                <div class="form-row">
+                    <label>Threshold <input type="number" min="0" max="1" step="0.01" :value="Number((sceneParams as any)?.mask?.threshold ?? 0.5)" @input="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), mask: { ...((sceneParams as any)?.mask||{}), threshold: Math.max(0, Math.min(1, Number(e.target.value)||0.5)) } })"/></label>
+                    <label>Posterize <input type="number" min="1" max="16" step="1" :value="Number((sceneParams as any)?.mask?.posterizeLevels ?? 2)" @input="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), mask: { ...((sceneParams as any)?.mask||{}), posterizeLevels: Math.max(1, Math.min(16, Number(e.target.value)||2)) } })"/></label>
+                    <label>Blur <input type="number" min="0" max="16" step="1" :value="Number((sceneParams as any)?.mask?.blur ?? 0)" @input="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), mask: { ...((sceneParams as any)?.mask||{}), blur: Math.max(0, Math.min(16, Number(e.target.value)||0)) } })"/></label>
+                    <label class="inline"><input type="checkbox" :checked="!!(sceneParams as any)?.mask?.invert" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), mask: { ...((sceneParams as any)?.mask||{}), invert: !!e.target.checked } })"/> Invert</label>
+                </div>
+                <div class="form-row">
+                    <label class="inline"><input type="checkbox" :checked="!!(sceneParams as any)?.colorFromImage" @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), colorFromImage: !!e.target.checked })"/> Use image colors for words</label>
+                </div>
+                
+                <details style="width:100%">
+                    <summary>Beat-driven Swapping</summary>
+                    <label>
+                        Mode
+                        <select :value="(sceneParams as any)?.swapMode || 'all'"
+                                @change="(e:any)=> emit('update:sceneParams', { ...(sceneParams||{}), swapMode: e.target.value === 'sequential' ? 'sequential' : 'all' })">
+                            <option value="all">All at once</option>
+                            <option value="sequential">Sequential</option>
+                        </select>
+                    </label>
+                    <label>
+                        Words per beat
+                        <input type="number" min="1" step="1" :value="Number((sceneParams && (sceneParams as any).swapStride) ?? 1)"
+                               @input="(e:any)=>{ const v=Math.max(1, Number(e.target.value)||1); emit('update:sceneParams', { ...(sceneParams||{}), swapStride: v|0 }); }" />
+                    </label>
+                </details>
+            </div>
             <div v-if="selectedScene.type === 'wordcloud'" class="form-row">
                 <label>
                     Layout
