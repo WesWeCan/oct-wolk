@@ -199,6 +199,51 @@ export function useRenderWorker(
     };
     
     /**
+     * Captures the current frame from the worker as a blob.
+     * Returns a promise that resolves with the frame blob.
+     */
+    const captureFrame = (frame: number): Promise<Blob> => {
+        return new Promise((resolve, reject) => {
+            if (!workerRef.value) {
+                reject(new Error('Worker not available'));
+                return;
+            }
+            
+            const timeout = setTimeout(() => {
+                workerRef.value?.removeEventListener('message', handler);
+                reject(new Error(`Frame capture timeout for frame ${frame}`));
+            }, 5000);
+            
+            const handler = (e: MessageEvent) => {
+                const data = e.data;
+                if (data?.type === 'frameCaptured' && data.frame === frame) {
+                    clearTimeout(timeout);
+                    workerRef.value?.removeEventListener('message', handler);
+                    if (data.error) {
+                        reject(new Error(data.error));
+                    } else if (data.arrayBuffer) {
+                        // Convert ArrayBuffer back to Blob
+                        const blob = new Blob([data.arrayBuffer], { type: 'image/png' });
+                        resolve(blob);
+                    } else if (data.blob) {
+                        resolve(data.blob);
+                    } else {
+                        reject(new Error('No blob or arrayBuffer received'));
+                    }
+                }
+            };
+            
+            workerRef.value.addEventListener('message', handler);
+            try {
+                workerRef.value.postMessage({ type: 'captureFrame', frame });
+            } catch (error) {
+                reject(new Error(`Failed to send capture message: ${error}`));
+                return;
+            }
+        });
+    };
+    
+    /**
      * Disposes the worker and cleans up resources.
      */
     const dispose = () => {
@@ -228,6 +273,7 @@ export function useRenderWorker(
         configureScene,
         sendFrame,
         onRenderComplete,
+        captureFrame,
         dispose,
     };
 }

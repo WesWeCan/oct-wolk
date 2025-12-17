@@ -500,6 +500,48 @@ ffmpeg -version`;
         }
     });
     
+    ipcMain.handle('export:copyAudioForExport', (_event, rootDir: string, audioPath: string) => {
+        try {
+            // Handle wolk:// protocol by converting to file path
+            // Audio files are stored as: songs/{songId}/audio.{ext} (not in an audio subfolder)
+            // Format: wolk://{songId}/audio.{ext}
+            let actualAudioPath = audioPath;
+            if (audioPath.startsWith('wolk://')) {
+                // Extract song ID and filename from wolk:// URL
+                // Format: wolk://{songId}/{filename} where filename is like "audio.mp3"
+                const match = audioPath.match(/wolk:\/\/([^\/]+)\/(.+)/);
+                if (match) {
+                    const [, songId, filename] = match;
+                    // Audio files are directly in the song folder, not in an audio subfolder
+                    actualAudioPath = path.join(getDocStoragePath(DOCUMENT_STORAGE_FOLDER.SONGS), songId, filename);
+                } else {
+                    return { success: false, error: `Invalid wolk:// URL format: ${audioPath}` };
+                }
+            } else if (audioPath.startsWith('file://')) {
+                actualAudioPath = audioPath.replace('file://', '');
+            }
+            
+            if (!fs.existsSync(actualAudioPath)) {
+                return { success: false, error: `Audio file not found at: ${actualAudioPath}` };
+            }
+            
+            // Create audio subfolder in export directory
+            const audioDir = path.join(rootDir, 'audio');
+            fs.mkdirSync(audioDir, { recursive: true });
+            
+            // Copy audio file to export/audio folder
+            const audioExt = path.extname(actualAudioPath);
+            const audioFileName = `audio${audioExt}`;
+            const destAudioPath = path.join(audioDir, audioFileName);
+            fs.copyFileSync(actualAudioPath, destAudioPath);
+            
+            return { success: true, audioPath: destAudioPath };
+        } catch (error) {
+            console.error('[export:copyAudioForExport] Failed to copy audio file:', error);
+            return { success: false, error: String(error) };
+        }
+    });
+    
     ipcMain.handle('export:assembleVideo', async (_event, framesDir: string, rootDir: string, fps: number, audioPath: string | null) => {
         try {
             // Ensure we have the cached ffmpeg path
@@ -514,42 +556,42 @@ ffmpeg -version`;
             const outputPath = path.join(rootDir, 'export.mp4');
             
             // Build ffmpeg arguments
+            // Order matters: all inputs first, then filters, then codecs, then output
             const args = [
                 '-y', // Overwrite output file
                 '-framerate', String(fps),
-                '-i', path.join(framesDir, 'frame_%06d.png'), // Input pattern
-                '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', // Ensure dimensions are divisible by 2
-                '-c:v', 'libx264',
-                '-pix_fmt', 'yuv420p',
-                '-preset', 'medium',
-                '-crf', '18', // High quality
-                '-movflags', '+faststart'
+                '-i', path.join(framesDir, 'frame_%06d.png'), // Video input pattern
             ];
             
-            // Add audio if provided
+            // Add audio input if provided (must come before filters/codecs)
+            // audioPath should already be a local file path (copied to export folder)
             if (audioPath) {
-                // Handle wolk:// protocol by converting to file path
-                let actualAudioPath = audioPath;
-                if (audioPath.startsWith('wolk://')) {
-                    // Extract song ID and filename from wolk:// URL
-                    // Format: wolk://songs/{songId}/audio/{filename}
-                    const match = audioPath.match(/wolk:\/\/songs\/([^\/]+)\/audio\/(.+)/);
-                    if (match) {
-                        const [, songId, filename] = match;
-                        actualAudioPath = path.join(getDocStoragePath(DOCUMENT_STORAGE_FOLDER.SONGS), songId, 'audio', filename);
-                    }
-                } else if (audioPath.startsWith('file://')) {
-                    actualAudioPath = audioPath.replace('file://', '');
-                }
-                
-                if (fs.existsSync(actualAudioPath)) {
-                    args.push('-i', actualAudioPath);
-                    args.push('-c:a', 'aac');
-                    args.push('-b:a', '192k');
-                    args.push('-shortest'); // End when shortest stream ends
+                // audioPath is already a local file path (from copyAudioForExport)
+                if (fs.existsSync(audioPath)) {
+                    args.push('-i', audioPath); // Audio input
+                } else {
+                    console.warn('Audio file not found at:', audioPath);
                 }
             }
             
+            // Video filters (must come after all inputs)
+            args.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2'); // Ensure dimensions are divisible by 2
+            
+            // Video codec options
+            args.push('-c:v', 'libx264');
+            args.push('-pix_fmt', 'yuv420p');
+            args.push('-preset', 'medium');
+            args.push('-crf', '18'); // High quality
+            args.push('-movflags', '+faststart');
+            
+            // Audio codec options (if audio was added)
+            if (audioPath && fs.existsSync(audioPath)) {
+                args.push('-c:a', 'aac');
+                args.push('-b:a', '192k');
+                args.push('-shortest'); // End when shortest stream ends
+            }
+            
+            // Output file (must be last)
             args.push(outputPath);
             
             // Run ffmpeg

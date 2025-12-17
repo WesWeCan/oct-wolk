@@ -602,13 +602,74 @@ const startExportProcess = async () => {
     const exportMode = timeline.value?.settings.exportMode || 'realtime';
     
     if (exportMode === 'frames') {
+        // Create a configure function for export that configures scene for a specific frame
+        const configureSceneForExportFrame = async (frame: number): Promise<{ isEmpty: boolean }> => {
+            if (!timeline.value) return { isEmpty: true };
+            
+            // Get active scenes for this frame (not playback.frame)
+            const active = frameEval.getActiveScenesAtFrame(frame);
+            
+            // Check if this is an empty frame (no active scene)
+            const isEmpty = active.a.id === 'none' && !active.b;
+            
+            if (isEmpty) {
+                return { isEmpty: true };
+            }
+            
+            const seed = String(timeline.value.settings.seed || 'seed');
+            
+            // Build font family chain
+            const primary = String(timeline.value.settings.fontFamily || 'system-ui');
+            const fallbacks = Array.isArray(timeline.value.settings.fontFallbacks)
+                ? timeline.value.settings.fontFallbacks as string[]
+                : [];
+            const names = [primary, ...fallbacks].filter(Boolean);
+            if (timeline.value.settings.fontLocalPath) names.unshift('ProjectFont');
+            const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
+            const fontFamilyChain = names.map(quote).join(', ');
+            const style = String(timeline.value.settings.fontStyle || 'normal');
+            const weight = (timeline.value.settings.fontWeight ?? 400) as any;
+            
+            // Ensure scene docs are loaded
+            if (active.a && active.a.id !== 'none') await scenes.ensureSceneDoc(active.a.id);
+            if (active.b && active.b.id !== 'none') await scenes.ensureSceneDoc(active.b.id);
+            
+            const pool = frameEval.getWordPoolAtFrame(frame);
+            const wordsA = (active.a && active.a.id !== 'none') ? pool : [];
+            const wordsB = (active.b && active.b.id !== 'none') ? pool : [];
+            
+            const aParamsBase = active.a && active.a.id !== 'none' ? (scenes.sceneDocs.value[active.a.id]?.params || {}) : null;
+            const bParamsBase = active.b && active.b.id !== 'none' ? (scenes.sceneDocs.value[active.b.id]?.params || {}) : null;
+            
+            const localPath = timeline.value.settings.fontLocalPath || null;
+            const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
+            const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
+            
+            // Always configure for export (don't check lastConfiguredKey since we're exporting)
+            renderWorker.configureScene({
+                seed,
+                fontFamilyChain,
+                a: {
+                    sceneType: active.a.type,
+                    params: aParams || {}
+                },
+                b: bParams && active.b ? {
+                    sceneType: active.b.type,
+                    params: bParams
+                } : null
+            });
+            
+            return { isEmpty: false };
+        };
+        
         // Frame-by-frame export
         await videoExport.startFrameExport(
             renderWorker,
             frameRenderer,
             drawPreview,
             fps.value,
-            maxFrame.value
+            maxFrame.value,
+            configureSceneForExportFrame
         );
     } else {
         // Real-time recording

@@ -351,6 +351,10 @@ export function useVideoExport(
         try {
             mediaRecorder?.stop();
             cancelFrameExport = true;
+            // If we're in frame export, update state to show cancellation
+            if (exportState.value.phase === 'recording' && frameExportContext) {
+                exportState.value.message = 'Stopping export...';
+            }
         } catch (error) {
             console.error('Failed to stop recording:', error);
         }
@@ -364,9 +368,13 @@ export function useVideoExport(
         frameRenderer: any,
         drawPreview: () => void,
         fps: number,
-        totalFrames: number
+        totalFrames: number,
+        configureSceneForFrame?: (frame: number) => Promise<{ isEmpty: boolean } | void>
     ) => {
         cancelFrameExport = false;
+        
+        // Declare workerMessageHandler outside try block so it's accessible in finally
+        let workerMessageHandler: ((e: MessageEvent) => void) | null = null;
         
         try {
             // Reset state
@@ -400,7 +408,7 @@ export function useVideoExport(
             
             // Create export folder
             exportState.value.message = 'Creating export folder...';
-            exportState.value.progress = 10;
+            exportState.value.progress = 5;
             
             const res = await (window as any).electronAPI.export.createFrameExport(songId.value);
             if (!res?.rootDir || !res?.framesDir) {
@@ -409,33 +417,105 @@ export function useVideoExport(
             
             const { rootDir, framesDir } = res;
             
+            // Copy audio file FIRST (before rendering) so we fail early if there's an issue
+            exportState.value.message = 'Copying audio file...';
+            exportState.value.progress = 10;
+            let copiedAudioPath: string | null = null;
+            const includeAudio = timeline.value.settings.includeAudio ?? true;
+            if (includeAudio) {
+                // Try to get the original audio path from the song
+                const songData = await (window as any).electronAPI.songs.load(songId.value);
+                let sourceAudioPath: string | null = null;
+                if (songData?.audioSrc) {
+                    sourceAudioPath = songData.audioSrc;
+                } else if (audioEl.value?.src && !audioEl.value.src.startsWith('blob:')) {
+                    sourceAudioPath = audioEl.value.src;
+                }
+                
+                // Copy audio file to export folder
+                if (sourceAudioPath) {
+                    try {
+                        // Check if the handler exists
+                        if (typeof (window as any).electronAPI?.export?.copyAudioForExport !== 'function') {
+                            console.warn('copyAudioForExport handler not available - backend may need restart');
+                            // Fallback: try to use the source path directly (will be handled in assembleVideo)
+                            copiedAudioPath = sourceAudioPath;
+                        } else {
+                            const copyResult = await (window as any).electronAPI.export.copyAudioForExport(rootDir, sourceAudioPath);
+                            if (copyResult?.success && copyResult?.audioPath) {
+                                copiedAudioPath = copyResult.audioPath;
+                            } else {
+                                console.warn('Failed to copy audio file:', copyResult?.error);
+                                // Fallback: use source path directly
+                                copiedAudioPath = sourceAudioPath;
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error copying audio file:', error);
+                        // Fallback: use source path directly (assembleVideo will handle conversion)
+                        copiedAudioPath = sourceAudioPath;
+                    }
+                }
+            }
+            
             // Store context for potential recovery after cancellation
             frameExportContext = { framesDir, rootDir, totalFrames, renderedFrames: 0 };
             
             // Start rendering frames
             exportState.value.phase = 'recording';
             exportState.value.message = 'Rendering frames...';
+            exportState.value.progress = 15;
             isRecording.value = true;
             
             const framePromises: Promise<void>[] = [];
             
             // Setup a promise that resolves when worker finishes rendering
             let resolveRender: (() => void) | null = null;
-            const renderCompleteHandler = () => {
+            const renderCompleteHandler = (frame: number) => {
                 if (resolveRender) {
                     resolveRender();
                     resolveRender = null;
                 }
             };
             
-            // Temporarily attach render complete listener
-            renderWorker.onRenderComplete(renderCompleteHandler);
+            // Store original handler and chain it with our export handler
+            // Note: onRenderComplete only supports one callback, so we need to chain manually
+            // We'll listen directly to worker messages instead
+            if (!renderWorker.workerRef.value) {
+                throw new Error('Worker not available for export');
+            }
+            workerMessageHandler = (e: MessageEvent) => {
+                const data = e.data;
+                if (data?.type === 'rendered') {
+                    renderCompleteHandler(data.frame);
+                }
+            };
+            renderWorker.workerRef.value.addEventListener('message', workerMessageHandler);
             
             // Trigger initial scene configuration to ensure everything is loaded
             exportState.value.message = 'Initializing scene...';
-            frameRenderer.sendFrameToWorker(0, 1 / fps);
-            await new Promise(resolve => setTimeout(resolve, 500)); // Wait for scene to initialize
             
+            // Wait for initialization frame to render
+            const initRenderPromise = new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('Initialization frame render timeout'));
+                }, 10000);
+                resolveRender = () => {
+                    clearTimeout(timeout);
+                    resolve();
+                    resolveRender = null;
+                };
+            });
+            frameRenderer.sendFrameToWorker(0, 1 / fps);
+            await initRenderPromise;
+            
+            // Track last rendered frame for copying empty frames
+            let lastRenderedFrameBlob: ArrayBuffer | null = null;
+            let lastRenderedFrameNumber = -1;
+            // Track empty frame buffer (rendered once, reused for all empty frames)
+            let emptyFrameBlob: ArrayBuffer | null = null;
+            
+            // Start from frame 0 (we already rendered it for initialization, but we need to capture it)
             for (let frame = 0; frame < totalFrames; frame++) {
                 // Check if cancel was requested
                 if (cancelFrameExport) {
@@ -446,48 +526,99 @@ export function useVideoExport(
                     throw new Error('Export cancelled by user');
                 }
                 
-                // Wait for this frame to render
-                const renderPromise = new Promise<void>((resolve) => {
-                    resolveRender = resolve;
-                });
-                
-                // Send frame to worker
-                frameRenderer.sendFrameToWorker(frame, 1 / fps);
-                
-                // Wait for worker to finish rendering this frame
-                await renderPromise;
-                
-                // Small delay to ensure canvas is updated
-                await new Promise(resolve => setTimeout(resolve, 10));
-                
-                // The renderCanvas is at full resolution (targetWidth x targetHeight)
-                // Even though control is transferred to worker, we can read pixel data
-                // We'll create a temporary canvas just for this capture
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = targetWidth;
-                tempCanvas.height = targetHeight;
-                const tempCtx = tempCanvas.getContext('2d');
-                
-                if (!tempCtx) {
-                    throw new Error('Failed to get temporary canvas context');
+                // Configure scene for this frame if configure function provided
+                let isEmpty = false;
+                if (configureSceneForFrame) {
+                    const result = await configureSceneForFrame(frame);
+                    isEmpty = result && typeof result === 'object' && result.isEmpty === true;
                 }
                 
-                // Copy from render canvas at full resolution
-                tempCtx.drawImage(renderCanvas.value!, 0, 0, targetWidth, targetHeight);
+                let arrayBuffer: ArrayBuffer;
+                const frameName = `frame_${String(frame).padStart(6, '0')}.png`;
                 
-                // Capture frame as PNG at full resolution
-                const blob = await new Promise<Blob | null>((resolve) => {
-                    tempCanvas.toBlob(resolve, 'image/png', 1.0);
-                });
-                
-                if (!blob) {
-                    throw new Error(`Failed to capture frame ${frame}`);
+                // Check if this is an empty frame
+                if (isEmpty) {
+                    // Empty frame - use cached empty frame or create one
+                    if (emptyFrameBlob) {
+                        // Reuse existing empty frame
+                        arrayBuffer = emptyFrameBlob.slice(0);
+                    } else {
+                        // Create empty frame programmatically (black frame)
+                        // Create a blank canvas and convert to PNG
+                        const blankCanvas = document.createElement('canvas');
+                        blankCanvas.width = targetWidth;
+                        blankCanvas.height = targetHeight;
+                        const blankCtx = blankCanvas.getContext('2d');
+                        if (!blankCtx) {
+                            throw new Error('Failed to create blank canvas context');
+                        }
+                        
+                        // Fill with black
+                        blankCtx.fillStyle = '#000000';
+                        blankCtx.fillRect(0, 0, targetWidth, targetHeight);
+                        
+                        // Convert to blob
+                        const blankBlob = await new Promise<Blob | null>((resolve) => {
+                            blankCanvas.toBlob(resolve, 'image/png', 1.0);
+                        });
+                        
+                        if (!blankBlob) {
+                            throw new Error('Failed to create empty frame');
+                        }
+                        
+                        emptyFrameBlob = await blankBlob.arrayBuffer();
+                        arrayBuffer = emptyFrameBlob.slice(0);
+                    }
+                } else {
+                    // Render this frame
+                    // Wait for this frame to render - set up promise BEFORE sending frame
+                    const renderPromise = new Promise<void>((resolve, reject) => {
+                        // Add timeout to detect stuck renders
+                        const timeout = setTimeout(() => {
+                            if (cancelFrameExport) {
+                                reject(new Error('Export cancelled'));
+                            } else {
+                                reject(new Error(`Frame ${frame} render timeout`));
+                            }
+                        }, 10000); // 10 second timeout
+                        
+                        resolveRender = () => {
+                            clearTimeout(timeout);
+                            resolve();
+                            resolveRender = null;
+                        };
+                    });
+                    
+                    // Send frame to worker
+                    frameRenderer.sendFrameToWorker(frame, 1 / fps);
+                    
+                    // Wait for worker to finish rendering this frame
+                    await renderPromise;
+                    
+                    // Small delay to ensure render is fully complete before capture
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    
+                    // Check cancellation again before capture
+                    if (cancelFrameExport) {
+                        throw new Error('Export cancelled by user');
+                    }
+                    
+                    // Capture frame from worker (canvas is OffscreenCanvas, so we need worker to send it back)
+                    const blob = await renderWorker.captureFrame(frame);
+                    
+                    if (!blob) {
+                        throw new Error(`Failed to capture frame ${frame}`);
+                    }
+                    
+                    // Convert to ArrayBuffer
+                    arrayBuffer = await blob.arrayBuffer();
+                    
+                    // Store for potential copying
+                    lastRenderedFrameBlob = arrayBuffer;
+                    lastRenderedFrameNumber = frame;
                 }
                 
                 // Save frame
-                const arrayBuffer = await blob.arrayBuffer();
-                const frameName = `frame_${String(frame).padStart(6, '0')}.png`;
-                
                 framePromises.push(
                     (window as any).electronAPI.export.saveFrame(framesDir, frameName, arrayBuffer)
                 );
@@ -495,8 +626,8 @@ export function useVideoExport(
                 // Track rendered frames
                 frameExportContext!.renderedFrames = frame + 1;
                 
-                // Update progress
-                const progress = 10 + Math.floor((frame / totalFrames) * 70);
+                // Update progress (15-85% for rendering, audio already done)
+                const progress = 15 + Math.floor((frame / totalFrames) * 70);
                 exportState.value.progress = progress;
                 exportState.value.message = `Rendering frames... ${frame + 1} / ${totalFrames}`;
                 
@@ -515,24 +646,18 @@ export function useVideoExport(
             isRecording.value = false;
             
             // Assemble video with ffmpeg
+            // Note: Audio is only added during this final assembly phase.
+            // If export is stopped early, frames will be saved but video won't have audio.
             exportState.value.phase = 'encoding';
             exportState.value.progress = 85;
             exportState.value.message = 'Assembling video with ffmpeg...';
             
-            const includeAudio = timeline.value.settings.includeAudio ?? true;
-            // Get audio path - use the actual audio source path, not blob URL
-            let audioPath: string | null = null;
-            if (includeAudio && audioEl.value?.src) {
-                // Try to get the original audio path from the song
-                const songData = await (window as any).electronAPI.songs.load(songId.value);
-                audioPath = songData?.audioSrc || audioEl.value.src;
-            }
-            
+            // Use the audio path we copied earlier
             const assembleResult = await (window as any).electronAPI.export.assembleVideo(
                 framesDir,
                 rootDir,
                 fps,
-                audioPath
+                copiedAudioPath
             );
             
             if (!assembleResult?.success) {
@@ -638,6 +763,11 @@ export function useVideoExport(
                 error: error instanceof Error ? error.message : String(error)
             };
             frameExportContext = null;
+        } finally {
+            // Clean up worker message listener
+            if (renderWorker.workerRef.value && workerMessageHandler) {
+                renderWorker.workerRef.value.removeEventListener('message', workerMessageHandler);
+            }
         }
     };
     

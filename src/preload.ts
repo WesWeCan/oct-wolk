@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         cleanupFrames: (framesDir: string) => ipcRenderer.invoke('export:cleanupFrames', framesDir),
         createFrameExport: (songId: string) => ipcRenderer.invoke('export:createFrameExport', songId),
         saveFrame: (framesDir: string, frameName: string, frameData: ArrayBuffer) => ipcRenderer.invoke('export:saveFrame', framesDir, frameName, frameData),
+        copyAudioForExport: (rootDir: string, audioPath: string) => ipcRenderer.invoke('export:copyAudioForExport', rootDir, audioPath),
         assembleVideo: (framesDir: string, rootDir: string, fps: number, audioPath: string | null) => ipcRenderer.invoke('export:assembleVideo', framesDir, rootDir, fps, audioPath),
     },
 

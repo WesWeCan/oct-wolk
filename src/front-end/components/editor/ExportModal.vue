@@ -75,7 +75,7 @@ const progressBarStyle = computed(() => {
                             <span class="mode-title">Real-time</span>
                             <span class="mode-desc">Record while playing</span>
                         </button>
-                        <!-- <button 
+                        <button 
                             :class="['export-modal__mode-option', { active: exportMode === 'frames' }]"
                             @click="emit('updateExportMode', 'frames')"
                             :disabled="state.phase !== 'idle' && state.phase !== 'preparing'"
@@ -83,7 +83,7 @@ const progressBarStyle = computed(() => {
                             <span class="mode-icon">🖼</span>
                             <span class="mode-title">Frame-by-Frame</span>
                             <span class="mode-desc">Lossless, faster, no drops</span>
-                        </button> -->
+                        </button>
                     </div>
                 </div>
 

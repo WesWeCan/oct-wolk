@@ -27,6 +27,11 @@ export interface RenderDisposeMessage {
     type: 'dispose';
 }
 
+export interface RenderCaptureFrameMessage {
+    type: 'captureFrame';
+    frame: number;
+}
+
 export interface RenderConfigureMessage {
     type: 'configure';
     seed: string;
@@ -45,7 +50,7 @@ export interface RenderConfigureMixMessage {
     fps?: number;
 }
 
-type WorkerMessage = RenderInitMessage | RenderFrameMessage | RenderDisposeMessage | RenderConfigureMessage | RenderConfigureMixMessage;
+type WorkerMessage = RenderInitMessage | RenderFrameMessage | RenderDisposeMessage | RenderConfigureMessage | RenderConfigureMixMessage | RenderCaptureFrameMessage;
 
 let ctx2d: OffscreenCanvasRenderingContext2D | null = null;
 let canvasRef: OffscreenCanvas | null = null;
@@ -144,6 +149,28 @@ const handleFrame = (msg: RenderFrameMessage) => {
     try { (self as any).postMessage({ type: 'rendered', frame }); } catch {}
 };
 
+const handleCaptureFrame = async (msg: RenderCaptureFrameMessage) => {
+    if (!canvasRef) {
+        try { (self as any).postMessage({ type: 'frameCaptured', frame: msg.frame, blob: null, error: 'Canvas not available' }); } catch {}
+        return;
+    }
+    try {
+        // Convert OffscreenCanvas to blob
+        const blob = await canvasRef.convertToBlob({ type: 'image/png', quality: 1.0 });
+        // Transfer blob to main thread
+        // Convert blob to ArrayBuffer for more reliable transfer
+        try {
+            const arrayBuffer = await blob.arrayBuffer();
+            (self as any).postMessage({ type: 'frameCaptured', frame: msg.frame, arrayBuffer }, [arrayBuffer]);
+        } catch (postError) {
+            // Try sending error message
+            try { (self as any).postMessage({ type: 'frameCaptured', frame: msg.frame, blob: null, error: `Failed to transfer blob: ${postError}` }); } catch {}
+        }
+    } catch (error) {
+        try { (self as any).postMessage({ type: 'frameCaptured', frame: msg.frame, blob: null, error: String(error) }); } catch {}
+    }
+};
+
 const handleDispose = () => {
     engine.dispose();
     ctx2d = null;
@@ -217,6 +244,13 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
                     { type: aType, params: { ...(msg as any).a.params, maskBitmap: currentMaskBitmap } },
                     (msg as any).b ? { type: bType as SceneType, params: { ...(msg as any).b.params, maskBitmap: currentMaskBitmap } } : undefined
                 );
+            }
+            break;
+        case 'captureFrame':
+            try {
+                await handleCaptureFrame(msg);
+            } catch (error) {
+                try { (self as any).postMessage({ type: 'frameCaptured', frame: (msg as any).frame, blob: null, error: String(error) }); } catch {}
             }
             break;
         case 'dispose':
