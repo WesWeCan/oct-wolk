@@ -32,9 +32,12 @@ import { useActionTracks } from '@/front-end/composables/editor/useActionTracks'
 import { useWordPoolMarkers } from '@/front-end/composables/editor/useWordPoolMarkers';
 import { SCENE_ANIMATABLES } from '@/front-end/workers/scenes/animatables';
 
-// Utils
-import { hashWords } from '@/front-end/utils/hash/hashWords';
-import { stableStringify } from '@/front-end/utils/hash/stableStringify';
+// Extracted composables
+import { useWorkerSceneConfig } from '@/front-end/composables/editor/useWorkerSceneConfig';
+import { usePreviewCanvas } from '@/front-end/composables/editor/usePreviewCanvas';
+import { usePlaybackSync } from '@/front-end/composables/editor/usePlaybackSync';
+import { useExportSceneConfig } from '@/front-end/composables/editor/useExportSceneConfig';
+
 
 // ===== ROUTE & CORE STATE =====
 
@@ -138,250 +141,45 @@ const overlayOpts = ref<{ showEnergy: boolean; showOnsets: boolean; showBeats?: 
     showBeats: false
 });
 
-// ===== WORKER CONFIGURATION =====
+// ===== WORKER CONFIGURATION (delegated to composable) =====
 
-let lastConfiguredKey = '';
+const workerSceneConfig = useWorkerSceneConfig(timeline, playback, frameEval, scenes, renderWorker);
+const { configureWorkerScene, needsReconfigure } = workerSceneConfig;
 
-/**
- * Computes a configuration key to detect when worker needs reconfiguration.
- */
-const computeConfigKeyForFrame = (f: number): string => {
-    const mix = frameEval.getActiveScenesAtFrame(f);
-    const pairKey = (mix.a?.id || 'none') + '|' + (mix.b?.id || '');
-    
-    const pool = frameEval.getWordPoolAtFrame(f);
-    const wordsKey = 'pool:' + hashWords(pool);
-    
-    // Include params hash so inspector changes trigger reconfiguration
-    const aParams = mix.a && mix.a.id !== 'none' ? (scenes.sceneDocs.value[mix.a.id]?.params || {}) : {};
-    const bParams = mix.b && mix.b.id !== 'none' ? (scenes.sceneDocs.value[mix.b.id]?.params || {}) : {};
-    
-    const exclude = new Set<string>(['words']);
-    const aKey = stableStringify(aParams, exclude);
-    const bKey = stableStringify(bParams, exclude);
-    const paramsKey = `a:${aKey}|b:${bKey}`;
+// ===== PREVIEW RENDERING (delegated to composable) =====
 
-    // Ensure font changes also trigger reconfiguration
-    const ffPrimary = String(timeline.value?.settings.fontFamily || '');
-    const ffFallbacks = Array.isArray(timeline.value?.settings.fontFallbacks) ? (timeline.value?.settings.fontFallbacks as string[]).join('|') : '';
-    const ffLocal = String(timeline.value?.settings.fontLocalPath || '');
-    const fontKey = `font:${ffPrimary}|${ffFallbacks}|${ffLocal}`;
+const previewCanvasComposable = usePreviewCanvas(renderCanvas, previewCanvas, targetWidth, targetHeight);
+const { drawPreview } = previewCanvasComposable;
 
-    return pairKey + '|' + wordsKey + '|' + paramsKey + '|' + fontKey;
-};
+// ===== PLAYBACK CONTROL (delegated to composable) =====
 
-/**
- * Configures the worker with current scene mix and word pool.
- */
-const configureWorkerScene = async () => {
-    if (!timeline.value) return;
-    
-    const seed = String(timeline.value.settings.seed || 'seed');
-    
-    // Build font family chain
-    const primary = String(timeline.value.settings.fontFamily || 'system-ui');
-    const fallbacks = Array.isArray(timeline.value.settings.fontFallbacks)
-        ? timeline.value.settings.fontFallbacks as string[]
-        : [];
-    const names = [primary, ...fallbacks].filter(Boolean);
-    // Prepend project font if available
-    if (timeline.value.settings.fontLocalPath) names.unshift('ProjectFont');
-    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
-    const fontFamilyChain = names.map(quote).join(', ');
-    const style = String(timeline.value.settings.fontStyle || 'normal');
-    const weight = (timeline.value.settings.fontWeight ?? 400) as any;
-    
-    const frame = playback.frame.value;
-    const active = frameEval.getActiveScenesAtFrame(frame);
-    
-    // Ensure scene docs are loaded
-    if (active.a && active.a.id !== 'none') await scenes.ensureSceneDoc(active.a.id);
-    if (active.b && active.b.id !== 'none') await scenes.ensureSceneDoc(active.b.id);
-    
-    const pool = frameEval.getWordPoolAtFrame(frame);
-    const wordsA = (active.a && active.a.id !== 'none') ? pool : [];
-    const wordsB = (active.b && active.b.id !== 'none') ? pool : [];
-    
-    const aParamsBase = active.a && active.a.id !== 'none' ? (scenes.sceneDocs.value[active.a.id]?.params || {}) : null;
-    const bParamsBase = active.b && active.b.id !== 'none' ? (scenes.sceneDocs.value[active.b.id]?.params || {}) : null;
-    
-    const localPath = timeline.value.settings.fontLocalPath || null;
-    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
-    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
-    
-    const configKey = computeConfigKeyForFrame(frame);
-    
-    if (active.a.id === 'none' && !active.b) {
-        lastConfiguredKey = configKey;
-        return;
-    }
-    
-    if (configKey === lastConfiguredKey) return;
-    
-    lastConfiguredKey = configKey;
-    
-    renderWorker.configureScene({
-        seed,
-        fontFamilyChain,
-        a: {
-            sceneType: active.a.type,
-            params: aParams || {}
-        },
-        b: bParams && active.b ? {
-            sceneType: active.b.type,
-            params: bParams
-        } : null
-    });
-};
+const playbackSync = usePlaybackSync(
+    fps,
+    playback,
+    audioPlayer,
+    frameRenderer,
+    needsReconfigure,
+    configureWorkerScene,
+);
+playbackSync.setupTick();
 
-// ===== PREVIEW RENDERING =====
-
-/**
- * Draws the preview canvas from the render canvas.
- */
-const drawPreview = () => {
-    const src = renderCanvas.value;
-    const dst = previewCanvas.value;
-    if (!src || !dst) return;
-    
-    const wrapper = dst.parentElement;
-    if (!wrapper) return;
-    
-    const container = wrapper.parentElement; // monitor-display
-    if (!container) return;
-    
-    const ctx = dst.getContext('2d');
-    if (!ctx) return;
-    
-    const rw = targetWidth.value;
-    const rh = targetHeight.value;
-    const aspectRatio = rw / rh;
-    
-    // Get available space from container (minus padding)
-    const maxW = container.clientWidth - 32; // 16px padding each side
-    const maxH = container.clientHeight - 32;
-    
-    // Calculate display size maintaining aspect ratio
-    let displayW = maxW;
-    let displayH = maxW / aspectRatio;
-    
-    if (displayH > maxH) {
-        displayH = maxH;
-        displayW = maxH * aspectRatio;
-    }
-    
-    // Set canvas to exact display size (no black bars)
-    const w = dst.width = Math.floor(displayW);
-    const h = dst.height = Math.floor(displayH);
-    
-    ctx.clearRect(0, 0, w, h);
-    try {
-        ctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, w, h);
-    } catch {}
-};
-
-// Watch for preview canvas resize
-let previewResizeObserver: ResizeObserver | null = null;
-let containerResizeObserver: ResizeObserver | null = null;
-
-watch(previewCanvas, (canvas) => {
-    if (previewResizeObserver) {
-        previewResizeObserver.disconnect();
-        previewResizeObserver = null;
-    }
-    
-    if (canvas) {
-        previewResizeObserver = new ResizeObserver(() => {
-            drawPreview();
-        });
-        previewResizeObserver.observe(canvas);
-        
-        // Also observe the monitor-display container
-        const wrapper = canvas.parentElement;
-        const container = wrapper?.parentElement;
-        if (container && !containerResizeObserver) {
-            containerResizeObserver = new ResizeObserver(() => {
-                drawPreview();
-            });
-            containerResizeObserver.observe(container);
-        }
-        
-        // Initial draw when canvas is mounted
-        nextTick(() => drawPreview());
-    }
-});
-
-// Watch for render dimension changes
-watch([targetWidth, targetHeight], () => {
-    nextTick(() => drawPreview());
-});
-
-// ===== PLAYBACK CONTROL =====
-let lastPlayStartAtFrame = 0;
-let lastPlayStartTs = 0;
-const SYNC_SUPPRESS_MS = 300; // allow audio currentTime to advance before enforcing sync
-const SYNC_DRIFT_FRAMES = 2;  // only resync if off by > 2 frames
-
-/**
- * Playback tick callback - sends frame data to worker.
- */
-playback.onTick((_frame, dt) => {
-    // Always derive the timeline frame from audio currentTime when available
-    let frameToRender = playback.frame.value;
-    if (audioPlayer.audioEl.value) {
-        const t = audioPlayer.audioEl.value.currentTime;
-        frameToRender = Math.max(0, Math.round(t * Math.max(1, fps.value)));
-        if (frameToRender !== playback.frame.value) {
-            playback.scrubToFrame(frameToRender);
-        }
-    }
-
-    // Reconfigure scene if needed based on the frame we will render
-    const cfgKey = computeConfigKeyForFrame(frameToRender);
-    if (cfgKey !== lastConfiguredKey) {
-        configureWorkerScene();
-    }
-
-    // Send frame-to-render to worker
-    frameRenderer.sendFrameToWorker(frameToRender, dt);
-});
-
-// Render completion callback
 renderWorker.onRenderComplete(() => {
     drawPreview();
 });
 
 const play = async () => {
-    if (!renderWorker.isReady.value) return;
-    if (maxFrame.value <= 0) return;
-    
-    // Sync audio
-    if (audioPlayer.audioReady.value) {
-        const timeSec = playback.frame.value / Math.max(1, fps.value);
-        await audioPlayer.seekTo(timeSec);
-        await audioPlayer.play();
-    }
-    
-    // Record play start for sync suppression window
-    lastPlayStartAtFrame = playback.frame.value;
-    lastPlayStartTs = performance.now();
-    
-    playback.play();
+    await playbackSync.play(maxFrame.value, renderWorker.isReady.value);
 };
 
 const pause = () => {
-    playback.pause();
-    audioPlayer.pause();
+    playbackSync.pause();
 };
 
 const stop = () => {
-    playback.stop();
-    audioPlayer.stop();
-    
-    // Update preview for frame 0
-    frameRenderer.sendFrameToWorker(0, 0);
-    
-    requestAnimationFrame(() => drawPreview());
+    playbackSync.stop(
+        (f, dt) => frameRenderer.sendFrameToWorker(f, dt),
+        drawPreview,
+    );
 };
 
 // ===== TIMELINE HANDLERS =====
@@ -390,13 +188,10 @@ const onScrub = async (payload: { timeSec: number; frame: number }) => {
     await audioPlayer.seekTo(payload.timeSec);
     playback.scrubToFrame(payload.frame);
     
-    // Check if reconfiguration needed
-    const cfgKey = computeConfigKeyForFrame(payload.frame);
-    if (cfgKey !== lastConfiguredKey) {
+    if (needsReconfigure(payload.frame)) {
         await configureWorkerScene();
     }
     
-    // Update preview immediately
     frameRenderer.sendFrameToWorker(payload.frame, 0);
     
     requestAnimationFrame(() => drawPreview());
@@ -598,78 +393,19 @@ const reanalyze = async () => {
     } catch (e) {}
 };
 
+const exportSceneConfig = useExportSceneConfig(timeline, frameEval, scenes, renderWorker);
+
 const startExportProcess = async () => {
     const exportMode = timeline.value?.settings.exportMode || 'realtime';
     
     if (exportMode === 'frames') {
-        // Create a configure function for export that configures scene for a specific frame
-        const configureSceneForExportFrame = async (frame: number): Promise<{ isEmpty: boolean }> => {
-            if (!timeline.value) return { isEmpty: true };
-            
-            // Get active scenes for this frame (not playback.frame)
-            const active = frameEval.getActiveScenesAtFrame(frame);
-            
-            // Check if this is an empty frame (no active scene)
-            const isEmpty = active.a.id === 'none' && !active.b;
-            
-            if (isEmpty) {
-                return { isEmpty: true };
-            }
-            
-            const seed = String(timeline.value.settings.seed || 'seed');
-            
-            // Build font family chain
-            const primary = String(timeline.value.settings.fontFamily || 'system-ui');
-            const fallbacks = Array.isArray(timeline.value.settings.fontFallbacks)
-                ? timeline.value.settings.fontFallbacks as string[]
-                : [];
-            const names = [primary, ...fallbacks].filter(Boolean);
-            if (timeline.value.settings.fontLocalPath) names.unshift('ProjectFont');
-            const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
-            const fontFamilyChain = names.map(quote).join(', ');
-            const style = String(timeline.value.settings.fontStyle || 'normal');
-            const weight = (timeline.value.settings.fontWeight ?? 400) as any;
-            
-            // Ensure scene docs are loaded
-            if (active.a && active.a.id !== 'none') await scenes.ensureSceneDoc(active.a.id);
-            if (active.b && active.b.id !== 'none') await scenes.ensureSceneDoc(active.b.id);
-            
-            const pool = frameEval.getWordPoolAtFrame(frame);
-            const wordsA = (active.a && active.a.id !== 'none') ? pool : [];
-            const wordsB = (active.b && active.b.id !== 'none') ? pool : [];
-            
-            const aParamsBase = active.a && active.a.id !== 'none' ? (scenes.sceneDocs.value[active.a.id]?.params || {}) : null;
-            const bParamsBase = active.b && active.b.id !== 'none' ? (scenes.sceneDocs.value[active.b.id]?.params || {}) : null;
-            
-            const localPath = timeline.value.settings.fontLocalPath || null;
-            const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
-            const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
-            
-            // Always configure for export (don't check lastConfiguredKey since we're exporting)
-            renderWorker.configureScene({
-                seed,
-                fontFamilyChain,
-                a: {
-                    sceneType: active.a.type,
-                    params: aParams || {}
-                },
-                b: bParams && active.b ? {
-                    sceneType: active.b.type,
-                    params: bParams
-                } : null
-            });
-            
-            return { isEmpty: false };
-        };
-        
-        // Frame-by-frame export
         await videoExport.startFrameExport(
             renderWorker,
             frameRenderer,
             drawPreview,
             fps.value,
             maxFrame.value,
-            configureSceneForExportFrame
+            exportSceneConfig.configureSceneForExportFrame
         );
     } else {
         // Real-time recording
@@ -953,8 +689,8 @@ const scenePropertyMetas = computed<any[]>(() => {
     const tlAny: any = timeline.value as any;
     const scenesArr: any[] = Array.isArray(tlAny?.scenes) ? tlAny.scenes : [];
     const sc = scenesArr.find((x: any) => x && x.id === id);
-    const type = sc?.type as any;
-    return type ? (SCENE_ANIMATABLES as any)[String(type)] || [] : [];
+    const type = sc?.type as string | undefined;
+    return type ? SCENE_ANIMATABLES[type] || [] : [];
 });
 
 const handlePropChangeValue = (payload: { propertyPath: string; value: any }) => {
@@ -1132,12 +868,7 @@ onMounted(async () => {
 onUnmounted(() => {
     renderWorker.dispose();
     audioPlayer.dispose();
-    if (previewResizeObserver) {
-        previewResizeObserver.disconnect();
-    }
-    if (containerResizeObserver) {
-        containerResizeObserver.disconnect();
-    }
+    previewCanvasComposable.dispose();
 });
 </script>
 

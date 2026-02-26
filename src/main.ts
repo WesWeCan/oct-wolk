@@ -86,12 +86,15 @@ const setProtocols = async () => {
    */
   protocol.handle('wolk', async (request) => {
     const fileName = decodeURIComponent(request.url.slice('wolk://'.length));
-    // Map wolk://songId/file.mp3 to the internal docStorage songs folder
     const songsRoot = path.join(getInternalStoragePath(), 'docStorage', 'songs');
-    const fullPath = path.join(songsRoot, fileName);
+    const fullPath = path.resolve(path.join(songsRoot, fileName));
+    const resolvedRoot = path.resolve(songsRoot);
+
+    if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
+      return new Response('Forbidden', { status: 403 });
+    }
     
     try {
-      // Get file stats to know the total size
       const stats = await fs.stat(fullPath);
       const fileSize = stats.size;
       

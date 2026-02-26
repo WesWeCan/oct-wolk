@@ -9,7 +9,10 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": {
@@ -31,12 +34,16 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitejs/plugin-vue": "^5.2.4",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vue/test-utils": "^2.4.6",
     "electron": "38.0.0",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
+    "jsdom": "^28.1.0",
     "sass": "^1.92.0",
     "typescript": "~4.5.4",
-    "vite": "^5.4.19"
+    "vite": "^5.4.19",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@tiptap/extension-bubble-menu": "^3.4.1",

@@ -186,6 +186,16 @@ export const sanitizeFileName = (fileName: string, targetSubfolder: DOCUMENT_STO
 };
 
 
+/**
+ * Returns true if `target` is inside `root` (or equals it).
+ * Prevents path traversal by resolving both paths first.
+ */
+export const isPathInsideRoot = (target: string, root: string): boolean => {
+    const resolvedTarget = path.resolve(target);
+    const resolvedRoot = path.resolve(root);
+    return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(resolvedRoot + path.sep);
+};
+
 export const moveFileInDocStorage = (fileName: string, fromSubfolder: DOCUMENT_STORAGE_FOLDER, toSubfolder: DOCUMENT_STORAGE_FOLDER): string => {
 
     if(fromSubfolder === toSubfolder) {

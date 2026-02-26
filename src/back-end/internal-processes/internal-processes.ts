@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 
-import { getInternalStoragePath } from './internal-storage';
+import { getInternalStoragePath, isPathInsideRoot } from './internal-storage';
 import { createOrLoadTimeline, saveTimeline, listScenes as listSceneFiles, saveScene, loadScene, resetTimeline } from './timeline-storage';
 import { listSystemFonts } from './fonts';
 import { createSong, loadSong, saveSong, listSongs, saveSongCover, saveSongAudio, saveSongAsset, deleteSongAsset, deleteSong } from './song-storage';
@@ -443,6 +443,10 @@ ffmpeg -version`;
     
     ipcMain.handle('export:openFolder', async (_event, folderPath: string) => {
         try {
+            const storageRoot = getInternalStoragePath();
+            if (!isPathInsideRoot(folderPath, storageRoot)) {
+                return { success: false, error: 'Path outside storage directory' };
+            }
             if (fs.existsSync(folderPath)) {
                 await shell.openPath(folderPath);
                 return { success: true };
@@ -455,6 +459,10 @@ ffmpeg -version`;
     
     ipcMain.handle('export:cleanupFrames', async (_event, framesDir: string) => {
         try {
+            const exportsRoot = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.EXPORTS);
+            if (!isPathInsideRoot(framesDir, exportsRoot)) {
+                return { success: false, error: 'Path outside exports directory' };
+            }
             if (fs.existsSync(framesDir)) {
                 fs.rmSync(framesDir, { recursive: true, force: true });
                 return { success: true };
@@ -490,8 +498,15 @@ ffmpeg -version`;
     
     ipcMain.handle('export:saveFrame', (_event, framesDir: string, frameName: string, frameData: ArrayBuffer) => {
         try {
+            const exportsRoot = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.EXPORTS);
+            if (!isPathInsideRoot(framesDir, exportsRoot)) {
+                return { success: false, error: 'Path outside exports directory' };
+            }
             const buf = Buffer.from(frameData);
             const filePath = path.join(framesDir, frameName);
+            if (!isPathInsideRoot(filePath, framesDir)) {
+                return { success: false, error: 'Invalid frame name' };
+            }
             fs.writeFileSync(filePath, buf);
             return { success: true, filePath };
         } catch (error) {
@@ -544,7 +559,11 @@ ffmpeg -version`;
     
     ipcMain.handle('export:assembleVideo', async (_event, framesDir: string, rootDir: string, fps: number, audioPath: string | null) => {
         try {
-            // Ensure we have the cached ffmpeg path
+            const exportsRoot = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.EXPORTS);
+            if (!isPathInsideRoot(framesDir, exportsRoot) || !isPathInsideRoot(rootDir, exportsRoot)) {
+                return { success: false, error: 'Path outside exports directory' };
+            }
+
             if (cachedFfmpegPath === undefined) {
                 cachedFfmpegPath = findFfmpegPath();
             }
