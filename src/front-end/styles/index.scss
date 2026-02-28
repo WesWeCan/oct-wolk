@@ -25,6 +25,7 @@
 @use 'inspector/words';
 @use 'timeline/root';
 @use 'views/editor-index';
+@use 'views/project-editor';
 
 // Legacy overrides
 .lane-label {

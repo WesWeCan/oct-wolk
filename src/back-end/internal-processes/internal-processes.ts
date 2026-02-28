@@ -4,6 +4,7 @@ import { getInternalStoragePath, isPathInsideRoot } from './internal-storage';
 import { createOrLoadTimeline, saveTimeline, listScenes as listSceneFiles, saveScene, loadScene, resetTimeline } from './timeline-storage';
 import { listSystemFonts } from './fonts';
 import { createSong, loadSong, saveSong, listSongs, saveSongCover, saveSongAudio, saveSongAsset, deleteSongAsset, deleteSong } from './song-storage';
+import { createProject, loadProject, saveProject, listProjects, deleteProject, saveProjectAudio, saveProjectCover, saveProjectAsset } from './project-storage';
 import fs from 'fs';
 import path from 'path';
 import { getDocStoragePath } from './internal-storage';
@@ -58,6 +59,32 @@ export const registerInternalProcesses = async () => {
     });
     ipcMain.handle('songs:delete', (_event, songId: string) => {
         return deleteSong(songId);
+    });
+
+    // Projects API (v2)
+    ipcMain.handle('projects:create', (_event, initial) => {
+        return createProject(initial);
+    });
+    ipcMain.handle('projects:save', (_event, project) => {
+        return saveProject(project);
+    });
+    ipcMain.handle('projects:load', (_event, projectId: string) => {
+        return loadProject(projectId);
+    });
+    ipcMain.handle('projects:list', () => {
+        return listProjects();
+    });
+    ipcMain.handle('projects:delete', (_event, projectId: string) => {
+        return deleteProject(projectId);
+    });
+    ipcMain.handle('projects:uploadAudio', (_event, projectId: string, fileData: ArrayBuffer, originalFileName: string) => {
+        return saveProjectAudio(projectId, fileData, originalFileName);
+    });
+    ipcMain.handle('projects:uploadCover', (_event, projectId: string, fileData: ArrayBuffer, originalFileName: string) => {
+        return saveProjectCover(projectId, fileData, originalFileName);
+    });
+    ipcMain.handle('projects:uploadAsset', (_event, projectId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => {
+        return saveProjectAsset(projectId, fileData, originalFileName, preferredFileName);
     });
 
     // Timeline API

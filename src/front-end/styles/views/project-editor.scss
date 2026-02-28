@@ -1,0 +1,764 @@
+// Prevent body scrollbar when project editor is open — the app header + editor grid
+// exceeds 100vh because editor.scss uses calc(100vh - 48px) but the header is ~61px.
+body:has(.project-editor) {
+    overflow: hidden;
+}
+
+// ProjectEditor-specific overrides on top of editor.scss + timeline.scss + monitor.scss
+// The base .editor grid, resize handles, timeline lane/playhead styles, and monitor
+// styles are all inherited — no need to duplicate them here.
+
+.project-editor {
+    grid-template-rows: auto minmax(0, 1fr) var(--timeline-height, 280px);
+
+    .editor__timeline {
+        max-height: none;
+        overflow: auto;
+    }
+
+    .toolbar-back {
+        background: none;
+        border: 1px solid #444;
+        color: #ccc;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+
+        &:hover {
+            background: #333;
+            color: #fff;
+        }
+    }
+
+    .toolbar-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #eee;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 240px;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid transparent;
+
+        &:hover {
+            border-color: #444;
+            background: rgba(255, 255, 255, 0.04);
+        }
+    }
+
+    .toolbar-title-input {
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        background: #222;
+        border: 1px solid #2a6af0;
+        padding: 2px 6px;
+        border-radius: 3px;
+        outline: none;
+        max-width: 240px;
+    }
+
+    .toolbar-mode-toggle {
+        display: flex;
+        border: 1px solid #444;
+        border-radius: 4px;
+        overflow: hidden;
+
+        button {
+            background: transparent;
+            border: none;
+            color: #999;
+            padding: 4px 14px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 150ms;
+
+            &.active {
+                background: #2a6af0;
+                color: #fff;
+            }
+
+            &:hover:not(.active) {
+                background: #333;
+                color: #ddd;
+            }
+        }
+    }
+
+    .toolbar-time {
+        font-size: 12px;
+        color: #888;
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+// Track color dot in timeline left column labels
+.pe-track-color {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+.editor-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    color: #888;
+    font-size: 14px;
+}
+
+.sidebar-section {
+    padding: 0 0 12px;
+}
+
+.audio-drop-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 16px 12px;
+    border: 2px dashed #444;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 150ms;
+    text-align: center;
+
+    &:hover,
+    &.drag-over {
+        border-color: #2a6af0;
+        background: rgba(42, 106, 240, 0.08);
+    }
+
+    &__icon {
+        font-size: 24px;
+        line-height: 1;
+    }
+
+    &__text {
+        font-size: 12px;
+        color: #ccc;
+    }
+
+    &__hint {
+        font-size: 10px;
+        color: #666;
+    }
+}
+
+.panel-placeholder {
+    padding: 1rem;
+    color: #666;
+    font-size: 13px;
+    font-style: italic;
+}
+
+// Raw lyrics panel
+.raw-lyrics-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px solid #333;
+        margin-bottom: 8px;
+    }
+
+    &__title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #888;
+        font-weight: 600;
+    }
+
+    &__editor {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+
+        .ProseMirror {
+            outline: none;
+            padding: 4px 0;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #ddd;
+            min-height: 100px;
+
+            p {
+                margin: 0 0 2px;
+            }
+
+            &:focus {
+                border-left: 2px solid #2a6af0;
+                padding-left: 8px;
+            }
+        }
+    }
+}
+
+// ===== Lyric track lane (content area inside .lane) =====
+
+.lyric-track-lane {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    background: #1a1a1a;
+    overflow: hidden;
+
+    &.muted {
+        opacity: 0.4;
+    }
+
+    &.locked {
+        cursor: not-allowed;
+    }
+
+    &__items {
+        position: absolute;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+    }
+}
+
+.lyric-item {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    border: 1px solid;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    overflow: hidden;
+    cursor: grab;
+    transition: box-shadow 80ms;
+    min-width: 4px;
+
+    &.selected {
+        box-shadow: 0 0 0 2px #fff;
+        z-index: 3;
+    }
+
+    &__text {
+        font-size: 10px;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    }
+
+    &__handles {
+        .h {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            cursor: ew-resize;
+            z-index: 2;
+            background: transparent;
+            transition: background 120ms;
+
+            &.left {
+                left: 0;
+                border-radius: 3px 0 0 3px;
+            }
+
+            &.right {
+                right: 0;
+                border-radius: 0 3px 3px 0;
+            }
+        }
+    }
+
+    &:hover .lyric-item__handles .h,
+    &.selected .lyric-item__handles .h {
+        background: rgba(255, 255, 255, 0.25);
+    }
+}
+
+// ===== Track list panel =====
+
+.track-list-panel {
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px solid #333;
+        margin-bottom: 6px;
+    }
+
+    &__title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #888;
+        font-weight: 600;
+    }
+
+    &__generators {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 4px;
+
+        button {
+            flex: 1;
+            padding: 4px 6px;
+            font-size: 11px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+
+            &:hover:not(:disabled) {
+                background: #333;
+                color: #fff;
+            }
+
+            &:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
+            }
+        }
+    }
+
+    &__hint {
+        font-size: 10px;
+        color: #666;
+        font-style: italic;
+        margin: 0 0 6px;
+    }
+
+    &__list {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+}
+
+.track-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 0;
+    border-bottom: 1px solid #222;
+
+    &.muted { opacity: 0.5; }
+
+    &__color {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    &__name {
+        flex: 1;
+        font-size: 12px;
+        color: #ddd;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        span {
+            cursor: pointer;
+        }
+    }
+
+    &__controls {
+        display: flex;
+        gap: 2px;
+        flex-shrink: 0;
+    }
+}
+
+.track-btn {
+    height: 20px;
+    padding: 0 4px;
+    font-size: 9px;
+    font-weight: bold;
+    border: 1px solid #444;
+    background: transparent;
+    color: #888;
+    border-radius: 2px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+
+    &:hover {
+        background: #333;
+        color: #fff;
+    }
+
+    &.active {
+        background: #2a6af0;
+        color: #fff;
+        border-color: #2a6af0;
+    }
+
+    &.danger {
+        color: #e57373;
+        border-color: #633;
+
+        &:hover {
+            background: #633;
+            color: #fff;
+        }
+    }
+}
+
+.track-rename-input {
+    width: 100%;
+    background: #222;
+    border: 1px solid #555;
+    color: #fff;
+    font-size: 12px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    outline: none;
+}
+
+.track-list-empty {
+    font-size: 11px;
+    color: #666;
+    font-style: italic;
+    padding: 8px 0;
+}
+
+// ===== Item inspector =====
+
+.item-inspector {
+    padding: 12px;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px solid #333;
+        margin-bottom: 10px;
+    }
+
+    &__title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #888;
+        font-weight: 600;
+    }
+}
+
+.inspector-field {
+    margin-bottom: 10px;
+
+    label {
+        display: block;
+        font-size: 10px;
+        text-transform: uppercase;
+        color: #777;
+        margin-bottom: 3px;
+        letter-spacing: 0.04em;
+    }
+
+    &.half {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+.inspector-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.inspector-input {
+    width: 100%;
+    background: #222;
+    border: 1px solid #444;
+    color: #eee;
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+
+    &:focus {
+        border-color: #2a6af0;
+    }
+}
+
+.inspector-value {
+    font-size: 12px;
+    color: #ccc;
+}
+
+.inspector-hint {
+    font-size: 10px;
+    color: #666;
+    margin-top: 2px;
+    display: block;
+}
+
+.inspector-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+
+    button {
+        flex: 1;
+        padding: 5px 8px;
+        font-size: 11px;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        color: #ccc;
+        border-radius: 3px;
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+            background: #333;
+            color: #fff;
+        }
+
+        &:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        &.danger {
+            color: #e57373;
+            border-color: #633;
+
+            &:hover:not(:disabled) {
+                background: #633;
+                color: #fff;
+            }
+        }
+    }
+}
+
+.inspector-empty {
+    font-size: 12px;
+    color: #666;
+    font-style: italic;
+    padding: 12px 0;
+}
+
+// ===== Project Inspector =====
+
+.project-inspector {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.inspector-section {
+    border-bottom: 1px solid #333;
+    margin: 0;
+
+    &__title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #888;
+        font-weight: 600;
+        padding: 10px 12px;
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        &::before {
+            content: '▸';
+            display: inline-block;
+            transition: transform 150ms;
+            font-size: 10px;
+        }
+
+        &:hover {
+            color: #ccc;
+        }
+    }
+
+    &[open] > .inspector-section__title::before {
+        transform: rotate(90deg);
+    }
+
+    &__content {
+        padding: 0 12px 12px;
+    }
+}
+
+.inspector-label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    color: #777;
+    margin-bottom: 6px;
+    letter-spacing: 0.04em;
+
+    input[type="text"],
+    input[type="search"],
+    input[type="number"],
+    select {
+        display: block;
+        margin-top: 3px;
+    }
+
+    input[type="range"] {
+        display: block;
+        width: 100%;
+        margin-top: 3px;
+    }
+}
+
+.form-row {
+    margin-bottom: 8px;
+}
+
+.btn-sm {
+    padding: 3px 8px;
+    font-size: 11px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    color: #ccc;
+    border-radius: 3px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+        background: #333;
+        color: #fff;
+    }
+
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    &.danger {
+        color: #e57373;
+        border-color: #633;
+
+        &:hover:not(:disabled) {
+            background: #633;
+            color: #fff;
+        }
+    }
+}
+
+// Font management inside ProjectInspector
+.font-preview {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+
+    .preview-label {
+        font-size: 10px;
+        color: #888;
+        margin-bottom: 4px;
+    }
+
+    .preview-text {
+        font-size: 16px;
+        color: #eee;
+        line-height: 1.4;
+    }
+
+    .font-actions {
+        margin-top: 6px;
+    }
+}
+
+.font-search {
+    margin-top: 10px;
+
+    &__label {
+        font-size: 10px;
+        text-transform: uppercase;
+        color: #777;
+        letter-spacing: 0.04em;
+        margin-bottom: 4px;
+    }
+}
+
+.font-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 6px;
+    border: 1px solid #333;
+    border-radius: 3px;
+}
+
+.font-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    border-bottom: 1px solid #222;
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    .font-name {
+        font-size: 12px;
+        color: #ddd;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+        flex: 1;
+
+        .file-name {
+            color: #666;
+            font-size: 10px;
+        }
+    }
+}
+
+.overlay-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #ccc;
+    padding: 4px 0;
+    cursor: pointer;
+
+    input[type="checkbox"] {
+        cursor: pointer;
+    }
+}
+
+.error {
+    color: #e57373;
+    font-size: 11px;
+    padding: 4px 8px;
+}

@@ -6,6 +6,8 @@ import LyricAnalyzer from '../views/LyricAnalyzer.vue';
 import Editor from '../views/Editor.vue';
 import EditorIndex from '../views/EditorIndex.vue';
 import Player from '../views/Player.vue';
+import ProjectList from '../views/ProjectList.vue';
+import ProjectEditor from '../views/ProjectEditor.vue';
 
 const routes = [
     { 
@@ -13,6 +15,18 @@ const routes = [
         name: 'Index',
         component: Index,
     },
+    {
+        path: '/projects',
+        name: 'ProjectList',
+        component: ProjectList,
+    },
+    {
+        path: '/project/:projectId',
+        name: 'ProjectEditor',
+        component: ProjectEditor,
+        props: true,
+    },
+    // Legacy routes (kept for backward compat)
     {
         path: '/song-bank',
         name: 'SongBank',

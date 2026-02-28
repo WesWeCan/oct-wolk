@@ -474,7 +474,24 @@ One complete workflow:
 
 ---
 
-## 11) Open Technical Spikes
+## 11) Implementation Principle: Reuse First
+
+The existing (v1) Editor already has battle-tested solutions for common UI patterns. The new ProjectEditor **must reuse** these rather than reimplementing from scratch:
+
+| Pattern | Source | Reuse Strategy |
+|---------|--------|----------------|
+| Panel resizing (sidebar, inspector) | `editor.scss` + `Editor.vue` | CSS custom properties + same pointer handler pattern |
+| Timeline layout (label column + lanes) | `TimelineRoot.vue` + `timeline.scss` | 120px/1fr grid, `.lane-label` left column, `.lane` wrappers |
+| Playhead rendering across lanes | `timeline.scss` `.lane::after` | `--playhead-x` CSS variable (same formula as TimelineRoot) |
+| Canvas display scaling | `usePreviewCanvas.ts` | Dual-canvas (offscreen render + scaled preview) |
+| Timeline interactions (pan/zoom/scrub) | `useLaneInteractions.ts` + `useTimelineViewport.ts` | Used directly by lane components |
+| Item drag/trim gestures | `ScenesLane.vue` | Same pointer capture + hit-test pattern in LyricTrackLane |
+
+New code should only be written for genuinely new functionality (lyric-specific preview rendering, track generators, etc.), not for infrastructure that already works.
+
+---
+
+## 12) Open Technical Spikes
 
 - **ProRes 4444 via ffmpeg:** Confirm ffmpeg build supports ProRes encoder (`prores_ks`). Test on macOS (primary target).
 - **Font loading in OffscreenCanvas worker:** Current `ensureWorkerFont` approach works but may have delay. Investigate preloading strategy.

@@ -4,6 +4,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import * as StorageTypes from '@/types/storage_types';
 import type { TimelineDocument, SceneDocumentBase } from '@/types/timeline_types';
+import type { WolkProject } from '@/types/project_types';
 
 declare global {
     interface Window {
@@ -23,6 +24,16 @@ declare global {
                 uploadAsset: (songId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => Promise<any>;
                 deleteAsset: (songId: string, fileName: string) => Promise<boolean>;
                 delete: (songId: string) => Promise<boolean>;
+            };
+            projects: {
+                create: (initial?: { title?: string; audioSrc?: string; coverSrc?: string }) => Promise<WolkProject>;
+                save: (project: WolkProject) => Promise<WolkProject>;
+                load: (projectId: string) => Promise<WolkProject | null>;
+                list: () => Promise<WolkProject[]>;
+                delete: (projectId: string) => Promise<boolean>;
+                uploadAudio: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<WolkProject>;
+                uploadCover: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<WolkProject>;
+                uploadAsset: (projectId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => Promise<{ url: string; fileName: string }>;
             };
             timeline: {
                 createOrLoad: (songId: string) => Promise<TimelineDocument>;
@@ -58,6 +69,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         uploadAsset: (songId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => ipcRenderer.invoke('songs:uploadAsset', songId, fileData, originalFileName, preferredFileName),
         deleteAsset: (songId: string, fileName: string) => ipcRenderer.invoke('songs:deleteAsset', songId, fileName),
         delete: (songId: string) => ipcRenderer.invoke('songs:delete', songId),
+    },
+    projects: {
+        create: (initial?: { title?: string; audioSrc?: string; coverSrc?: string }) => ipcRenderer.invoke('projects:create', initial),
+        save: (project: WolkProject) => ipcRenderer.invoke('projects:save', project),
+        load: (projectId: string) => ipcRenderer.invoke('projects:load', projectId),
+        list: () => ipcRenderer.invoke('projects:list'),
+        delete: (projectId: string) => ipcRenderer.invoke('projects:delete', projectId),
+        uploadAudio: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('projects:uploadAudio', projectId, fileData, originalFileName),
+        uploadCover: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('projects:uploadCover', projectId, fileData, originalFileName),
+        uploadAsset: (projectId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => ipcRenderer.invoke('projects:uploadAsset', projectId, fileData, originalFileName, preferredFileName),
     },
     timeline: {
         createOrLoad: (songId: string) => ipcRenderer.invoke('timeline:createOrLoad', songId),

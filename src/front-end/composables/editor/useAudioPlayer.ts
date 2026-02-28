@@ -22,28 +22,31 @@ export function useAudioPlayer() {
     const audioEl = shallowRef<HTMLAudioElement | null>(null);
     const audioReady = ref(false);
     const currentTime = ref(0);
+    const playing = ref(false);
+    
+    const syncPlayingState = () => {
+        playing.value = audioEl.value ? !audioEl.value.paused : false;
+    };
     
     /**
      * Loads an audio file from URL or custom protocol (e.g., wolk://).
      * Disposes any previously loaded audio.
      */
     const load = async (src: string) => {
-        // Dispose previous audio element
         if (audioEl.value) {
             audioEl.value.pause();
             audioEl.value.src = '';
         }
         
         audioReady.value = false;
+        playing.value = false;
         
-        // Create new audio element
         audioEl.value = new Audio(src);
-        audioEl.value.preload = 'metadata'; // Load metadata first
+        audioEl.value.preload = 'metadata';
         
-        // Setup event listeners
-        audioEl.value.addEventListener('loadedmetadata', () => {
-            // metadata loaded
-        });
+        audioEl.value.addEventListener('play', syncPlayingState);
+        audioEl.value.addEventListener('pause', syncPlayingState);
+        audioEl.value.addEventListener('ended', syncPlayingState);
         
         audioEl.value.addEventListener('canplay', () => {
             audioReady.value = true;
@@ -55,25 +58,17 @@ export function useAudioPlayer() {
             }
         });
         
-        audioEl.value.addEventListener('ended', () => {
-            // Audio playback ended naturally
-        });
-        
         audioEl.value.addEventListener('error', (e) => {
             console.error('[useAudioPlayer] Audio error:', e, audioEl.value?.error);
         });
         
-        // Wait for metadata to load
         return new Promise<void>((resolve) => {
             const el = audioEl.value!;
-            if (el.readyState >= 1) { // HAVE_METADATA
+            if (el.readyState >= 1) {
                 resolve();
             } else {
-                const onMetadata = () => {
-                    resolve();
-                };
+                const onMetadata = () => { resolve(); };
                 el.addEventListener('loadedmetadata', onMetadata, { once: true });
-                // Timeout fallback
                 setTimeout(() => {
                     el.removeEventListener('loadedmetadata', onMetadata);
                     resolve();
@@ -218,22 +213,24 @@ export function useAudioPlayer() {
     });
     
     /**
-     * Whether audio is currently playing.
+     * Whether audio is currently playing (reactive via DOM event listeners).
      */
-    const isPlaying = computed(() => {
-        return audioEl.value ? !audioEl.value.paused : false;
-    });
+    const isPlaying = computed(() => playing.value);
     
     /**
      * Disposes the audio element and cleans up resources.
      */
     const dispose = () => {
         if (audioEl.value) {
+            audioEl.value.removeEventListener('play', syncPlayingState);
+            audioEl.value.removeEventListener('pause', syncPlayingState);
+            audioEl.value.removeEventListener('ended', syncPlayingState);
             audioEl.value.pause();
             audioEl.value.src = '';
             audioEl.value = null;
         }
         audioReady.value = false;
+        playing.value = false;
     };
     
     // Cleanup on unmount
