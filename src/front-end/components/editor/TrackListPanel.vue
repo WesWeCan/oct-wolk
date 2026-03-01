@@ -9,10 +9,14 @@ const props = defineProps<{
     tracks: LyricTrack[];
     rawLyrics: string;
     audioDurationMs: number;
+    selectedVerseTrackId?: string | null;
+    selectedLineTrackId?: string | null;
 }>();
 
 const emit = defineEmits<{
     (e: 'addTrack', track: LyricTrack): void;
+    (e: 'generateLines'): void;
+    (e: 'generateWords'): void;
     (e: 'deleteTrack', trackId: string): void;
     (e: 'updateTrack', track: LyricTrack): void;
     (e: 'duplicateTrack', trackId: string): void;
@@ -25,6 +29,16 @@ const effectiveDuration = () => props.audioDurationMs > 0 ? props.audioDurationM
 const generateVerses = () => {
     if (!hasLyrics()) return;
     emit('addTrack', generateVerseTrack(props.rawLyrics, effectiveDuration(), props.tracks.length));
+};
+
+const generateLines = () => {
+    if (!hasLyrics() || !props.selectedVerseTrackId) return;
+    emit('generateLines');
+};
+
+const generateWords = () => {
+    if (!hasLyrics() || !props.selectedLineTrackId) return;
+    emit('generateWords');
 };
 
 const addCustom = () => {
@@ -69,13 +83,29 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
 
         <div class="track-list-panel__generators">
             <button @click="generateVerses" :disabled="!rawLyrics.trim()" title="Split lyrics into verses (separated by blank lines)">Verses</button>
+            <button
+                @click="generateLines"
+                :disabled="!rawLyrics.trim() || !selectedVerseTrackId"
+                title="Generate lines from the selected verse track and raw lyric lines"
+            >Lines</button>
+            <button
+                @click="generateWords"
+                :disabled="!rawLyrics.trim() || !selectedLineTrackId"
+                title="Generate words from the selected line track and raw lyric lines"
+            >Words</button>
             <button @click="addCustom" title="Add blank custom track">+ Custom</button>
         </div>
         <p v-if="!rawLyrics.trim()" class="track-list-panel__hint">
             Paste lyrics below to generate verse tracks.
         </p>
+        <p v-else-if="!selectedVerseTrackId" class="track-list-panel__hint">
+            Select a verse item first, then generate lines.
+        </p>
+        <p v-else-if="!selectedLineTrackId" class="track-list-panel__hint">
+            Select a line item first, then generate words.
+        </p>
         <p v-else class="track-list-panel__hint">
-            Generate verses first — line and word timing comes next.
+            Lines/words will be generated inside the timing windows of the selected source track.
         </p>
 
         <div class="track-list-panel__list">

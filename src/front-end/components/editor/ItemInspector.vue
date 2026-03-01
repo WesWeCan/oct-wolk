@@ -39,6 +39,10 @@ const canMerge = computed(() => {
 });
 
 const editableTracks = computed(() => props.tracks.filter(t => !t.locked));
+const verseTracks = computed(() => props.tracks.filter(t => t.kind === 'verse'));
+const lineTracks = computed(() => props.tracks.filter(t => t.kind === 'sentence'));
+const wordTracks = computed(() => props.tracks.filter(t => t.kind === 'word'));
+const customTracks = computed(() => props.tracks.filter(t => t.kind === 'custom'));
 const defaultAddTrack = computed(() => {
     const editable = editableTracks.value;
     if (!editable.length) return null;
@@ -63,6 +67,12 @@ const addAtPlayhead = () => {
     if (!trackId) return;
     emit('addItemAtLocation', { trackId, atMs: props.playheadMs });
 };
+
+const addAtPlayheadForTrack = (trackId: string) => {
+    emit('addItemAtLocation', { trackId, atMs: props.playheadMs });
+};
+
+const canAddToTrack = (track: LyricTrack) => !track.locked;
 
 const onTextChange = (e: Event) => {
     const sel = selectedItem.value;
@@ -124,6 +134,51 @@ const formatMs = (ms: number) => {
     <div class="item-inspector">
         <div class="item-inspector__header">
             <span class="item-inspector__title">Item Inspector</span>
+        </div>
+
+        <div class="item-inspector__track-groups">
+            <div class="track-group">
+                <div class="track-group__title">Verses</div>
+                <div v-if="verseTracks.length" class="track-group__rows">
+                    <div v-for="track in verseTracks" :key="track.id" class="track-group__row">
+                        <span class="track-group__name">{{ track.name }}<span v-if="track.locked"> (Locked)</span></span>
+                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">+ Add at Playhead</button>
+                    </div>
+                </div>
+                <div v-else class="track-group__empty">No verse tracks</div>
+            </div>
+
+            <div class="track-group">
+                <div class="track-group__title">Lines</div>
+                <div v-if="lineTracks.length" class="track-group__rows">
+                    <div v-for="track in lineTracks" :key="track.id" class="track-group__row">
+                        <span class="track-group__name">{{ track.name }}<span v-if="track.locked"> (Locked)</span></span>
+                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">+ Add at Playhead</button>
+                    </div>
+                </div>
+                <div v-else class="track-group__empty">No line tracks</div>
+            </div>
+
+            <div class="track-group">
+                <div class="track-group__title">Words</div>
+                <div v-if="wordTracks.length" class="track-group__rows">
+                    <div v-for="track in wordTracks" :key="track.id" class="track-group__row">
+                        <span class="track-group__name">{{ track.name }}<span v-if="track.locked"> (Locked)</span></span>
+                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">+ Add at Playhead</button>
+                    </div>
+                </div>
+                <div v-else class="track-group__empty">No word tracks</div>
+            </div>
+
+            <div class="track-group" v-if="customTracks.length">
+                <div class="track-group__title">Custom</div>
+                <div class="track-group__rows">
+                    <div v-for="track in customTracks" :key="track.id" class="track-group__row">
+                        <span class="track-group__name">{{ track.name }}<span v-if="track.locked"> (Locked)</span></span>
+                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">+ Add at Playhead</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <template v-if="selectedItem">

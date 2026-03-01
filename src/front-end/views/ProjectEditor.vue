@@ -19,6 +19,7 @@ import RawLyricsPanel from '@/front-end/components/editor/RawLyricsPanel.vue';
 import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
 import ProjectInspector from '@/front-end/components/editor/ProjectInspector.vue';
 import { useUndoRedo } from '@/front-end/composables/editor/useUndoRedo';
+import { generateLineTrackFromVerseTrack, generateWordTrackFromLineTrack } from '@/front-end/utils/lyricTrackGenerators';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -166,6 +167,23 @@ const wrapTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
     return lines;
 };
 
+const truncateLinesToFit = (
+    ctx: CanvasRenderingContext2D,
+    lines: string[],
+    maxLines: number,
+    maxWidth: number,
+): string[] => {
+    if (lines.length <= maxLines) return lines;
+    const out = lines.slice(0, Math.max(1, maxLines));
+    const lastIdx = out.length - 1;
+    let candidate = out[lastIdx];
+    while (candidate.length > 0 && ctx.measureText(`${candidate}…`).width > maxWidth) {
+        candidate = candidate.slice(0, -1);
+    }
+    out[lastIdx] = candidate.length > 0 ? `${candidate}…` : '…';
+    return out;
+};
+
 const drawLyricPreview = () => {
     const canvas = renderCanvas.value;
     if (!canvas || !project.value) return;
@@ -207,35 +225,61 @@ const drawLyricPreview = () => {
     const slotHeight = h / Math.max(1, totalTracks);
 
     for (const at of activeTexts) {
+        const slotTop = slotHeight * at.trackIndex;
+        const slotBottom = slotTop + slotHeight;
+        const slotCenterY = slotTop + slotHeight / 2;
+        const slotPaddingY = Math.max(8, slotHeight * 0.08);
+        const availableHeight = Math.max(16, slotHeight - slotPaddingY * 2);
         const maxTextWidth = w - 80;
         const lineGap = 1.2;
         let fontSize = Math.min(slotHeight * 0.5, w * 0.06);
         let lines: string[] = [];
+        let ascent = fontSize * 0.8;
+        let descent = fontSize * 0.2;
+        let lineAdvance = fontSize * lineGap;
+        let blockHeight = 0;
 
-        // Fit text by wrapping words and shrinking font if block exceeds slot.
-        for (let attempts = 0; attempts < 24; attempts++) {
+        // Fit text by wrapping + shrinking first.
+        for (let attempts = 0; attempts < 36; attempts++) {
             ctx.font = `bold ${fontSize}px ${fontChain}`;
             lines = wrapTextLines(ctx, at.text, maxTextWidth);
-            const totalHeight = lines.length * fontSize * lineGap;
-            if (totalHeight <= slotHeight * 0.9 || fontSize <= 16) break;
-            fontSize = Math.max(16, fontSize - 2);
+            const metrics = ctx.measureText('Mg');
+            ascent = metrics.actualBoundingBoxAscent || fontSize * 0.8;
+            descent = metrics.actualBoundingBoxDescent || fontSize * 0.2;
+            lineAdvance = fontSize * lineGap;
+            blockHeight = ascent + descent + Math.max(0, lines.length - 1) * lineAdvance;
+            if (blockHeight <= availableHeight || fontSize <= 12) break;
+            fontSize = Math.max(12, fontSize - 2);
         }
 
         ctx.font = `bold ${fontSize}px ${fontChain}`;
+        const metrics = ctx.measureText('Mg');
+        ascent = metrics.actualBoundingBoxAscent || fontSize * 0.8;
+        descent = metrics.actualBoundingBoxDescent || fontSize * 0.2;
+        lineAdvance = fontSize * lineGap;
+
+        // If still too tall at min font, cap lines and ellipsize.
+        const maxLines = Math.max(1, Math.floor((availableHeight - ascent - descent) / Math.max(1, lineAdvance)) + 1);
+        lines = truncateLinesToFit(ctx, lines, maxLines, maxTextWidth);
+        blockHeight = ascent + descent + Math.max(0, lines.length - 1) * lineAdvance;
+
         ctx.textAlign = 'center';
         ctx.textBaseline = 'alphabetic';
-
-        const y = slotHeight * at.trackIndex + slotHeight / 2;
-        const totalHeight = lines.length * fontSize * lineGap;
-        let lineY = y - totalHeight / 2 + fontSize;
+        let lineY = slotCenterY - blockHeight / 2 + ascent;
 
         ctx.shadowColor = 'rgba(0,0,0,0.8)';
         ctx.shadowBlur = 8;
         ctx.fillStyle = '#fff';
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, slotTop + 1, w, Math.max(1, slotBottom - slotTop - 2));
+        ctx.clip();
         for (const line of lines) {
             ctx.fillText(line, w / 2, lineY);
             lineY += fontSize * lineGap;
         }
+        ctx.restore();
         ctx.shadowBlur = 0;
     }
 
@@ -440,6 +484,21 @@ const selectedItemId = ref<string | null>(null);
 const NUDGE_MS = 50;
 
 const playheadMs = computed(() => (playhead.value.frame / Math.max(1, fps.value)) * 1000);
+const selectedTrack = computed<LyricTrack | null>(() => {
+    if (!project.value || !selectedItemId.value) return null;
+    for (const track of project.value.lyricTracks) {
+        if (track.items.some(i => i.id === selectedItemId.value)) return track;
+    }
+    return null;
+});
+const selectedVerseTrackId = computed<string | null>(() => {
+    const track = selectedTrack.value;
+    return track?.kind === 'verse' ? track.id : null;
+});
+const selectedLineTrackId = computed<string | null>(() => {
+    const track = selectedTrack.value;
+    return track?.kind === 'sentence' ? track.id : null;
+});
 
 const onAddTrack = (track: LyricTrack) => {
     if (!project.value) return;
@@ -476,6 +535,46 @@ const onDuplicateTrack = (trackId: string) => {
     };
     dup.items = dup.items.map((item: TimelineItem) => ({ ...item, id: randomUUID() }));
     project.value.lyricTracks.push(dup);
+    scheduleSave();
+};
+
+const onGenerateLines = () => {
+    if (!project.value) return;
+    if (!selectedVerseTrackId.value) return;
+    const sourceVerseTrack = project.value.lyricTracks.find(
+        t => t.id === selectedVerseTrackId.value && t.kind === 'verse',
+    );
+    if (!sourceVerseTrack) return;
+
+    const lineTrack = generateLineTrackFromVerseTrack(
+        project.value.rawLyrics,
+        sourceVerseTrack,
+        project.value.lyricTracks.length,
+    );
+    if (lineTrack.items.length === 0) return;
+
+    pushUndo();
+    project.value.lyricTracks.push(lineTrack);
+    scheduleSave();
+};
+
+const onGenerateWords = () => {
+    if (!project.value) return;
+    if (!selectedLineTrackId.value) return;
+    const sourceLineTrack = project.value.lyricTracks.find(
+        t => t.id === selectedLineTrackId.value && t.kind === 'sentence',
+    );
+    if (!sourceLineTrack) return;
+
+    const wordTrack = generateWordTrackFromLineTrack(
+        project.value.rawLyrics,
+        sourceLineTrack,
+        project.value.lyricTracks.length,
+    );
+    if (wordTrack.items.length === 0) return;
+
+    pushUndo();
+    project.value.lyricTracks.push(wordTrack);
     scheduleSave();
 };
 
@@ -916,7 +1015,11 @@ onUnmounted(() => {
                     :tracks="project.lyricTracks"
                     :raw-lyrics="rawLyrics"
                     :audio-duration-ms="audioDurationMs"
+                    :selected-verse-track-id="selectedVerseTrackId"
+                    :selected-line-track-id="selectedLineTrackId"
                     @add-track="onAddTrack"
+                    @generate-lines="onGenerateLines"
+                    @generate-words="onGenerateWords"
                     @delete-track="onDeleteTrack"
                     @update-track="onUpdateTrack"
                     @duplicate-track="onDuplicateTrack"
