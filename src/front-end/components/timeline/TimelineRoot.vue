@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, computed } from 'vue';
+import { onMounted, onUnmounted, ref, watch, computed } from 'vue';
 import RulerLane from '@/front-end/components/timeline/lanes/RulerLane.vue';
 import ScenesLane from '@/front-end/components/timeline/lanes/ScenesLane.vue';
 import ActionsLane from '@/front-end/components/timeline/lanes/ActionsLane.vue';
 import WordKeyframesLane from '@/front-end/components/timeline/lanes/WordKeyframesLane.vue';
 import PropertyMiniLane from '@/front-end/components/timeline/lanes/PropertyMiniLane.vue';
-// New AE-style left column scaffold (names + properties)
+import SnapOverlay from './SnapOverlay.vue';
 const showLeftColumn = true;
 import WaveformLane from '@/front-end/components/timeline/lanes/WaveformLane.vue';
 import EnergyLane from '@/front-end/components/timeline/lanes/EnergyLane.vue';
@@ -13,6 +13,7 @@ import BeatsLane from '@/front-end/components/timeline/lanes/BeatsLane.vue';
 import BandsLane from '@/front-end/components/timeline/lanes/BandsLane.vue';
 import BeatStrengthLane from '@/front-end/components/timeline/lanes/BeatStrengthLane.vue';
 import { useTimelineViewport } from './useTimelineViewport';
+import { useSnapEngine, type SnapTarget } from '@/front-end/composables/timeline/useSnapEngine';
 import TimelineHelp from './TimelineHelp.vue';
 import type { SceneRef, ActionItem } from '@/types/timeline_types';
 import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
@@ -48,6 +49,7 @@ const emit = defineEmits<{
     (e: 'scrub', payload: { timeSec: number; frame: number }): void;
     (e: 'sceneSelect', payload: { id: string }): void;
     (e: 'sceneUpdate', payload: SceneRef): void;
+    (e: 'pushUndo'): void;
     (e: 'actionToggle', payload: { frame: number }): void;
     (e: 'dragGlobalPoolMarker', payload: { index: number; frame: number; originalFrame: number }): void;
     (e: 'propAddKf', payload: { propertyPath: string; frame: number; value: any }): void;
@@ -61,6 +63,34 @@ const containerRef = ref<HTMLDivElement | null>(null);
 const hostRef = ref<HTMLElement | null>(null);
 
 const vp = useTimelineViewport({ fps: props.fps, durationSec: Math.min(30, Math.max(1, props.durationSec || 60)), totalSec: Math.max(1, props.analyzedDurationSec || props.durationSec || 60) });
+
+// Snap engine for scene block snapping
+const timelineContainerWidth = ref(800);
+const snapEngine = useSnapEngine({
+    viewport: vp.viewport as any,
+    containerWidth: timelineContainerWidth,
+});
+const sceneSnapTargets = computed<SnapTarget[]>(() => {
+    const targets: SnapTarget[] = [];
+    const fps = Math.max(1, props.fps);
+    for (const s of (props.scenes || [])) {
+        const startSec = s.startFrame / fps;
+        const endSec = (s.startFrame + s.durationFrames) / fps;
+        targets.push(
+            { timeSec: startSec, label: 'edge', sourceId: s.id },
+            { timeSec: endSec, label: 'edge', sourceId: s.id },
+        );
+    }
+    return targets;
+});
+const playheadSnapTarget = computed<SnapTarget[]>(() => {
+    const phSec = vp.playhead.value.frame / Math.max(1, props.fps);
+    return [{ timeSec: phSec, label: 'playhead' }];
+});
+snapEngine.registerTargets(sceneSnapTargets);
+snapEngine.registerTargets(playheadSnapTarget);
+
+let trWidthObserver: ResizeObserver | null = null;
 
 watch(() => props.fps, (f) => { vp.viewport.value = { ...vp.viewport.value, fps: Math.max(1, f || 60) }; });
 watch(() => [props.durationSec, props.analyzedDurationSec] as const, ([d, ad]) => { 
@@ -283,11 +313,21 @@ onMounted(() => {
         window.addEventListener('pointercancel', onUp);
     };
     host.addEventListener('pointerdown', onPointerDown);
+
+    // Observe right column width for snap threshold
+    const rightCol = containerRef.value?.querySelector('.grid > div:last-child') as HTMLElement;
+    if (rightCol) {
+        timelineContainerWidth.value = rightCol.clientWidth;
+        trWidthObserver = new ResizeObserver(entries => {
+            for (const entry of entries) timelineContainerWidth.value = entry.contentRect.width;
+        });
+        trWidthObserver.observe(rightCol);
+    }
 });
 
-// Debug instrumentation for keyframes flow
-watch(() => props.wordKeyframes, (m) => {}, { deep: true, immediate: true });
-watch(() => vp.viewport.value, (v) => {}, { deep: true });
+onUnmounted(() => {
+    trWidthObserver?.disconnect();
+});
 
 </script>
 
@@ -389,7 +429,8 @@ watch(() => vp.viewport.value, (v) => {}, { deep: true });
                     BANDS
                 </div>
             </div>
-            <div>
+            <div style="position: relative">
+        <SnapOverlay :snap-lines="snapEngine.activeSnapLines.value" :viewport="vp.viewport.value" />
         <div class="lane lane--ruler-sticky lane--no-resize" :style="{ height: `${laneHeights.ruler}px` }">
             <RulerLane :viewport="vp.viewport.value" :playhead="vp.playhead.value" :beats="beats || []" @scrub="onScrub" @pan="(sec:number) => vp.panBy(sec)" @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)" />
         </div>
@@ -422,8 +463,12 @@ watch(() => vp.viewport.value, (v) => {}, { deep: true });
                 :fps="fps"
                 :scenes="scenes || []"
                 :selected-id="selectedSceneId"
+                :snap-find="snapEngine.findSnap"
+                :snap-clear="snapEngine.clearSnap"
+                :set-interaction="(mode: string) => vp.setInteraction(mode as any)"
                 @select="(id:string) => emit('sceneSelect', { id })"
                 @updateScene="(s:any) => emit('sceneUpdate', s)"
+                @push-undo="() => emit('pushUndo')"
                 @scrub="(p:any) => emit('scrub', p)"
                 @pan="(sec:number) => vp.panBy(sec)"
                 @zoomAround="({ timeSec, factor }: { timeSec: number; factor: number }) => vp.setZoomAround(timeSec, factor)"

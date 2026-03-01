@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useLaneInteractions } from '../useLaneInteractions';
+import { useAutoScroll } from '@/front-end/composables/timeline/useAutoScroll';
 
 const props = defineProps<{
     viewport: { startSec: number; durationSec: number; totalSec?: number; fps: number };
@@ -28,6 +29,12 @@ const emit = defineEmits<{
 const svgRef = ref<SVGSVGElement | null>(null);
 const width = ref(0);
 const height = ref(0);
+
+const autoScroll = useAutoScroll({
+    containerRef: svgRef as any,
+    getViewport: () => props.viewport as any,
+    panBy: (d) => emit('pan', d),
+});
 
 useLaneInteractions(svgRef as any, {
     getViewport: () => props.viewport as any,
@@ -76,28 +83,26 @@ const keyframeXs = computed(() => {
 });
 
 const beginDrag = (i: number, e: PointerEvent) => {
-    
     const el = svgRef.value; if (!el) return;
     const target = e.target as SVGElement;
-    
+
     isDragging.value = true;
     document.body.style.cursor = 'grabbing';
-    
+
     try { target?.setPointerCapture?.(e.pointerId); } catch {}
-    
+
     const move = (ev: PointerEvent) => {
-        const rect = el.getBoundingClientRect();
-        const px = ev.clientX - rect.left;
+        autoScroll.update(ev.clientX);
+        const px = autoScroll.clampedLocalX(ev.clientX);
         const rel = Math.max(0, Math.min(1, px / Math.max(1e-6, width.value)));
         const sec = props.viewport.startSec + rel * Math.max(1e-6, props.viewport.durationSec);
         const frame = Math.max(0, Math.round(sec * Math.max(1, props.fps)));
-        
+
         emit('moveKeyframe', { index: i, frame });
-        emit('scrub', { timeSec: sec, frame });
     };
     const up = (ev: PointerEvent) => {
-        
         isDragging.value = false;
+        autoScroll.stop();
         document.body.style.cursor = '';
         try { target?.releasePointerCapture?.(ev.pointerId); } catch {}
         window.removeEventListener('pointermove', move);
@@ -163,19 +168,18 @@ const beginGroupDrag = (anchorIndex: number, indices: number[], e: PointerEvent)
     const startPx = e.clientX - startRect.left;
 
     const move = (ev: PointerEvent) => {
-        const rect = el.getBoundingClientRect();
-        const px = ev.clientX - rect.left;
+        autoScroll.update(ev.clientX);
+        const px = autoScroll.clampedLocalX(ev.clientX);
         const dx = px - startPx;
         const secDelta = (dx / Math.max(1e-6, width.value)) * Math.max(1e-6, props.viewport.durationSec);
         const deltaFrames = Math.round(secDelta * fps);
         if (deltaFrames !== 0) {
             emit('moveKeyframesBatch', { indices, deltaFrames });
         }
-        const sec = props.viewport.startSec + (px / Math.max(1, width.value)) * Math.max(1e-6, props.viewport.durationSec);
-        emit('scrub', { timeSec: sec, frame: Math.max(0, Math.round(sec * fps)) });
     };
     const up = (ev: PointerEvent) => {
         isDragging.value = false;
+        autoScroll.stop();
         document.body.style.cursor = '';
         try { target?.releasePointerCapture?.(ev.pointerId); } catch {}
         window.removeEventListener('pointermove', move);

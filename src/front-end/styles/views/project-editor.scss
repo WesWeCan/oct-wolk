@@ -94,6 +94,42 @@ body:has(.project-editor) {
         color: #888;
         font-variant-numeric: tabular-nums;
     }
+
+    .toolbar-toggle {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid #444;
+        color: #999;
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 150ms;
+        &:hover { background: rgba(255, 255, 255, 0.1); }
+        &.active {
+            background: rgba(0, 212, 255, 0.15);
+            border-color: rgba(0, 212, 255, 0.5);
+            color: #00d4ff;
+        }
+    }
+
+    .timeline-marquee {
+        position: absolute;
+        background: rgba(0, 212, 255, 0.12);
+        border: 1px dashed rgba(0, 212, 255, 0.6);
+        pointer-events: none;
+        z-index: 60;
+        border-radius: 2px;
+    }
+
+    .toolbar-mode-indicator {
+        font-size: 10px;
+        color: rgba(0, 212, 255, 0.8);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 2px 6px;
+        background: rgba(0, 212, 255, 0.1);
+        border-radius: 3px;
+    }
 }
 
 // Track color dot in timeline left column labels
@@ -291,17 +327,19 @@ body:has(.project-editor) {
 
 .lyric-item {
     position: absolute;
+    user-select: none;
     top: 2px;
     bottom: 2px;
     border: 1px solid;
     border-radius: 3px;
     display: flex;
     align-items: center;
-    padding: 0 6px;
+    padding: 0;
     overflow: hidden;
     cursor: grab;
     transition: box-shadow 80ms;
-    min-width: 4px;
+    box-sizing: border-box;
+    min-width: 0;
 
     &.selected {
         box-shadow: 0 0 0 2px #fff;
@@ -316,6 +354,7 @@ body:has(.project-editor) {
         text-overflow: ellipsis;
         pointer-events: none;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+        padding: 0 6px;
     }
 
     &__handles {

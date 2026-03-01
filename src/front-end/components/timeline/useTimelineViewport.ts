@@ -93,13 +93,36 @@ export function useTimelineViewport(initial: Partial<TimelineViewport> = {}) {
         };
     };
 
+    /** Zoom the viewport to show a specific time range with optional padding */
+    const zoomToRange = (startSec: number, endSec: number, paddingFraction = 0.2) => {
+        const rangeDur = Math.max(0.1, endSec - startSec);
+        const padding = rangeDur * paddingFraction;
+        const newDur = Math.min(rangeDur + padding * 2, Math.max(0.1, viewport.value.totalSec));
+        const newStart = Math.max(0, startSec - padding);
+        viewport.value = { ...viewport.value, startSec: newStart, durationSec: newDur };
+        clamp();
+        emit('viewport', toRaw(viewport.value));
+    };
+
+    /** Zoom to show all content */
+    const zoomToFit = () => {
+        const total = Math.max(0.1, viewport.value.totalSec);
+        viewport.value = { ...viewport.value, startSec: 0, durationSec: total };
+        clamp();
+        emit('viewport', toRaw(viewport.value));
+    };
+
+    const setInteraction = (mode: InteractionMode, dragState?: Record<string, any> | null) => {
+        interaction.value = { mode, dragState: dragState ?? null };
+    };
+
     const subscribe = (fn: Listener) => { listeners.add(fn); return () => listeners.delete(fn); };
 
     watch(viewport, (v) => emit('viewport', v), { deep: true });
     watch(playhead, (p) => emit('playhead', p));
     watch(interaction, (i) => emit('interaction', i), { deep: true });
 
-    return { viewport, playhead, interaction, setStart, setDuration, setTotal, setZoomAround, setPlayhead, panBy, snapTo, subscribe };
+    return { viewport, playhead, interaction, setStart, setDuration, setTotal, setZoomAround, setPlayhead, panBy, snapTo, zoomToRange, zoomToFit, setInteraction, subscribe };
 }
 
 

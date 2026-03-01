@@ -7,6 +7,7 @@ import { useAudioPlayer } from '@/front-end/composables/editor/useAudioPlayer';
 import { useAudioAnalysis } from '@/front-end/composables/editor/useAudioAnalysis';
 import { useTimelineViewport } from '@/front-end/components/timeline/useTimelineViewport';
 import { usePreviewCanvas } from '@/front-end/composables/editor/usePreviewCanvas';
+import { useSnapEngine, type SnapTarget } from '@/front-end/composables/timeline/useSnapEngine';
 import { randomUUID } from '@/front-end/utils/uuid';
 import RulerLane from '@/front-end/components/timeline/lanes/RulerLane.vue';
 import WaveformLane from '@/front-end/components/timeline/lanes/WaveformLane.vue';
@@ -15,10 +16,12 @@ import BeatsLane from '@/front-end/components/timeline/lanes/BeatsLane.vue';
 import BandsLane from '@/front-end/components/timeline/lanes/BandsLane.vue';
 import BeatStrengthLane from '@/front-end/components/timeline/lanes/BeatStrengthLane.vue';
 import LyricTrackLane from '@/front-end/components/timeline/lanes/LyricTrackLane.vue';
+import SnapOverlay from '@/front-end/components/timeline/SnapOverlay.vue';
 import RawLyricsPanel from '@/front-end/components/editor/RawLyricsPanel.vue';
 import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
 import ProjectInspector from '@/front-end/components/editor/ProjectInspector.vue';
 import { useUndoRedo } from '@/front-end/composables/editor/useUndoRedo';
+import { useTimelineSelection } from '@/front-end/composables/timeline/useTimelineSelection';
 import { generateLineTrackFromVerseTrack, generateWordTrackFromLineTrack } from '@/front-end/utils/lyricTrackGenerators';
 
 const props = defineProps<{ projectId: string }>();
@@ -61,6 +64,35 @@ const analysis = useAudioAnalysis(fps);
 const vp = useTimelineViewport({ fps: 60 });
 const viewport = vp.viewport;
 const playhead = vp.playhead;
+
+// Snap engine
+const timelineContainerWidth = ref(800);
+const snapEngine = useSnapEngine({
+    viewport: viewport as any,
+    containerWidth: timelineContainerWidth,
+});
+
+const lyricSnapTargets = computed<SnapTarget[]>(() => {
+    if (!project.value) return [];
+    const targets: SnapTarget[] = [];
+    for (const track of project.value.lyricTracks) {
+        for (const item of track.items) {
+            targets.push(
+                { timeSec: item.startMs / 1000, label: 'edge', sourceId: item.id },
+                { timeSec: item.endMs / 1000, label: 'edge', sourceId: item.id },
+            );
+        }
+    }
+    return targets;
+});
+
+const playheadSnapTarget = computed<SnapTarget[]>(() => {
+    const phSec = playhead.value.frame / Math.max(1, fps.value);
+    return [{ timeSec: phSec, label: 'playhead' }];
+});
+
+snapEngine.registerTargets(lyricSnapTargets);
+snapEngine.registerTargets(playheadSnapTarget);
 
 // Undo/redo
 const undoRedo = useUndoRedo<WolkProject>();
@@ -479,9 +511,48 @@ const rawLyrics = computed({
     },
 });
 
-// Track management
-const selectedItemId = ref<string | null>(null);
+// Track management — multi-selection
+const selection = useTimelineSelection();
+const selectedItemId = computed<string | null>(() => {
+    const arr = selection.selectedArray.value;
+    return arr.length === 1 ? arr[0] : (arr.length > 0 ? arr[0] : null);
+});
 const NUDGE_MS = 50;
+const rippleMode = ref(false);
+
+// Cross-track marquee state
+const marquee = ref<{
+    active: boolean;
+    startClientX: number;
+    startClientY: number;
+    currentClientX: number;
+    currentClientY: number;
+} | null>(null);
+const lanesColumnRef = ref<HTMLElement | null>(null);
+
+const marqueeStyle = computed(() => {
+    if (!marquee.value || !lanesColumnRef.value) return null;
+    const col = lanesColumnRef.value.getBoundingClientRect();
+    const x1 = Math.max(0, Math.min(marquee.value.startClientX, marquee.value.currentClientX) - col.left);
+    const x2 = Math.min(col.width, Math.max(marquee.value.startClientX, marquee.value.currentClientX) - col.left);
+    const y1 = Math.max(0, Math.min(marquee.value.startClientY, marquee.value.currentClientY) - col.top);
+    const y2 = Math.min(col.height, Math.max(marquee.value.startClientY, marquee.value.currentClientY) - col.top);
+    return { left: `${x1}px`, top: `${y1}px`, width: `${x2 - x1}px`, height: `${y2 - y1}px` };
+});
+
+/** All selected items across all tracks — passed to lanes for cross-track group move */
+const allSelectedItems = computed(() => {
+    if (!project.value || selection.selectedIds.value.size === 0) return [];
+    const items: { id: string; startMs: number; endMs: number }[] = [];
+    for (const track of project.value.lyricTracks) {
+        for (const item of track.items) {
+            if (selection.selectedIds.value.has(item.id)) {
+                items.push({ id: item.id, startMs: item.startMs, endMs: item.endMs });
+            }
+        }
+    }
+    return items;
+});
 
 const playheadMs = computed(() => (playhead.value.frame / Math.max(1, fps.value)) * 1000);
 const selectedTrack = computed<LyricTrack | null>(() => {
@@ -592,7 +663,115 @@ const onUpdateItem = (updated: TimelineItem) => {
 };
 
 const onSelectItem = (itemId: string | null) => {
-    selectedItemId.value = itemId;
+    if (itemId) selection.select(itemId);
+    else selection.clearSelection();
+};
+
+const onToggleItem = (itemId: string) => {
+    selection.toggle(itemId);
+};
+
+const onAddToSelection = (itemId: string) => {
+    selection.addToSelection(itemId);
+};
+
+const onUpdateItems = (items: TimelineItem[]) => {
+    if (!project.value) return;
+    for (const updated of items) {
+        for (const track of project.value.lyricTracks) {
+            const idx = track.items.findIndex(i => i.id === updated.id);
+            if (idx >= 0) {
+                track.items[idx] = updated;
+                track.items.sort((a, b) => a.startMs - b.startMs);
+                break;
+            }
+        }
+    }
+    scheduleSave();
+};
+
+/** Find which track lane DOM elements the marquee rectangle intersects */
+const getMarqueeSelectedIds = (): string[] => {
+    if (!marquee.value || !project.value || !lanesColumnRef.value) return [];
+    const col = lanesColumnRef.value;
+    const colRect = col.getBoundingClientRect();
+
+    const mLeft = Math.min(marquee.value.startClientX, marquee.value.currentClientX);
+    const mRight = Math.max(marquee.value.startClientX, marquee.value.currentClientX);
+    const mTop = Math.min(marquee.value.startClientY, marquee.value.currentClientY);
+    const mBottom = Math.max(marquee.value.startClientY, marquee.value.currentClientY);
+
+    // Convert marquee X to time
+    const relLeft = (mLeft - colRect.left) / Math.max(1, colRect.width);
+    const relRight = (mRight - colRect.left) / Math.max(1, colRect.width);
+    const startSec = viewport.value.startSec + relLeft * viewport.value.durationSec;
+    const endSec = viewport.value.startSec + relRight * viewport.value.durationSec;
+    const startMs = startSec * 1000;
+    const endMs = endSec * 1000;
+
+    // Find which .lane elements (lyric tracks) the marquee vertically intersects
+    const laneEls = col.querySelectorAll<HTMLElement>('.lane[data-track-id]');
+    const ids: string[] = [];
+
+    for (const laneEl of laneEls) {
+        const laneRect = laneEl.getBoundingClientRect();
+        // Vertical overlap check
+        if (laneRect.bottom < mTop || laneRect.top > mBottom) continue;
+
+        const trackId = laneEl.getAttribute('data-track-id');
+        if (!trackId) continue;
+        const track = project.value!.lyricTracks.find(t => t.id === trackId);
+        if (!track) continue;
+
+        for (const item of track.items) {
+            if (item.endMs > startMs && item.startMs < endMs) {
+                ids.push(item.id);
+            }
+        }
+    }
+    return ids;
+};
+
+const onMarqueeStart = (payload: { trackId: string; clientX: number; clientY: number; pointerId: number }) => {
+    marquee.value = {
+        active: true,
+        startClientX: payload.clientX,
+        startClientY: payload.clientY,
+        currentClientX: payload.clientX,
+        currentClientY: payload.clientY,
+    };
+
+    const onMove = (ev: PointerEvent) => {
+        if (!marquee.value) return;
+        marquee.value = { ...marquee.value, currentClientX: ev.clientX, currentClientY: ev.clientY };
+        const ids = getMarqueeSelectedIds();
+        selection.replaceSelection(ids);
+    };
+    const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        marquee.value = null;
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+};
+
+const onGroupMoveAll = (payload: { anchorId: string; deltaMs: number; updates: { id: string; startMs: number; endMs: number }[] }) => {
+    if (!project.value) return;
+    const updateMap = new Map(payload.updates.map(u => [u.id, u]));
+    for (const track of project.value.lyricTracks) {
+        let changed = false;
+        for (let i = 0; i < track.items.length; i++) {
+            const upd = updateMap.get(track.items[i].id);
+            if (!upd) continue;
+            track.items[i] = { ...track.items[i], startMs: upd.startMs, endMs: upd.endMs };
+            changed = true;
+        }
+        if (changed) track.items.sort((a, b) => a.startMs - b.startMs);
+    }
+    scheduleSave();
 };
 
 const onPushUndo = () => {
@@ -606,7 +785,7 @@ const onDeleteItem = (itemId: string) => {
         const idx = track.items.findIndex(i => i.id === itemId);
         if (idx >= 0) {
             track.items.splice(idx, 1);
-            if (selectedItemId.value === itemId) selectedItemId.value = null;
+            if (selection.isSelected(itemId)) selection.clearSelection();
             scheduleSave();
             return;
         }
@@ -624,7 +803,7 @@ const onSplitItem = (itemId: string, atMs: number) => {
             const left: TimelineItem = { id: item.id, text: item.text, startMs: item.startMs, endMs: Math.round(atMs) };
             const right: TimelineItem = { id: randomUUID(), text: item.text, startMs: Math.round(atMs), endMs: item.endMs };
             track.items.splice(idx, 1, left, right);
-            selectedItemId.value = right.id;
+            selection.select(right.id);
             scheduleSave();
             return;
         }
@@ -641,7 +820,7 @@ const onMergeWithNext = (itemId: string) => {
             const next = track.items[idx + 1];
             const merged: TimelineItem = { id: current.id, text: `${current.text} ${next.text}`.trim(), startMs: current.startMs, endMs: next.endMs };
             track.items.splice(idx, 2, merged);
-            selectedItemId.value = merged.id;
+            selection.select(merged.id);
             scheduleSave();
             return;
         }
@@ -706,26 +885,30 @@ const onAddItemAtLocation = (payload: { trackId?: string; atMs: number }) => {
     }
     track.items.push(newItem);
     track.items.sort((a, b) => a.startMs - b.startMs);
-    selectedItemId.value = newItem.id;
+    selection.select(newItem.id);
     scheduleSave();
 };
 
 const nudgeSelectedItem = (deltaMs: number) => {
-    if (!project.value || !selectedItemId.value) return;
-    for (const track of project.value.lyricTracks) {
-        if (track.locked) continue;
-        const idx = track.items.findIndex(i => i.id === selectedItemId.value);
-        if (idx >= 0) {
-            pushUndo();
-            const item = track.items[idx];
-            const dur = item.endMs - item.startMs;
-            const newStart = Math.max(0, item.startMs + deltaMs);
-            track.items[idx] = { ...item, startMs: newStart, endMs: newStart + dur };
-            track.items.sort((a, b) => a.startMs - b.startMs);
-            scheduleSave();
-            return;
+    if (!project.value) return;
+    const ids = selection.selectedArray.value;
+    if (ids.length === 0) return;
+    pushUndo();
+    for (const id of ids) {
+        for (const track of project.value.lyricTracks) {
+            if (track.locked) continue;
+            const idx = track.items.findIndex(i => i.id === id);
+            if (idx >= 0) {
+                const item = track.items[idx];
+                const dur = item.endMs - item.startMs;
+                const newStart = Math.max(0, item.startMs + deltaMs);
+                track.items[idx] = { ...item, startMs: newStart, endMs: newStart + dur };
+                track.items.sort((a, b) => a.startMs - b.startMs);
+                break;
+            }
         }
     }
+    scheduleSave();
 };
 
 const splitSelectedAtPlayhead = () => {
@@ -733,7 +916,21 @@ const splitSelectedAtPlayhead = () => {
 };
 
 const deleteSelectedItem = () => {
-    if (selectedItemId.value) onDeleteItem(selectedItemId.value);
+    const ids = selection.selectedArray.value;
+    if (ids.length === 0) return;
+    pushUndo();
+    if (!project.value) return;
+    for (const id of ids) {
+        for (const track of project.value.lyricTracks) {
+            const idx = track.items.findIndex(i => i.id === id);
+            if (idx >= 0) {
+                track.items.splice(idx, 1);
+                break;
+            }
+        }
+    }
+    selection.clearSelection();
+    scheduleSave();
 };
 
 // Project settings update handler (from inspector)
@@ -821,9 +1018,23 @@ const startResize = (key: string, e: PointerEvent) => {
 // Sidebar + inspector resize (same pattern as Editor.vue)
 // Timeline top-edge resize (same pattern as TimelineRoot.vue)
 
+let timelineWidthObserver: ResizeObserver | null = null;
+
 const setupResizeHandles = () => {
     const editorEl = document.querySelector('.project-editor') as HTMLElement;
     if (!editorEl) return;
+
+    // Measure the right column width for snap threshold
+    const rightCol = editorEl.querySelector('.editor__timeline .grid > div:last-child') as HTMLElement;
+    if (rightCol) {
+        timelineContainerWidth.value = rightCol.clientWidth;
+        timelineWidthObserver = new ResizeObserver(entries => {
+            for (const entry of entries) {
+                timelineContainerWidth.value = entry.contentRect.width;
+            }
+        });
+        timelineWidthObserver.observe(rightCol);
+    }
 
     const savedSW = localStorage.getItem('pe-sidebar-width');
     const savedIW = localStorage.getItem('pe-inspector-width');
@@ -913,28 +1124,126 @@ const setupResizeHandles = () => {
     }
 };
 
+// Tab cycling through blocks
+const cycleSelection = (forward: boolean) => {
+    if (!project.value) return;
+    const allItems: TimelineItem[] = [];
+    for (const track of project.value.lyricTracks) {
+        allItems.push(...track.items);
+    }
+    allItems.sort((a, b) => a.startMs - b.startMs);
+    if (allItems.length === 0) return;
+
+    const currentId = selectedItemId.value;
+    const currentIdx = currentId ? allItems.findIndex(i => i.id === currentId) : -1;
+
+    let nextIdx: number;
+    if (currentIdx < 0) {
+        nextIdx = forward ? 0 : allItems.length - 1;
+    } else {
+        nextIdx = forward
+            ? (currentIdx + 1) % allItems.length
+            : (currentIdx - 1 + allItems.length) % allItems.length;
+    }
+    selection.select(allItems[nextIdx].id);
+};
+
+// Jump playhead to selection in/out points
+const jumpToSelectionEdge = (edge: 'in' | 'out') => {
+    if (!project.value) return;
+    const ids = selection.selectedArray.value;
+    if (ids.length === 0) return;
+
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    for (const track of project.value.lyricTracks) {
+        for (const item of track.items) {
+            if (ids.includes(item.id)) {
+                minStart = Math.min(minStart, item.startMs);
+                maxEnd = Math.max(maxEnd, item.endMs);
+            }
+        }
+    }
+    if (!Number.isFinite(minStart)) return;
+    const targetMs = edge === 'in' ? minStart : maxEnd;
+    const targetSec = targetMs / 1000;
+    const frame = Math.round(targetSec * fps.value);
+    onScrub({ timeSec: targetSec, frame });
+};
+
+const onDblClickItem = (itemId: string) => {
+    if (!project.value) return;
+    for (const track of project.value.lyricTracks) {
+        const item = track.items.find(i => i.id === itemId);
+        if (item) {
+            vp.zoomToRange(item.startMs / 1000, item.endMs / 1000);
+            return;
+        }
+    }
+};
+
+const zoomToSelection = () => {
+    if (!project.value) return;
+    const ids = selection.selectedArray.value;
+    if (ids.length === 0) return;
+    let minMs = Infinity;
+    let maxMs = -Infinity;
+    for (const track of project.value.lyricTracks) {
+        for (const item of track.items) {
+            if (ids.includes(item.id)) {
+                minMs = Math.min(minMs, item.startMs);
+                maxMs = Math.max(maxMs, item.endMs);
+            }
+        }
+    }
+    if (!Number.isFinite(minMs)) return;
+    vp.zoomToRange(minMs / 1000, maxMs / 1000);
+};
+
 // Keyboard shortcuts
 const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Alt') snapEngine.setAltSuppressed(true);
+
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     const tag = (e.target as HTMLElement)?.closest?.('.ProseMirror');
     if (tag) return;
 
     const isMeta = e.metaKey || e.ctrlKey;
 
-    if (e.code === 'Escape') { selectedItemId.value = null; return; }
+    if (e.code === 'Escape') { selection.clearSelection(); return; }
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); return; }
     if (isMeta && !e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); performUndo(); return; }
     if (isMeta && e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); performRedo(); return; }
     if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); deleteSelectedItem(); return; }
     if (e.code === 'KeyS' && !isMeta) { e.preventDefault(); splitSelectedAtPlayhead(); return; }
+    if (isMeta && e.code === 'KeyK') { e.preventDefault(); splitSelectedAtPlayhead(); return; }
+    if (e.code === 'KeyR' && !isMeta) { e.preventDefault(); rippleMode.value = !rippleMode.value; return; }
+    if (isMeta && !e.shiftKey && e.code === 'Digit0') {
+        e.preventDefault();
+        vp.zoomToFit();
+        return;
+    }
+    if (isMeta && e.shiftKey && e.code === 'Digit0') {
+        e.preventDefault();
+        zoomToSelection();
+        return;
+    }
+    if (e.code === 'KeyI' && !isMeta) { e.preventDefault(); jumpToSelectionEdge('in'); return; }
+    if (e.code === 'KeyO' && !isMeta) { e.preventDefault(); jumpToSelectionEdge('out'); return; }
+    if (e.code === 'Tab') {
+        e.preventDefault();
+        cycleSelection(!e.shiftKey);
+        return;
+    }
     if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
         e.preventDefault();
         const dir = e.code === 'ArrowLeft' ? -1 : 1;
-        if (selectedItemId.value) {
-            nudgeSelectedItem(dir * NUDGE_MS);
+        const multiplier = e.shiftKey ? 10 : 1;
+        if (selection.hasSelection.value) {
+            nudgeSelectedItem(dir * NUDGE_MS * multiplier);
             markDirty();
         } else {
-            const newFrame = Math.max(0, playhead.value.frame + dir);
+            const newFrame = Math.max(0, playhead.value.frame + dir * multiplier);
             vp.setPlayhead(newFrame);
             audio.seekTo(newFrame / fps.value);
             markDirty();
@@ -943,15 +1252,22 @@ const onKeyDown = (e: KeyboardEvent) => {
     }
 };
 
+const onKeyUp = (e: KeyboardEvent) => {
+    if (e.key === 'Alt') snapEngine.setAltSuppressed(false);
+};
+
 onMounted(() => {
     loadProject();
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
 });
 
 onUnmounted(() => {
     stopRafLoop();
     if (saveTimer) clearTimeout(saveTimer);
     window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    timelineWidthObserver?.disconnect();
     audio.dispose();
     previewCanvasComposable.dispose();
 });
@@ -985,6 +1301,19 @@ onUnmounted(() => {
                 </div>
             </div>
             <div class="toolbar__right">
+                <button
+                    class="toolbar-toggle"
+                    :class="{ active: snapEngine.enabled.value }"
+                    @click="snapEngine.enabled.value = !snapEngine.enabled.value"
+                    title="Toggle snapping"
+                >Snap</button>
+                <button
+                    class="toolbar-toggle"
+                    :class="{ active: rippleMode }"
+                    @click="rippleMode = !rippleMode"
+                    title="Toggle ripple edit (R)"
+                >Ripple</button>
+                <span v-if="vp.interaction.value.mode !== 'idle'" class="toolbar-mode-indicator">{{ vp.interaction.value.mode }}</span>
                 <button @click="togglePlay" class="primary">{{ audio.isPlaying.value ? 'Pause' : 'Play' }}</button>
                 <button @click="stopPlayback" :disabled="!audio.isPlaying.value && playhead.frame === 0">Stop</button>
                 <span v-if="audio.duration.value > 0" class="toolbar-time">
@@ -1187,7 +1516,9 @@ onUnmounted(() => {
                             </div>
                         </div>
                         <!-- Right column: lanes -->
-                        <div>
+                        <div ref="lanesColumnRef" style="position: relative">
+                            <SnapOverlay :snap-lines="snapEngine.activeSnapLines.value" :viewport="viewport" />
+                            <div v-if="marqueeStyle" class="timeline-marquee" :style="marqueeStyle"></div>
                             <!-- Ruler -->
                             <div class="lane lane--ruler-sticky lane--no-resize" :style="{ height: `${laneHeights.ruler}px` }">
                                 <RulerLane
@@ -1283,6 +1614,7 @@ onUnmounted(() => {
                             <div v-for="track in (project?.lyricTracks ?? [])"
                                 :key="track.id"
                                 class="lane"
+                                :data-track-id="track.id"
                                 :style="{ height: `${collapsed[`track-${track.id}`] ? 28 : getTrackHeight(track.id)}px` }">
                                 <LyricTrackLane
                                     v-if="!collapsed[`track-${track.id}`]"
@@ -1291,8 +1623,19 @@ onUnmounted(() => {
                                     :track="track"
                                     :playhead-frame="playhead.frame"
                                     :selected-item-id="selectedItemId"
+                                    :selected-item-ids="selection.selectedIds.value"
+                                    :all-selected-items="allSelectedItems"
+                                    :snap-find="snapEngine.findSnap"
+                                    :snap-clear="snapEngine.clearSnap"
+                                    :set-interaction="(mode: string) => vp.setInteraction(mode as any)"
                                     @select-item="onSelectItem"
+                                    @toggle-item="onToggleItem"
+                                    @add-to-selection="onAddToSelection"
                                     @update-item="onUpdateItem"
+                                    @update-items="onUpdateItems"
+                                    @group-move-all="onGroupMoveAll"
+                                    @marquee-start="onMarqueeStart"
+                                    @dblclick-item="onDblClickItem"
                                     @push-undo="onPushUndo"
                                     @scrub="onScrub"
                                     @pan="onPan"
