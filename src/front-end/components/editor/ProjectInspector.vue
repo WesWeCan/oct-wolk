@@ -20,6 +20,7 @@ const emit = defineEmits<{
     (e: 'deleteItem', itemId: string): void;
     (e: 'splitItem', itemId: string, atMs: number): void;
     (e: 'mergeWithNext', itemId: string): void;
+    (e: 'addItemAtLocation', payload: { trackId?: string; atMs: number }): void;
     (e: 'update:overlayOpts', value: { showEnergy: boolean; showBeats: boolean; showBands: boolean; showBeatStrength: boolean }): void;
 }>();
 
@@ -148,6 +149,7 @@ onMounted(async () => {
                 @delete-item="(id: string) => emit('deleteItem', id)"
                 @split-item="(id: string, ms: number) => emit('splitItem', id, ms)"
                 @merge-with-next="(id: string) => emit('mergeWithNext', id)"
+                @add-item-at-location="(payload: { trackId?: string; atMs: number }) => emit('addItemAtLocation', payload)"
             />
         </template>
         <template v-else>

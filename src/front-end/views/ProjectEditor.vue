@@ -147,6 +147,25 @@ const previewCanvasComposable = usePreviewCanvas(renderCanvas, previewCanvas, ta
 
 const currentFrame = computed(() => playhead.value.frame);
 
+const wrapTextLines = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [''];
+    const lines: string[] = [];
+    let current = words[0];
+
+    for (let i = 1; i < words.length; i++) {
+        const candidate = `${current} ${words[i]}`;
+        if (ctx.measureText(candidate).width <= maxWidth) {
+            current = candidate;
+        } else {
+            lines.push(current);
+            current = words[i];
+        }
+    }
+    lines.push(current);
+    return lines;
+};
+
 const drawLyricPreview = () => {
     const canvas = renderCanvas.value;
     if (!canvas || !project.value) return;
@@ -188,17 +207,35 @@ const drawLyricPreview = () => {
     const slotHeight = h / Math.max(1, totalTracks);
 
     for (const at of activeTexts) {
-        const fontSize = Math.min(slotHeight * 0.5, w * 0.06);
+        const maxTextWidth = w - 80;
+        const lineGap = 1.2;
+        let fontSize = Math.min(slotHeight * 0.5, w * 0.06);
+        let lines: string[] = [];
+
+        // Fit text by wrapping words and shrinking font if block exceeds slot.
+        for (let attempts = 0; attempts < 24; attempts++) {
+            ctx.font = `bold ${fontSize}px ${fontChain}`;
+            lines = wrapTextLines(ctx, at.text, maxTextWidth);
+            const totalHeight = lines.length * fontSize * lineGap;
+            if (totalHeight <= slotHeight * 0.9 || fontSize <= 16) break;
+            fontSize = Math.max(16, fontSize - 2);
+        }
+
         ctx.font = `bold ${fontSize}px ${fontChain}`;
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        ctx.textBaseline = 'alphabetic';
 
         const y = slotHeight * at.trackIndex + slotHeight / 2;
+        const totalHeight = lines.length * fontSize * lineGap;
+        let lineY = y - totalHeight / 2 + fontSize;
 
         ctx.shadowColor = 'rgba(0,0,0,0.8)';
         ctx.shadowBlur = 8;
         ctx.fillStyle = '#fff';
-        ctx.fillText(at.text, w / 2, y, w - 40);
+        for (const line of lines) {
+            ctx.fillText(line, w / 2, lineY);
+            lineY += fontSize * lineGap;
+        }
         ctx.shadowBlur = 0;
     }
 
@@ -510,6 +547,68 @@ const onMergeWithNext = (itemId: string) => {
             return;
         }
     }
+};
+
+const onAddItemAtLocation = (payload: { trackId?: string; atMs: number }) => {
+    if (!project.value) return;
+    const editableTracks = project.value.lyricTracks.filter(t => !t.locked);
+    const defaultTrack = (
+        editableTracks.find(t => t.kind === 'verse')
+        || editableTracks.find(t => t.kind === 'sentence')
+        || editableTracks.find(t => t.kind === 'word')
+        || editableTracks[0]
+    );
+    const track = payload.trackId
+        ? project.value.lyricTracks.find(t => t.id === payload.trackId)
+        : defaultTrack;
+    if (!track || track.locked) return;
+
+    const atMs = Math.round(Math.max(0, payload.atMs));
+    const sorted = [...track.items].sort((a, b) => a.startMs - b.startMs);
+    const overlap = sorted.find(i => atMs >= i.startMs && atMs < i.endMs) || null;
+
+    let startMs = atMs;
+    let endMs = 0;
+
+    if (overlap) {
+        // Replace the overlapped tail: [playhead .. overlap.end] becomes new item.
+        endMs = overlap.endMs;
+    } else {
+        const prev = [...sorted].reverse().find(i => i.endMs <= atMs) || null;
+        const next = sorted.find(i => i.startMs >= atMs) || null;
+        const minStart = prev ? prev.endMs : 0;
+        const maxEnd = next
+            ? next.startMs
+            : Math.max(minStart + 10, Math.round(viewport.value.totalSec * 1000));
+        startMs = Math.max(minStart, atMs);
+        if (startMs >= maxEnd) return;
+        endMs = Math.min(maxEnd, startMs + 600);
+    }
+
+    if (endMs - startMs < 10) return;
+
+    const newItem: TimelineItem = {
+        id: randomUUID(),
+        text: '',
+        startMs,
+        endMs,
+    };
+
+    pushUndo();
+    if (overlap) {
+        const overlapIdx = track.items.findIndex(i => i.id === overlap.id);
+        if (overlapIdx >= 0) {
+            if (startMs - overlap.startMs < 10) {
+                track.items.splice(overlapIdx, 1);
+            } else {
+                track.items[overlapIdx] = { ...overlap, endMs: startMs };
+            }
+        }
+    }
+    track.items.push(newItem);
+    track.items.sort((a, b) => a.startMs - b.startMs);
+    selectedItemId.value = newItem.id;
+    scheduleSave();
 };
 
 const nudgeSelectedItem = (deltaMs: number) => {
@@ -918,6 +1017,7 @@ onUnmounted(() => {
                 @delete-item="onDeleteItem"
                 @split-item="onSplitItem"
                 @merge-with-next="onMergeWithNext"
+                @add-item-at-location="onAddItemAtLocation"
                 @update:overlay-opts="(v: any) => overlayOpts = v"
             />
         </div>

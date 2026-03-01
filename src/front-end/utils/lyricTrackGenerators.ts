@@ -2,6 +2,12 @@ import { randomUUID } from '@/front-end/utils/uuid';
 import type { LyricTrack, TimelineItem, LyricTrackKind } from '@/types/project_types';
 import { TRACK_COLORS } from '@/types/project_types';
 
+const TRACK_KIND_BASE_COLORS: Record<'word' | 'sentence' | 'verse', string> = {
+    word: '#4fc3f7',
+    sentence: '#81c784',
+    verse: '#e57373',
+};
+
 let colorIndex = 0;
 const nextColor = (): string => {
     const c = TRACK_COLORS[colorIndex % TRACK_COLORS.length];
@@ -33,7 +39,7 @@ export function generateWordTrack(rawLyrics: string, audioDurationMs: number, ex
     return {
         id: randomUUID(),
         name: `Words ${existingTrackCount + 1}`,
-        color: nextColor(),
+        color: TRACK_KIND_BASE_COLORS.word,
         kind: 'word',
         items: makeItems(words, audioDurationMs),
         muted: false,
@@ -54,7 +60,7 @@ export function generateSentenceTrack(rawLyrics: string, audioDurationMs: number
     return {
         id: randomUUID(),
         name: `Sentences ${existingTrackCount + 1}`,
-        color: nextColor(),
+        color: TRACK_KIND_BASE_COLORS.sentence,
         kind: 'sentence',
         items: makeItems(sentences, audioDurationMs),
         muted: false,
@@ -75,7 +81,7 @@ export function generateVerseTrack(rawLyrics: string, audioDurationMs: number, e
     return {
         id: randomUUID(),
         name: `Verses ${existingTrackCount + 1}`,
-        color: nextColor(),
+        color: TRACK_KIND_BASE_COLORS.verse,
         kind: 'verse',
         items: makeItems(verses, audioDurationMs),
         muted: false,

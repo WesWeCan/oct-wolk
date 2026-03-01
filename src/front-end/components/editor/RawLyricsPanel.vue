@@ -2,6 +2,7 @@
 import StarterKit from '@tiptap/starter-kit';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import { onBeforeUnmount, watch } from 'vue';
+import { VerseLineGuides } from '@/front-end/extensions/VerseLineGuides';
 
 const rawLyrics = defineModel<string>('rawLyrics', { default: '' });
 
@@ -19,6 +20,7 @@ const editor = useEditor({
             code: false,
             codeBlock: false,
         }),
+        VerseLineGuides,
     ],
 });
 

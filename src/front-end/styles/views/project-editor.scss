@@ -200,11 +200,64 @@ body:has(.project-editor) {
 
             p {
                 margin: 0 0 2px;
+                position: relative;
+                padding-left: 18px;
             }
 
-            &:focus {
-                border-left: 2px solid #2a6af0;
-                padding-left: 8px;
+            // Blue underline on each decorated word token (not spaces).
+            .lyric-word {
+                text-decoration-line: underline;
+                text-decoration-color: #4fc3f7;
+                text-decoration-thickness: 1px;
+                text-underline-offset: 0.2em;
+            }
+
+            // Green lane: every non-empty entered line.
+            p.lyric-line::before {
+                content: '';
+                position: absolute;
+                left: 8px;
+                top: 2px;
+                bottom: 2px;
+                width: 2px;
+                border-radius: 1px;
+                background: #81c784;
+            }
+
+            // Red lane: one continuous verse block between empty lines.
+            p.verse-start::after,
+            p.verse-mid::after,
+            p.verse-end::after,
+            p.verse-single::after {
+                content: '';
+                position: absolute;
+                left: 3px;
+                width: 2px;
+                background: #e57373;
+            }
+
+            p.verse-start::after {
+                top: 2px;
+                bottom: -2px;
+                border-radius: 1px 1px 0 0;
+            }
+
+            p.verse-mid::after {
+                top: -2px;
+                bottom: -2px;
+                border-radius: 0;
+            }
+
+            p.verse-end::after {
+                top: -2px;
+                bottom: 2px;
+                border-radius: 0 0 1px 1px;
+            }
+
+            p.verse-single::after {
+                top: 2px;
+                bottom: 2px;
+                border-radius: 1px;
             }
         }
     }

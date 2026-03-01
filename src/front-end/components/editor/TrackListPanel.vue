@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import type { LyricTrack } from '@/types/project_types';
 import {
-    generateWordTrack,
-    generateSentenceTrack,
     generateVerseTrack,
     createCustomTrack,
 } from '@/front-end/utils/lyricTrackGenerators';
@@ -23,16 +21,6 @@ const emit = defineEmits<{
 
 const hasLyrics = () => !!props.rawLyrics.trim();
 const effectiveDuration = () => props.audioDurationMs > 0 ? props.audioDurationMs : 180_000;
-
-const generateWords = () => {
-    if (!hasLyrics()) return;
-    emit('addTrack', generateWordTrack(props.rawLyrics, effectiveDuration(), props.tracks.length));
-};
-
-const generateSentences = () => {
-    if (!hasLyrics()) return;
-    emit('addTrack', generateSentenceTrack(props.rawLyrics, effectiveDuration(), props.tracks.length));
-};
 
 const generateVerses = () => {
     if (!hasLyrics()) return;
@@ -80,13 +68,14 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
         </div>
 
         <div class="track-list-panel__generators">
-            <button @click="generateWords" :disabled="!rawLyrics.trim()" title="Split lyrics into individual words">Words</button>
-            <button @click="generateSentences" :disabled="!rawLyrics.trim()" title="Split lyrics into lines/sentences">Lines</button>
-            <button @click="generateVerses" :disabled="!rawLyrics.trim()" title="Split lyrics into verses/paragraphs">Verses</button>
+            <button @click="generateVerses" :disabled="!rawLyrics.trim()" title="Split lyrics into verses (separated by blank lines)">Verses</button>
             <button @click="addCustom" title="Add blank custom track">+ Custom</button>
         </div>
         <p v-if="!rawLyrics.trim()" class="track-list-panel__hint">
-            Paste lyrics below to enable Word / Line / Verse generation.
+            Paste lyrics below to generate verse tracks.
+        </p>
+        <p v-else class="track-list-panel__hint">
+            Generate verses first — line and word timing comes next.
         </p>
 
         <div class="track-list-panel__list">
@@ -148,7 +137,7 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                 </div>
             </div>
             <div v-if="!tracks.length" class="track-list-empty">
-                No tracks yet. Paste lyrics below, then generate.
+                No tracks yet. Paste lyrics and generate verses to start.
             </div>
         </div>
     </div>

@@ -13,6 +13,7 @@ const emit = defineEmits<{
     (e: 'deleteItem', itemId: string): void;
     (e: 'splitItem', itemId: string, atMs: number): void;
     (e: 'mergeWithNext', itemId: string): void;
+    (e: 'addItemAtLocation', payload: { trackId?: string; atMs: number }): void;
 }>();
 
 const selectedItem = computed(() => {
@@ -37,10 +38,36 @@ const canMerge = computed(() => {
     return idx >= 0 && idx < sel.track.items.length - 1;
 });
 
+const editableTracks = computed(() => props.tracks.filter(t => !t.locked));
+const defaultAddTrack = computed(() => {
+    const editable = editableTracks.value;
+    if (!editable.length) return null;
+    return (
+        editable.find(t => t.kind === 'verse')
+        || editable.find(t => t.kind === 'sentence')
+        || editable.find(t => t.kind === 'word')
+        || editable[0]
+    );
+});
+
+const canAddAtLocation = computed(() => {
+    const sel = selectedItem.value;
+    if (sel) return !sel.track.locked;
+    return !!defaultAddTrack.value;
+});
+
+const addAtPlayhead = () => {
+    const sel = selectedItem.value;
+    const fallbackTrackId = defaultAddTrack.value?.id;
+    const trackId = sel?.track.id || fallbackTrackId;
+    if (!trackId) return;
+    emit('addItemAtLocation', { trackId, atMs: props.playheadMs });
+};
+
 const onTextChange = (e: Event) => {
     const sel = selectedItem.value;
     if (!sel) return;
-    emit('updateItem', { ...sel.item, text: (e.target as HTMLInputElement).value });
+    emit('updateItem', { ...sel.item, text: (e.target as HTMLTextAreaElement).value });
 };
 
 const MIN_DURATION_MS = 10;
@@ -102,12 +129,12 @@ const formatMs = (ms: number) => {
         <template v-if="selectedItem">
             <div class="inspector-field">
                 <label>Text</label>
-                <input
-                    type="text"
+                <textarea
                     :value="selectedItem.item.text"
                     @change="onTextChange"
                     class="inspector-input"
-                />
+                    rows="3"
+                ></textarea>
             </div>
 
             <div class="inspector-field">
@@ -159,6 +186,11 @@ const formatMs = (ms: number) => {
                     title="Merge with next item"
                 >Merge</button>
                 <button
+                    :disabled="!canAddAtLocation"
+                    @click="addAtPlayhead"
+                    title="Add new item at playhead"
+                >+ Add</button>
+                <button
                     class="danger"
                     @click="emit('deleteItem', selectedItem!.item.id)"
                     title="Delete item (Del)"
@@ -166,8 +198,17 @@ const formatMs = (ms: number) => {
             </div>
         </template>
 
-        <div v-else class="inspector-empty">
-            Select an item on the timeline to inspect
-        </div>
+        <template v-else>
+            <div class="inspector-empty">
+                Select an item on the timeline to inspect
+            </div>
+            <div class="inspector-actions">
+                <button
+                    :disabled="!canAddAtLocation"
+                    @click="addAtPlayhead"
+                    title="Add new item at playhead"
+                >+ Add at Playhead</button>
+            </div>
+        </template>
     </div>
 </template>
