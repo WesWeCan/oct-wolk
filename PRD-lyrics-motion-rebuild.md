@@ -1,7 +1,7 @@
 # WOLK PRD: Lyrics Timeline + Motion Rebuild (MVP)
 
-> Last updated: 2026-02-26
-> Status: Draft — ready for implementation planning
+> Last updated: 2026-03-02
+> Status: Lyric Mode implemented; Motion Mode next
 
 ---
 
@@ -28,7 +28,7 @@ Export-ready lyric visuals (including alpha-capable path) for use in VJ tools li
 ### Goals
 
 - Create a project with song metadata (title, audio file, cover image) and raw lyrics.
-- Generate timed lyric tracks from raw text (word / sentence / verse).
+- Generate timed lyric tracks from raw text using a staged flow (verse -> line -> word).
 - Create additional custom blank tracks (backing vocals, adlibs, stage cues).
 - Edit track item timing with professional timeline tools.
 - Build visual motion layers that each consume one lyric track.
@@ -69,6 +69,7 @@ These were decided during brainstorming and are not open for re-discussion:
 | 3D RBJAN module | Visible but disabled in MVP. |
 | Silhouette / weak image modules | Hidden/disabled, not deleted yet. |
 | Old projects ignored | `.wolk` extension stays, internal format can fully change. |
+| Generator flow is staged | Keep `verse -> line -> word`; do not revert to independent generator buttons. |
 
 ---
 
@@ -85,13 +86,13 @@ These were decided during brainstorming and are not open for re-discussion:
 
 #### Track Generators
 
-Three generator buttons that parse raw lyrics text:
+Generator flow is intentionally staged:
 
-| Generator | Splits by | Example output |
+| Step | Input | Output |
 |---|---|---|
-| Create Word Track | Whitespace / punctuation boundaries | One item per word |
-| Create Sentence Track | Period / newline / punctuation sentence boundaries | One item per sentence/line |
-| Create Verse Track | Double-newline / stanza boundaries | One item per verse/paragraph |
+| Create Verse Track | Raw lyrics, split by stanza boundaries | Verse items |
+| Create Line Track | Selected verse track + raw lyric lines | Line/sentence items constrained to verse windows |
+| Create Word Track | Selected line track + tokenized raw lyric lines | Word items constrained to line windows |
 
 **Default timing strategy (no analysis):** Items are placed sequentially with uniform duration, filling the audio duration evenly. User drags them to correct positions.
 
@@ -135,7 +136,7 @@ Rules:
 | Duplicate track | Yes |
 | Mute / Solo / Lock | Yes |
 | Reorder tracks | Yes |
-| Copy/paste items within or across tracks | Yes |
+| Copy / Cut / Paste items within or across tracks | Yes |
 
 #### Item Editing (timeline gestures)
 
@@ -158,6 +159,9 @@ Rules:
 | `Delete` / `Backspace` | Delete selected item(s) |
 | `Cmd+Z` / `Ctrl+Z` | Undo |
 | `Cmd+Shift+Z` / `Ctrl+Shift+Z` | Redo |
+| `Cmd+C` / `Ctrl+C` | Copy selected item(s) |
+| `Cmd+X` / `Ctrl+X` | Cut selected item(s) |
+| `Cmd+V` / `Ctrl+V` | Paste at playhead |
 | `S` | Split item at playhead |
 
 ### 4.2 Layer B — Motion Mode
@@ -262,7 +266,7 @@ The Project Editor is a single view with a **mode toggle**.
 #### In Lyric Mode (Layer A)
 
 - **Left panel:** Track list (add/delete/mute/solo/lock/reorder), raw lyrics editor (TipTap), generator buttons.
-- **Timeline:** Lyric track lanes with draggable items. Waveform lane. Optional advanced overlays (beats/energy/bands) in collapsible section.
+- **Timeline:** Lyric track lanes with draggable items (top), waveform/analysis lanes below. Collapsed lyric tracks still show mini timing blocks.
 - **Right panel:** Selected item inspector (text, timing, split/merge actions).
 - **Preview:** Shows text as it would render (uses active motion layers if any exist, otherwise plain preview).
 
@@ -403,16 +407,18 @@ See Section 4.1 and 4.2 for `LyricTrack`, `TimelineItem`, `MotionLayer`, `Snippe
 - New `WolkProject` data model and storage.
 - New project creation flow (title + audio upload).
 - Raw lyrics editor (TipTap) integrated in editor left panel.
-- Three track generators (word/sentence/verse).
+- Staged track generation flow (verse -> line -> word).
 - Custom blank track creation.
 - Timeline lanes for lyric tracks with item rendering.
 - All item editing gestures (move/trim/split/merge/delete).
 - Track operations (mute/solo/lock/duplicate/rename/delete/reorder).
-- Keyboard shortcuts (Space play/pause, arrows, delete, undo/redo, split).
+- Keyboard shortcuts (Space play/pause, arrows, delete, undo/redo, split, copy/cut/paste).
 - Waveform lane integration.
 - Basic playback with audio sync.
+- Collapsed lane mini-block visualization.
+- Lock indicators + locked inspector controls.
 
-**Exit criteria:** User can create project, paste lyrics, generate tracks, edit timing, hear audio sync, see items on timeline.
+**Exit criteria:** User can create project, paste lyrics, run `verse -> line -> word` generation, edit timing, copy/cut/paste items, reorder tracks, and hear synced playback with stable undo/redo.
 
 ### Phase 2: Motion Mode MVP
 
@@ -461,9 +467,9 @@ One complete workflow:
 1. Create new project with song title and audio file.
 2. Upload custom font → see it immediately in preview.
 3. Paste raw lyrics.
-4. Generate word track, sentence track, verse track.
+4. Generate verse track, then line track, then word track.
 5. Create custom track for backing vocals, manually add items.
-6. Edit timing: move items, trim, split, merge. Hear audio while editing.
+6. Edit timing: move items, trim, split, merge, copy/cut/paste. Hear audio while editing.
 7. Switch to Motion mode.
 8. Add motion layer bound to word track → single display mode → see words appear.
 9. Add second layer bound to sentence track → block display mode → positioned differently.

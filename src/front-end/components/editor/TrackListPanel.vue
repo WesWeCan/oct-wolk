@@ -57,6 +57,16 @@ const toggleLock = (track: LyricTrack) => {
     emit('updateTrack', { ...track, locked: !track.locked });
 };
 
+const moveTrack = (trackId: string, direction: -1 | 1) => {
+    const ids = props.tracks.map(t => t.id);
+    const idx = ids.indexOf(trackId);
+    if (idx < 0) return;
+    const nextIdx = idx + direction;
+    if (nextIdx < 0 || nextIdx >= ids.length) return;
+    [ids[idx], ids[nextIdx]] = [ids[nextIdx], ids[idx]];
+    emit('reorderTracks', ids);
+};
+
 const renamingId = defineModel<string | null>('renamingId', { default: null });
 const renameValue = defineModel<string>('renameValue', { default: '' });
 
@@ -127,7 +137,9 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                         />
                     </template>
                     <template v-else>
-                        <span @dblclick="startRename(track)" title="Double-click to rename">{{ track.name }}</span>
+                        <span @dblclick="startRename(track)" title="Double-click to rename">
+                            {{ track.name }} <span v-if="track.locked" aria-label="Locked">🔒</span>
+                        </span>
                     </template>
                 </div>
                 <div class="track-row__controls">
@@ -154,6 +166,18 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                         @click="emit('duplicateTrack', track.id)"
                         title="Duplicate track"
                     >Dup</button>
+                    <button
+                        class="track-btn"
+                        @click="moveTrack(track.id, -1)"
+                        :disabled="tracks.findIndex(t => t.id === track.id) === 0"
+                        title="Move track up"
+                    >↑</button>
+                    <button
+                        class="track-btn"
+                        @click="moveTrack(track.id, 1)"
+                        :disabled="tracks.findIndex(t => t.id === track.id) === tracks.length - 1"
+                        title="Move track down"
+                    >↓</button>
                     <button
                         v-if="deletingId !== track.id"
                         class="track-btn danger"

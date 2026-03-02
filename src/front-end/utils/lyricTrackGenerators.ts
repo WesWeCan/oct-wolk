@@ -263,3 +263,24 @@ export function createCustomTrack(existingTrackCount: number): LyricTrack {
         locked: false,
     };
 }
+
+/**
+ * Safety net invariant: keep items sorted and non-overlapping within a track.
+ * Preserves each item's duration where possible and clamps to >= 10ms.
+ */
+export function enforceNoOverlap(items: TimelineItem[]): TimelineItem[] {
+    const sorted = [...items].sort((a, b) => a.startMs - b.startMs);
+    const normalized: TimelineItem[] = [];
+    let prevEnd = 0;
+
+    for (const item of sorted) {
+        const originalDuration = Math.max(MIN_ITEM_DURATION_MS, Math.round(item.endMs - item.startMs));
+        let startMs = Math.max(0, Math.round(item.startMs));
+        if (startMs < prevEnd) startMs = prevEnd;
+        const endMs = startMs + originalDuration;
+        normalized.push({ ...item, startMs, endMs });
+        prevEnd = endMs;
+    }
+
+    return normalized;
+}

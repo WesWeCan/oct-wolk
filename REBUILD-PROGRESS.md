@@ -5,7 +5,7 @@
 
 ---
 
-## Current Phase: 1 — Foundation + Lyric Mode
+## Current Phase: 2 — Motion Mode MVP (Lyric Mode Complete)
 
 ### Sub-Phase 1.0: Types + Tracking File
 - **Status:** DONE
@@ -47,6 +47,19 @@
 - [x] `src/front-end/composables/editor/useUndoRedo.ts` — snapshot-based undo/redo
 - [x] Autosave with 1s debounce
 
+### Sub-Phase 1.6: Lyric Mode Polish Pass
+- **Status:** DONE
+- [x] Copy/paste lyric blocks with keyboard shortcuts (`Cmd/Ctrl+C`, `Cmd/Ctrl+V`) in `ProjectEditor.vue`
+- [x] Cut lyric blocks with keyboard shortcut (`Cmd/Ctrl+X`) in `ProjectEditor.vue`
+- [x] Solo logic now affects lyric preview rendering (mute + solo interaction fixed)
+- [x] Lock visibility improved: lock indicator in track list + locked lane treatment
+- [x] Item Inspector mutation controls disabled for locked tracks
+- [x] Added `enforceNoOverlap()` safety net and wired it across lyric mutation paths
+- [x] Track reorder in sidebar (up/down) wired to timeline lane order
+- [x] Timeline order updated: lyric lanes first, waveform/analysis lanes at bottom
+- [x] Collapsed lyric lanes now show mini timing blocks (clipped correctly while horizontally scrolling)
+- [x] Undo/redo behavior stabilized for edit operations (including immediate undo after paste)
+
 ---
 
 ## Files Created/Modified
@@ -85,6 +98,8 @@
 | 2026-02-26 | Snapshot-based undo/redo (50 max, 300ms throttle) | Matches existing LyricAnalyzer pattern |
 | 2026-02-26 | Nudge amount: 50ms per arrow key press | Good balance of precision and speed |
 | 2026-02-26 | Reuse existing editor infrastructure (timeline, resize, preview) | Prevents reinventing solved problems; see PRD §11 |
+| 2026-03-01 | Keep verse -> line -> word generator flow | UX tested better than direct independent generation; retained intentionally |
+| 2026-03-02 | Lyric mode accepted as feature-complete for MVP handoff | Move focus to Phase 2 Motion Mode in next iteration |
 
 ---
 
@@ -107,5 +122,11 @@
 - Style/transform controls
 - Preview canvas compositing
 - See PRD Section 4.2 + Phase 2 deliverables
+
+## Notes
+- Generator UX intentionally stays chained (`verse -> line -> word`) and differs from the earlier direct-button wording in the PRD.
+- Redo is implemented and mapped to `Cmd/Ctrl+Shift+Z`.
+- Lyric timeline now supports copy/cut/paste (`Cmd/Ctrl+C`, `Cmd/Ctrl+X`, `Cmd/Ctrl+V`).
+- Waveform/analysis lanes are shown below lyric lanes by default; track reorder controls are in the sidebar.
 
 ## Phase 3: Export + Polish — NOT STARTED

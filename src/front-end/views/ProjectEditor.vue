@@ -22,7 +22,7 @@ import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
 import ProjectInspector from '@/front-end/components/editor/ProjectInspector.vue';
 import { useUndoRedo } from '@/front-end/composables/editor/useUndoRedo';
 import { useTimelineSelection } from '@/front-end/composables/timeline/useTimelineSelection';
-import { generateLineTrackFromVerseTrack, generateWordTrackFromLineTrack } from '@/front-end/utils/lyricTrackGenerators';
+import { enforceNoOverlap, generateLineTrackFromVerseTrack, generateWordTrackFromLineTrack } from '@/front-end/utils/lyricTrackGenerators';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -120,6 +120,10 @@ const performRedo = () => {
 // Autosave debounce
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const scheduleSave = () => {
+    if (project.value) {
+        // Capture post-mutation state immediately so undo/redo works right after edits.
+        undoRedo.pushSnapshot(project.value);
+    }
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
         if (project.value) {
@@ -233,7 +237,11 @@ const drawLyricPreview = () => {
 
     const currentMs = (playhead.value.frame / Math.max(1, fps.value)) * 1000;
 
-    const tracks = project.value.lyricTracks.filter(t => !t.muted);
+    const anySoloed = project.value.lyricTracks.some(t => t.solo);
+    const tracks = project.value.lyricTracks.filter((t) => {
+        if (anySoloed) return t.solo && !t.muted;
+        return !t.muted;
+    });
     const activeTexts: { text: string; color: string; trackIndex: number }[] = [];
 
     for (let ti = 0; ti < tracks.length; ti++) {
@@ -414,6 +422,17 @@ const playheadX = computed(() => {
     const clamped = Math.max(0, Math.min(phSec - viewport.value.startSec, viewport.value.durationSec));
     return `${(clamped / Math.max(1e-6, viewport.value.durationSec)) * 100}%`;
 });
+const miniItemStyle = (item: TimelineItem, track: LyricTrack) => {
+    const startSec = item.startMs / 1000;
+    const endSec = item.endMs / 1000;
+    const leftPct = ((startSec - viewport.value.startSec) / viewport.value.durationSec) * 100;
+    const widthPct = ((endSec - startSec) / viewport.value.durationSec) * 100;
+    return {
+        left: `${leftPct}%`,
+        width: `${widthPct}%`,
+        backgroundColor: track.color,
+    };
+};
 
 // Auto-scroll viewport to follow playhead during playback
 watch(() => playhead.value.frame, (frame) => {
@@ -519,6 +538,14 @@ const selectedItemId = computed<string | null>(() => {
 });
 const NUDGE_MS = 50;
 const rippleMode = ref(false);
+type LyricClipboardItem = {
+    text: string;
+    startOffsetMs: number;
+    endOffsetMs: number;
+    sourceTrackId: string;
+    sourceTrackKind: LyricTrack['kind'];
+};
+const lyricClipboard = ref<{ items: LyricClipboardItem[] } | null>(null);
 
 // Cross-track marquee state
 const marquee = ref<{
@@ -562,6 +589,14 @@ const selectedTrack = computed<LyricTrack | null>(() => {
     }
     return null;
 });
+const getTrackAndItemById = (itemId: string): { track: LyricTrack; item: TimelineItem } | null => {
+    if (!project.value) return null;
+    for (const track of project.value.lyricTracks) {
+        const item = track.items.find(i => i.id === itemId);
+        if (item) return { track, item };
+    }
+    return null;
+};
 const selectedVerseTrackId = computed<string | null>(() => {
     const track = selectedTrack.value;
     return track?.kind === 'verse' ? track.id : null;
@@ -606,6 +641,16 @@ const onDuplicateTrack = (trackId: string) => {
     };
     dup.items = dup.items.map((item: TimelineItem) => ({ ...item, id: randomUUID() }));
     project.value.lyricTracks.push(dup);
+    scheduleSave();
+};
+
+const onReorderTracks = (trackIds: string[]) => {
+    if (!project.value) return;
+    const byId = new Map(project.value.lyricTracks.map(t => [t.id, t]));
+    const reordered = trackIds.map(id => byId.get(id)).filter((t): t is LyricTrack => !!t);
+    if (reordered.length !== project.value.lyricTracks.length) return;
+    pushUndo();
+    project.value.lyricTracks = reordered;
     scheduleSave();
 };
 
@@ -655,7 +700,7 @@ const onUpdateItem = (updated: TimelineItem) => {
         const idx = track.items.findIndex(i => i.id === updated.id);
         if (idx >= 0) {
             track.items[idx] = updated;
-            track.items.sort((a, b) => a.startMs - b.startMs);
+            track.items = enforceNoOverlap(track.items);
             scheduleSave();
             return;
         }
@@ -682,10 +727,12 @@ const onUpdateItems = (items: TimelineItem[]) => {
             const idx = track.items.findIndex(i => i.id === updated.id);
             if (idx >= 0) {
                 track.items[idx] = updated;
-                track.items.sort((a, b) => a.startMs - b.startMs);
                 break;
             }
         }
+    }
+    for (const track of project.value.lyricTracks) {
+        track.items = enforceNoOverlap(track.items);
     }
     scheduleSave();
 };
@@ -769,7 +816,7 @@ const onGroupMoveAll = (payload: { anchorId: string; deltaMs: number; updates: {
             track.items[i] = { ...track.items[i], startMs: upd.startMs, endMs: upd.endMs };
             changed = true;
         }
-        if (changed) track.items.sort((a, b) => a.startMs - b.startMs);
+        if (changed) track.items = enforceNoOverlap(track.items);
     }
     scheduleSave();
 };
@@ -803,6 +850,7 @@ const onSplitItem = (itemId: string, atMs: number) => {
             const left: TimelineItem = { id: item.id, text: item.text, startMs: item.startMs, endMs: Math.round(atMs) };
             const right: TimelineItem = { id: randomUUID(), text: item.text, startMs: Math.round(atMs), endMs: item.endMs };
             track.items.splice(idx, 1, left, right);
+            track.items = enforceNoOverlap(track.items);
             selection.select(right.id);
             scheduleSave();
             return;
@@ -820,6 +868,7 @@ const onMergeWithNext = (itemId: string) => {
             const next = track.items[idx + 1];
             const merged: TimelineItem = { id: current.id, text: `${current.text} ${next.text}`.trim(), startMs: current.startMs, endMs: next.endMs };
             track.items.splice(idx, 2, merged);
+            track.items = enforceNoOverlap(track.items);
             selection.select(merged.id);
             scheduleSave();
             return;
@@ -884,9 +933,80 @@ const onAddItemAtLocation = (payload: { trackId?: string; atMs: number }) => {
         }
     }
     track.items.push(newItem);
-    track.items.sort((a, b) => a.startMs - b.startMs);
+    track.items = enforceNoOverlap(track.items);
     selection.select(newItem.id);
     scheduleSave();
+};
+
+const copySelectedItems = () => {
+    if (!project.value) return;
+    const ids = selection.selectedArray.value;
+    if (ids.length === 0) return;
+
+    const picked: { track: LyricTrack; item: TimelineItem }[] = [];
+    for (const id of ids) {
+        const found = getTrackAndItemById(id);
+        if (found) picked.push(found);
+    }
+    if (picked.length === 0) return;
+
+    picked.sort((a, b) => a.item.startMs - b.item.startMs);
+    const anchorMs = picked[0].item.startMs;
+
+    lyricClipboard.value = {
+        items: picked.map(({ track, item }) => ({
+            text: item.text,
+            startOffsetMs: item.startMs - anchorMs,
+            endOffsetMs: item.endMs - anchorMs,
+            sourceTrackId: track.id,
+            sourceTrackKind: track.kind,
+        })),
+    };
+};
+
+const pasteClipboardItems = () => {
+    if (!project.value || !lyricClipboard.value?.items.length) return;
+    const copied = lyricClipboard.value.items;
+
+    const selectedTargetTrack = selectedTrack.value;
+    const primaryKind = copied[0].sourceTrackKind;
+
+    let targetTrack: LyricTrack | null = null;
+    if (selectedTargetTrack && !selectedTargetTrack.locked) {
+        targetTrack = selectedTargetTrack;
+    } else {
+        targetTrack = (
+            project.value.lyricTracks.find(t => !t.locked && t.kind === primaryKind)
+            || project.value.lyricTracks.find(t => !t.locked && t.id === copied[0].sourceTrackId)
+            || project.value.lyricTracks.find(t => !t.locked)
+            || null
+        );
+    }
+    if (!targetTrack) return;
+
+    const pasteAnchorMs = Math.round(playheadMs.value);
+    const newItems: TimelineItem[] = copied.map((entry) => ({
+        id: randomUUID(),
+        text: entry.text,
+        startMs: Math.max(0, Math.round(pasteAnchorMs + entry.startOffsetMs)),
+        endMs: Math.max(0, Math.round(pasteAnchorMs + entry.endOffsetMs)),
+    })).filter(item => item.endMs > item.startMs);
+
+    if (newItems.length === 0) return;
+
+    pushUndo();
+    targetTrack.items.push(...newItems);
+    targetTrack.items = enforceNoOverlap(targetTrack.items);
+    selection.replaceSelection(newItems.map(i => i.id));
+    scheduleSave();
+};
+
+const cutSelectedItems = () => {
+    if (!project.value) return;
+    const ids = selection.selectedArray.value;
+    if (ids.length === 0) return;
+    copySelectedItems();
+    deleteSelectedItem();
 };
 
 const nudgeSelectedItem = (deltaMs: number) => {
@@ -903,10 +1023,12 @@ const nudgeSelectedItem = (deltaMs: number) => {
                 const dur = item.endMs - item.startMs;
                 const newStart = Math.max(0, item.startMs + deltaMs);
                 track.items[idx] = { ...item, startMs: newStart, endMs: newStart + dur };
-                track.items.sort((a, b) => a.startMs - b.startMs);
                 break;
             }
         }
+    }
+    for (const track of project.value.lyricTracks) {
+        track.items = enforceNoOverlap(track.items);
     }
     scheduleSave();
 };
@@ -1214,6 +1336,9 @@ const onKeyDown = (e: KeyboardEvent) => {
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); return; }
     if (isMeta && !e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); performUndo(); return; }
     if (isMeta && e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); performRedo(); return; }
+    if (isMeta && e.code === 'KeyC') { e.preventDefault(); copySelectedItems(); return; }
+    if (isMeta && e.code === 'KeyX') { e.preventDefault(); cutSelectedItems(); return; }
+    if (isMeta && e.code === 'KeyV') { e.preventDefault(); pasteClipboardItems(); return; }
     if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); deleteSelectedItem(); return; }
     if (e.code === 'KeyS' && !isMeta) { e.preventDefault(); splitSelectedAtPlayhead(); return; }
     if (isMeta && e.code === 'KeyK') { e.preventDefault(); splitSelectedAtPlayhead(); return; }
@@ -1352,6 +1477,7 @@ onUnmounted(() => {
                     @delete-track="onDeleteTrack"
                     @update-track="onUpdateTrack"
                     @duplicate-track="onDuplicateTrack"
+                    @reorder-tracks="onReorderTracks"
                 />
                 <RawLyricsPanel v-model:rawLyrics="rawLyrics" />
             </template>
@@ -1462,6 +1588,18 @@ onUnmounted(() => {
                         <!-- Left column: labels -->
                         <div class="leftcol">
                             <div class="lane-label ruler-label" :style="{ height: `${laneHeights.ruler}px` }">TIME</div>
+                            <div
+                                v-for="track in (project?.lyricTracks ?? [])"
+                                :key="'label-' + track.id"
+                                class="lane-label"
+                                :class="{ collapsed: collapsed[`track-${track.id}`] }"
+                                :style="{ height: `${collapsed[`track-${track.id}`] ? 28 : getTrackHeight(track.id)}px` }"
+                                :title="track.name"
+                                @click="collapsed[`track-${track.id}`] = !collapsed[`track-${track.id}`]"
+                            >
+                                <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
+                                {{ track.name }}
+                            </div>
                             <template v-if="analysis.waveform.value && analysis.waveform.value.length > 0">
                                 <div
                                     class="lane-label"
@@ -1502,18 +1640,6 @@ onUnmounted(() => {
                                     @click="collapsed.bands = !collapsed.bands"
                                 >BANDS</div>
                             </template>
-                            <div
-                                v-for="track in (project?.lyricTracks ?? [])"
-                                :key="'label-' + track.id"
-                                class="lane-label"
-                                :class="{ collapsed: collapsed[`track-${track.id}`] }"
-                                :style="{ height: `${collapsed[`track-${track.id}`] ? 28 : getTrackHeight(track.id)}px` }"
-                                :title="track.name"
-                                @click="collapsed[`track-${track.id}`] = !collapsed[`track-${track.id}`]"
-                            >
-                                <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
-                                {{ track.name }}
-                            </div>
                         </div>
                         <!-- Right column: lanes -->
                         <div ref="lanesColumnRef" style="position: relative">
@@ -1528,6 +1654,47 @@ onUnmounted(() => {
                                     @pan="onPan"
                                     @zoom-around="onZoom"
                                 />
+                            </div>
+                            <!-- Lyric Track lanes -->
+                            <div v-for="track in (project?.lyricTracks ?? [])"
+                                :key="track.id"
+                                class="lane"
+                                :data-track-id="track.id"
+                                :style="{ height: `${collapsed[`track-${track.id}`] ? 28 : getTrackHeight(track.id)}px` }">
+                                <LyricTrackLane
+                                    v-if="!collapsed[`track-${track.id}`]"
+                                    :viewport="viewport"
+                                    :fps="fps"
+                                    :track="track"
+                                    :playhead-frame="playhead.frame"
+                                    :selected-item-id="selectedItemId"
+                                    :selected-item-ids="selection.selectedIds.value"
+                                    :all-selected-items="allSelectedItems"
+                                    :snap-find="snapEngine.findSnap"
+                                    :snap-clear="snapEngine.clearSnap"
+                                    :set-interaction="(mode: string) => vp.setInteraction(mode as any)"
+                                    @select-item="onSelectItem"
+                                    @toggle-item="onToggleItem"
+                                    @add-to-selection="onAddToSelection"
+                                    @update-item="onUpdateItem"
+                                    @update-items="onUpdateItems"
+                                    @group-move-all="onGroupMoveAll"
+                                    @marquee-start="onMarqueeStart"
+                                    @dblclick-item="onDblClickItem"
+                                    @push-undo="onPushUndo"
+                                    @scrub="onScrub"
+                                    @pan="onPan"
+                                    @zoom-around="onZoom"
+                                />
+                                <div v-else class="lane-mini-blocks">
+                                    <div
+                                        v-for="item in track.items.filter(i => i.endMs > viewport.startSec * 1000 && i.startMs < (viewport.startSec + viewport.durationSec) * 1000)"
+                                        :key="item.id"
+                                        class="lane-mini-block"
+                                        :style="miniItemStyle(item, track)"
+                                    ></div>
+                                </div>
+                                <div class="lane-resizer" @pointerdown="(e: PointerEvent) => startResize(`track-${track.id}`, e)"></div>
                             </div>
                             <!-- Waveform -->
                             <template v-if="analysis.waveform.value && analysis.waveform.value.length > 0">
@@ -1610,39 +1777,6 @@ onUnmounted(() => {
                                     <div class="lane-resizer" @pointerdown="(e: PointerEvent) => startResize('bands', e)"></div>
                                 </div>
                             </template>
-                            <!-- Lyric Track lanes -->
-                            <div v-for="track in (project?.lyricTracks ?? [])"
-                                :key="track.id"
-                                class="lane"
-                                :data-track-id="track.id"
-                                :style="{ height: `${collapsed[`track-${track.id}`] ? 28 : getTrackHeight(track.id)}px` }">
-                                <LyricTrackLane
-                                    v-if="!collapsed[`track-${track.id}`]"
-                                    :viewport="viewport"
-                                    :fps="fps"
-                                    :track="track"
-                                    :playhead-frame="playhead.frame"
-                                    :selected-item-id="selectedItemId"
-                                    :selected-item-ids="selection.selectedIds.value"
-                                    :all-selected-items="allSelectedItems"
-                                    :snap-find="snapEngine.findSnap"
-                                    :snap-clear="snapEngine.clearSnap"
-                                    :set-interaction="(mode: string) => vp.setInteraction(mode as any)"
-                                    @select-item="onSelectItem"
-                                    @toggle-item="onToggleItem"
-                                    @add-to-selection="onAddToSelection"
-                                    @update-item="onUpdateItem"
-                                    @update-items="onUpdateItems"
-                                    @group-move-all="onGroupMoveAll"
-                                    @marquee-start="onMarqueeStart"
-                                    @dblclick-item="onDblClickItem"
-                                    @push-undo="onPushUndo"
-                                    @scrub="onScrub"
-                                    @pan="onPan"
-                                    @zoom-around="onZoom"
-                                />
-                                <div class="lane-resizer" @pointerdown="(e: PointerEvent) => startResize(`track-${track.id}`, e)"></div>
-                            </div>
                         </div>
                     </div>
                 </div>

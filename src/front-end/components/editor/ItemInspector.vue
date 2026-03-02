@@ -37,6 +37,7 @@ const canMerge = computed(() => {
     const idx = sel.track.items.findIndex(i => i.id === sel.item.id);
     return idx >= 0 && idx < sel.track.items.length - 1;
 });
+const isSelectedTrackLocked = computed(() => !!selectedItem.value?.track.locked);
 
 const editableTracks = computed(() => props.tracks.filter(t => !t.locked));
 const verseTracks = computed(() => props.tracks.filter(t => t.kind === 'verse'));
@@ -76,7 +77,7 @@ const canAddToTrack = (track: LyricTrack) => !track.locked;
 
 const onTextChange = (e: Event) => {
     const sel = selectedItem.value;
-    if (!sel) return;
+    if (!sel || sel.track.locked) return;
     emit('updateItem', { ...sel.item, text: (e.target as HTMLTextAreaElement).value });
 };
 
@@ -95,7 +96,7 @@ const getNeighbors = () => {
 
 const onStartMsChange = (e: Event) => {
     const sel = selectedItem.value;
-    if (!sel) return;
+    if (!sel || sel.track.locked) return;
     const val = parseInt((e.target as HTMLInputElement).value, 10);
     if (isNaN(val)) return;
     const { prev } = getNeighbors();
@@ -109,7 +110,7 @@ const onStartMsChange = (e: Event) => {
 
 const onEndMsChange = (e: Event) => {
     const sel = selectedItem.value;
-    if (!sel) return;
+    if (!sel || sel.track.locked) return;
     const val = parseInt((e.target as HTMLInputElement).value, 10);
     if (isNaN(val)) return;
     const { next } = getNeighbors();
@@ -189,6 +190,7 @@ const formatMs = (ms: number) => {
                     @change="onTextChange"
                     class="inspector-input"
                     rows="3"
+                    :disabled="isSelectedTrackLocked"
                 ></textarea>
             </div>
 
@@ -207,6 +209,7 @@ const formatMs = (ms: number) => {
                         class="inspector-input"
                         min="0"
                         step="10"
+                        :disabled="isSelectedTrackLocked"
                     />
                     <span class="inspector-hint">{{ formatMs(selectedItem.item.startMs) }}</span>
                 </div>
@@ -219,6 +222,7 @@ const formatMs = (ms: number) => {
                         class="inspector-input"
                         min="0"
                         step="10"
+                        :disabled="isSelectedTrackLocked"
                     />
                     <span class="inspector-hint">{{ formatMs(selectedItem.item.endMs) }}</span>
                 </div>
@@ -231,22 +235,23 @@ const formatMs = (ms: number) => {
 
             <div class="inspector-actions">
                 <button
-                    :disabled="!canSplit"
+                    :disabled="!canSplit || isSelectedTrackLocked"
                     @click="emit('splitItem', selectedItem!.item.id, playheadMs)"
                     title="Split at playhead (S)"
                 >Split</button>
                 <button
-                    :disabled="!canMerge"
+                    :disabled="!canMerge || isSelectedTrackLocked"
                     @click="emit('mergeWithNext', selectedItem!.item.id)"
                     title="Merge with next item"
                 >Merge</button>
                 <button
-                    :disabled="!canAddAtLocation"
+                    :disabled="!canAddAtLocation || isSelectedTrackLocked"
                     @click="addAtPlayhead"
                     title="Add new item at playhead"
                 >+ Add</button>
                 <button
                     class="danger"
+                    :disabled="isSelectedTrackLocked"
                     @click="emit('deleteItem', selectedItem!.item.id)"
                     title="Delete item (Del)"
                 >Delete</button>
@@ -258,11 +263,7 @@ const formatMs = (ms: number) => {
                 Select an item on the timeline to inspect
             </div>
             <div class="inspector-actions">
-                <button
-                    :disabled="!canAddAtLocation"
-                    @click="addAtPlayhead"
-                    title="Add new item at playhead"
-                >+ Add at Playhead</button>
+                ----
             </div>
         </template>
     </div>
