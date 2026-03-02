@@ -100,6 +100,10 @@
 | 2026-02-26 | Reuse existing editor infrastructure (timeline, resize, preview) | Prevents reinventing solved problems; see PRD §11 |
 | 2026-03-01 | Keep verse -> line -> word generator flow | UX tested better than direct independent generation; retained intentionally |
 | 2026-03-02 | Lyric mode accepted as feature-complete for MVP handoff | Move focus to Phase 2 Motion Mode in next iteration |
+| 2026-03-02 | Motion Mode redesigned: blocks on tracks, not persistent layers | Motion blocks are discrete timeline items with types (like scenes), consuming lyric tracks. See `MOTION-ARCHITECTURE.md` |
+| 2026-03-02 | Old scene engine deprecated, not deleted | Will be adapted for 3D motion block types in Phase 4+. Seed RNG system reused. |
+| 2026-03-02 | Motion rendering on main thread (Canvas 2D) | Avoids Worker font-loading issues. Worker pipeline preserved for future 3D types. |
+| 2026-03-02 | Enter/exit animation uses dynamic duration (fraction + min/max clamp) | Adapts to fast words (100ms) and slow verses (5s) alike |
 
 ---
 
@@ -115,18 +119,39 @@
 
 ---
 
-## Next Up: Phase 2 — Motion Mode MVP
-- Motion layer model + UI
-- Source binding (layer -> track)
-- TextDisplayScene implementing WorkerScene
-- Style/transform controls
-- Preview canvas compositing
-- See PRD Section 4.2 + Phase 2 deliverables
+## Next Up: Phase 2 — Motion Mode MVP (REDESIGNED)
+
+> **IMPORTANT:** The original PRD Section 4.2 described `MotionLayer` as a persistent layer.
+> This has been **superseded** by the Motion Block architecture described in `MOTION-ARCHITECTURE.md`.
+> The old `MotionLayer`, `SnippetOverride` types in `project_types.ts` are to be replaced.
+> The old scene engine code is **deprecated but not deleted** — it will be adapted in Phase 4+ for 3D motion block types.
+
+**New approach:** Motion Blocks on Motion Tracks (see `MOTION-ARCHITECTURE.md` for full spec)
+
+- [ ] Step 1: Extract seed RNG to shared utility
+- [ ] Step 2: Update data model types (MotionBlock, MotionTrack replace MotionLayer)
+- [ ] Step 3: Enter/exit animation utilities
+- [ ] Step 4: Lyric item resolution for motion blocks
+- [ ] Step 5: Motion block renderer interface + registry
+- [ ] Step 6: Subtitle renderer (first block type)
+- [ ] Step 7: WordReveal renderer (second block type)
+- [ ] Step 8: Paragraph renderer (third block type)
+- [ ] Step 9: Motion canvas compositor (useMotionRenderer composable)
+- [ ] Step 10: Motion track lane UI (timeline)
+- [ ] Step 11: Motion inspector
+- [ ] Step 12: Motion track list panel (left panel)
+- [ ] Step 13: Wire into ProjectEditor.vue
+- [ ] Step 14: Background image support
+- [ ] Step 15: Per-item rich text overrides (TipTap)
+- [ ] Step 16: Export integration
 
 ## Notes
 - Generator UX intentionally stays chained (`verse -> line -> word`) and differs from the earlier direct-button wording in the PRD.
 - Redo is implemented and mapped to `Cmd/Ctrl+Shift+Z`.
 - Lyric timeline now supports copy/cut/paste (`Cmd/Ctrl+C`, `Cmd/Ctrl+X`, `Cmd/Ctrl+V`).
 - Waveform/analysis lanes are shown below lyric lanes by default; track reorder controls are in the sidebar.
+- **2026-03-02:** Motion Mode redesigned from "persistent layers" to "motion blocks on tracks" — see `MOTION-ARCHITECTURE.md`.
+- **2026-03-02:** Old scene engine (Three.js) deprecated but preserved for future 3D motion block types (Phase 4+).
+- **2026-03-02:** Motion rendering will use main-thread Canvas 2D (not Web Worker) to avoid font-loading issues.
 
 ## Phase 3: Export + Polish — NOT STARTED
