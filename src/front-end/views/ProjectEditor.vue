@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import type { WolkProject, LyricTrack, TimelineItem } from '@/types/project_types';
+import {
+    DEFAULT_MOTION_ENTER_EXIT,
+    DEFAULT_MOTION_STYLE,
+    DEFAULT_MOTION_TRANSFORM,
+    TRACK_COLORS,
+    type MotionTrack,
+    type WolkProject,
+    type LyricTrack,
+    type TimelineItem,
+} from '@/types/project_types';
 import { ProjectService } from '@/front-end/services/ProjectService';
 import { useAudioPlayer } from '@/front-end/composables/editor/useAudioPlayer';
 import { useAudioAnalysis } from '@/front-end/composables/editor/useAudioAnalysis';
 import { useTimelineViewport } from '@/front-end/components/timeline/useTimelineViewport';
 import { usePreviewCanvas } from '@/front-end/composables/editor/usePreviewCanvas';
+import { useMotionRenderer } from '@/front-end/composables/editor/useMotionRenderer';
 import { useSnapEngine, type SnapTarget } from '@/front-end/composables/timeline/useSnapEngine';
 import { randomUUID } from '@/front-end/utils/uuid';
 import RulerLane from '@/front-end/components/timeline/lanes/RulerLane.vue';
@@ -16,13 +26,20 @@ import BeatsLane from '@/front-end/components/timeline/lanes/BeatsLane.vue';
 import BandsLane from '@/front-end/components/timeline/lanes/BandsLane.vue';
 import BeatStrengthLane from '@/front-end/components/timeline/lanes/BeatStrengthLane.vue';
 import LyricTrackLane from '@/front-end/components/timeline/lanes/LyricTrackLane.vue';
+import MotionTrackLane from '@/front-end/components/timeline/lanes/MotionTrackLane.vue';
 import SnapOverlay from '@/front-end/components/timeline/SnapOverlay.vue';
 import RawLyricsPanel from '@/front-end/components/editor/RawLyricsPanel.vue';
 import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
+import MotionTrackListPanel from '@/front-end/components/editor/MotionTrackListPanel.vue';
+import MotionInspector from '@/front-end/components/editor/MotionInspector.vue';
 import ProjectInspector from '@/front-end/components/editor/ProjectInspector.vue';
+import ExportModal from '@/front-end/components/editor/ExportModal.vue';
 import { useUndoRedo } from '@/front-end/composables/editor/useUndoRedo';
 import { useTimelineSelection } from '@/front-end/composables/timeline/useTimelineSelection';
+import { useVideoExport } from '@/front-end/composables/editor/useVideoExport';
 import { enforceNoOverlap, generateLineTrackFromVerseTrack, generateWordTrackFromLineTrack } from '@/front-end/utils/lyricTrackGenerators';
+import { cleanOrphanedOverrides } from '@/front-end/utils/motion/resolveMotionItems';
+import type { TimelineDocument } from '@/types/timeline_types';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -160,12 +177,6 @@ const updateBitrate = (e: Event) => {
     scheduleSave();
 };
 
-const toggleIncludeAudio = () => {
-    if (!project.value) return;
-    project.value.settings.includeAudio = !project.value.settings.includeAudio;
-    scheduleSave();
-};
-
 // Overlay toggles for analysis lanes
 const overlayOpts = ref<{ showEnergy: boolean; showBeats: boolean; showBands: boolean; showBeatStrength: boolean }>({
     showEnergy: false,
@@ -173,6 +184,13 @@ const overlayOpts = ref<{ showEnergy: boolean; showBeats: boolean; showBands: bo
     showBands: false,
     showBeatStrength: false,
 });
+const uiNotice = ref<string | null>(null);
+let uiNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+const showNotice = (message: string) => {
+    uiNotice.value = message;
+    if (uiNoticeTimer) clearTimeout(uiNoticeTimer);
+    uiNoticeTimer = setTimeout(() => { uiNotice.value = null; }, 3500);
+};
 
 // Preview canvas — reuse usePreviewCanvas for proper scaling
 const renderCanvas = ref<HTMLCanvasElement | null>(null);
@@ -181,6 +199,37 @@ const previewOverlay = ref<HTMLCanvasElement | null>(null);
 const targetWidth = computed(() => project.value?.settings.renderWidth || 1920);
 const targetHeight = computed(() => project.value?.settings.renderHeight || 1080);
 const previewCanvasComposable = usePreviewCanvas(renderCanvas, previewCanvas, targetWidth, targetHeight);
+const motionRenderer = useMotionRenderer(renderCanvas);
+const exportMode = ref<'realtime' | 'frames'>('frames');
+const exportTimeline = computed<TimelineDocument | null>(() => {
+    if (!project.value) return null;
+    return {
+        settings: {
+            version: 1,
+            fps: project.value.settings.fps || 60,
+            renderWidth: project.value.settings.renderWidth || 1920,
+            renderHeight: project.value.settings.renderHeight || 1080,
+            seed: project.value.settings.seed || 'wolk-default',
+            fontFamily: project.value.font.family,
+            fontFallbacks: project.value.font.fallbacks,
+            fontStyle: project.value.font.style,
+            fontWeight: project.value.font.weight,
+            includeAudio: project.value.settings.includeAudio ?? true,
+            exportBitrateMbps: project.value.settings.exportBitrateMbps || 8,
+            exportMode: exportMode.value,
+        },
+        scenes: [],
+    };
+});
+const videoExport = useVideoExport(
+    renderCanvas,
+    audio.audioEl,
+    exportTimeline as any,
+    computed(() => project.value?.id || ''),
+    ref(false),
+    ref(true),
+    previewCanvas,
+);
 
 const currentFrame = computed(() => playhead.value.frame);
 
@@ -326,6 +375,18 @@ const drawLyricPreview = () => {
     previewCanvasComposable.drawPreview();
 };
 
+const drawMotionPreview = () => {
+    if (!project.value) return;
+    const currentMs = (playhead.value.frame / Math.max(1, fps.value)) * 1000;
+    motionRenderer.renderMotionFrame(project.value, currentMs);
+    previewCanvasComposable.drawPreview();
+};
+
+const drawCurrentPreview = () => {
+    if (mode.value === 'motion') drawMotionPreview();
+    else drawLyricPreview();
+};
+
 // Playback animation frame loop
 let playbackRaf: number | null = null;
 let previewDirty = true;
@@ -347,7 +408,7 @@ const startRafLoop = () => {
         }
 
         if (previewDirty) {
-            drawLyricPreview();
+            drawCurrentPreview();
             previewDirty = false;
         }
 
@@ -372,7 +433,7 @@ const markDirty = () => {
     if (playbackRaf === null) {
         requestAnimationFrame(() => {
             if (previewDirty) {
-                drawLyricPreview();
+                drawCurrentPreview();
                 previewDirty = false;
             }
         });
@@ -397,6 +458,78 @@ const stopPlayback = () => {
     markDirty();
 };
 
+const startExportProcess = async () => {
+    if (!project.value) return;
+    const fpsValue = Math.max(1, project.value.settings.fps || 60);
+    if (exportMode.value === 'frames') {
+        const durationSec = Math.max(
+            0.05,
+            (audio.duration.value > 0 ? audio.duration.value : (resolvedProjectDurationMs.value / 1000)),
+        );
+        const totalFrames = Math.max(1, Math.ceil(durationSec * fpsValue));
+        await videoExport.startCanvasFrameExport({
+            fps: fpsValue,
+            totalFrames,
+            includeAudio: project.value.settings.includeAudio ?? true,
+            audioPath: project.value.song.audioSrc || null,
+            drawFrame: (frame: number) => {
+                const currentMs = (frame * 1000) / fpsValue;
+                motionRenderer.renderMotionFrame(project.value!, currentMs);
+                previewCanvasComposable.drawPreview();
+            },
+        });
+        return;
+    }
+
+    await videoExport.startExport(async () => {
+        await audio.seekTo(0);
+        vp.setPlayhead(0);
+        await audio.play();
+        startRafLoop();
+    });
+};
+
+const openExportModal = () => {
+    videoExport.openExportModal();
+};
+
+const handleExportCancel = () => {
+    videoExport.stopExport();
+    videoExport.closeExportModal();
+};
+
+const handleExportStop = () => {
+    videoExport.stopExport();
+};
+
+const handleExportRetry = async () => {
+    videoExport.resetExport();
+    await startExportProcess();
+};
+
+const handleExportStart = async () => {
+    await startExportProcess();
+};
+
+const handleExportOpenFolder = async () => {
+    if (!videoExport.exportState.value.folderPath) return;
+    await (window as any).electronAPI.export.openFolder(videoExport.exportState.value.folderPath);
+};
+
+const handleExportClose = () => {
+    videoExport.closeExportModal();
+};
+
+const handleUpdateExportMode = (mode: 'realtime' | 'frames') => {
+    exportMode.value = mode;
+};
+
+const handleUpdateIncludeAudio = (include: boolean) => {
+    if (!project.value) return;
+    project.value.settings.includeAudio = include;
+    scheduleSave();
+};
+
 const onScrub = async (payload: { timeSec: number; frame: number }) => {
     await audio.seekTo(payload.timeSec);
     vp.setPlayhead(payload.frame);
@@ -414,6 +547,12 @@ const onZoom = (payload: { timeSec: number; factor: number }) => {
 const audioDurationMs = computed(() => {
     const dur = audio.duration.value * 1000;
     return dur > 0 ? dur : 180_000;
+});
+
+const resolvedProjectDurationMs = computed(() => {
+    const audioMs = audio.duration.value * 1000;
+    if (audioMs > 0) return audioMs;
+    return project.value?.settings.durationMs || 30_000;
 });
 
 // Playhead X position as CSS variable
@@ -450,6 +589,20 @@ watch(() => playhead.value.frame, (frame) => {
     } else if (phSec < leftEdge) {
         vp.setStart(Math.max(0, phSec - viewport.value.durationSec * 0.4));
     }
+});
+
+watch(mode, () => {
+    if (mode.value === 'motion' && project.value) {
+        const removed = cleanOrphanedOverrides(project.value).removedCount;
+        if (removed > 0) {
+            showNotice(`${removed} item override(s) removed because source lyrics changed.`);
+            scheduleSave();
+        }
+    }
+    if (mode.value === 'motion' && !selectedMotionTrackId.value) {
+        selectedMotionTrackId.value = project.value?.motionTracks[0]?.id || null;
+    }
+    markDirty();
 });
 
 // Upload audio handler
@@ -582,6 +735,12 @@ const allSelectedItems = computed(() => {
 });
 
 const playheadMs = computed(() => (playhead.value.frame / Math.max(1, fps.value)) * 1000);
+const selectedMotionTrackId = ref<string | null>(null);
+const motionClipboard = ref<MotionTrack | null>(null);
+const selectedMotionTrack = computed<MotionTrack | null>(() => {
+    if (!project.value || !selectedMotionTrackId.value) return null;
+    return project.value.motionTracks.find((track) => track.id === selectedMotionTrackId.value) || null;
+});
 const selectedTrack = computed<LyricTrack | null>(() => {
     if (!project.value || !selectedItemId.value) return null;
     for (const track of project.value.lyricTracks) {
@@ -1063,6 +1222,182 @@ const onUpdateProject = (updated: WolkProject) => {
     scheduleSave();
 };
 
+const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
+    if (!project.value) return;
+    const sourceTrack = selectedTrack.value || project.value.lyricTracks[0] || null;
+    if (!sourceTrack) return;
+
+    const startMs = Math.max(0, Math.round(playheadMs.value));
+    const defaultEnd = startMs + 10_000;
+    const maxEnd = Math.max(startMs + 200, Math.round(resolvedProjectDurationMs.value));
+    const endMs = Math.max(startMs + 200, Math.min(defaultEnd, maxEnd));
+    const color = TRACK_COLORS[project.value.motionTracks.length % TRACK_COLORS.length];
+
+    const track: MotionTrack = {
+        id: randomUUID(),
+        name: `${payload.type} - ${sourceTrack.name}`,
+        color,
+        enabled: true,
+        collapsed: false,
+        block: {
+            id: randomUUID(),
+            type: payload.type,
+            sourceTrackId: sourceTrack.id,
+            startMs,
+            endMs,
+            style: {
+                ...DEFAULT_MOTION_STYLE,
+                fontFamily: project.value.font.family || DEFAULT_MOTION_STYLE.fontFamily,
+            },
+            transform: { ...DEFAULT_MOTION_TRANSFORM },
+            enter: { ...DEFAULT_MOTION_ENTER_EXIT },
+            exit: { ...DEFAULT_MOTION_ENTER_EXIT },
+            overrides: [],
+            params: payload.type === 'wordReveal' ? { accumulate: false } : {},
+            propertyTracks: [],
+        },
+    };
+
+    pushUndo();
+    project.value.motionTracks.push(track);
+    selectedMotionTrackId.value = track.id;
+    scheduleSave();
+};
+
+const onDeleteMotionTrack = (trackId: string) => {
+    if (!project.value) return;
+    pushUndo();
+    project.value.motionTracks = project.value.motionTracks.filter((track) => track.id !== trackId);
+    if (selectedMotionTrackId.value === trackId) {
+        selectedMotionTrackId.value = project.value.motionTracks[0]?.id || null;
+    }
+    scheduleSave();
+};
+
+const onToggleMotionTrack = (payload: { trackId: string; enabled: boolean }) => {
+    if (!project.value) return;
+    const track = project.value.motionTracks.find((item) => item.id === payload.trackId);
+    if (!track) return;
+    track.enabled = payload.enabled;
+    scheduleSave();
+};
+
+const onSelectMotionTrack = (trackId: string) => {
+    selectedMotionTrackId.value = trackId;
+    selection.clearSelection();
+};
+
+const onUpdateMotionTrack = (updated: MotionTrack) => {
+    if (!project.value) return;
+    const idx = project.value.motionTracks.findIndex((track) => track.id === updated.id);
+    if (idx < 0) return;
+    const existing = project.value.motionTracks[idx];
+    project.value.motionTracks[idx] = {
+        ...updated,
+        block: {
+            ...updated.block,
+            type: existing.block.type,
+        },
+    };
+    scheduleSave();
+};
+
+const onSetBackgroundColor = (color: string) => {
+    if (!project.value) return;
+    project.value.backgroundColor = color;
+    scheduleSave();
+};
+
+const onSetBackgroundFit = (fit: 'cover' | 'contain' | 'stretch') => {
+    if (!project.value) return;
+    project.value.backgroundImageFit = fit;
+    scheduleSave();
+};
+
+const onUploadBackgroundImage = async (file: File) => {
+    if (!project.value) return;
+    const uploaded = await ProjectService.uploadAsset(project.value.id, file, 'background');
+    project.value.backgroundImage = uploaded.url;
+    scheduleSave();
+};
+
+const onClearBackgroundImage = () => {
+    if (!project.value) return;
+    project.value.backgroundImage = undefined;
+    scheduleSave();
+};
+
+const onDuplicateMotionTrack = (trackId: string) => {
+    if (!project.value) return;
+    const src = project.value.motionTracks.find((track) => track.id === trackId);
+    if (!src) return;
+    pushUndo();
+    const dup: MotionTrack = {
+        ...JSON.parse(JSON.stringify(src)),
+        id: randomUUID(),
+        name: `${src.name} (Copy)`,
+        block: {
+            ...JSON.parse(JSON.stringify(src.block)),
+            id: randomUUID(),
+        },
+    };
+    project.value.motionTracks.push(dup);
+    selectedMotionTrackId.value = dup.id;
+    scheduleSave();
+};
+
+const onReorderMotionTracks = (orderedIds: string[]) => {
+    if (!project.value) return;
+    const byId = new Map(project.value.motionTracks.map((track) => [track.id, track]));
+    const reordered = orderedIds.map((id) => byId.get(id)).filter((track): track is MotionTrack => !!track);
+    if (reordered.length !== project.value.motionTracks.length) return;
+    pushUndo();
+    project.value.motionTracks = reordered;
+    scheduleSave();
+};
+
+const deleteSelectedMotionTrack = () => {
+    if (!selectedMotionTrackId.value) return;
+    onDeleteMotionTrack(selectedMotionTrackId.value);
+};
+
+const nudgeSelectedMotionTrack = (deltaMs: number) => {
+    if (!project.value || !selectedMotionTrackId.value) return;
+    const track = project.value.motionTracks.find((item) => item.id === selectedMotionTrackId.value);
+    if (!track) return;
+    pushUndo();
+    const duration = track.block.endMs - track.block.startMs;
+    const nextStart = Math.max(0, track.block.startMs + deltaMs);
+    track.block.startMs = nextStart;
+    track.block.endMs = nextStart + duration;
+    scheduleSave();
+};
+
+const copySelectedMotionTrack = () => {
+    if (!selectedMotionTrack.value) return;
+    motionClipboard.value = JSON.parse(JSON.stringify(selectedMotionTrack.value));
+};
+
+const pasteMotionTrack = () => {
+    if (!project.value || !motionClipboard.value) return;
+    const pasted: MotionTrack = {
+        ...JSON.parse(JSON.stringify(motionClipboard.value)),
+        id: randomUUID(),
+        name: `${motionClipboard.value.name} (Copy)`,
+        block: {
+            ...JSON.parse(JSON.stringify(motionClipboard.value.block)),
+            id: randomUUID(),
+        },
+    };
+    const duration = pasted.block.endMs - pasted.block.startMs;
+    pasted.block.startMs = Math.max(0, Math.round(playheadMs.value));
+    pasted.block.endMs = pasted.block.startMs + duration;
+    pushUndo();
+    project.value.motionTracks.push(pasted);
+    selectedMotionTrackId.value = pasted.id;
+    scheduleSave();
+};
+
 const loadProject = async () => {
     loading.value = true;
     try {
@@ -1075,6 +1410,11 @@ const loadProject = async () => {
         document.title = `${project.value.song.title || 'Untitled'} - W.O.L.K.`;
         undoRedo.clear();
         undoRedo.pushSnapshot(project.value, true);
+        const removedOnLoad = cleanOrphanedOverrides(project.value).removedCount;
+        if (removedOnLoad > 0) {
+            showNotice(`${removedOnLoad} item override(s) removed because source lyrics changed.`);
+        }
+        selectedMotionTrackId.value = project.value.motionTracks[0]?.id || null;
 
         await nextTick();
         if (project.value.song.audioSrc) {
@@ -1336,11 +1676,27 @@ const onKeyDown = (e: KeyboardEvent) => {
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); return; }
     if (isMeta && !e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); performUndo(); return; }
     if (isMeta && e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); performRedo(); return; }
-    if (isMeta && e.code === 'KeyC') { e.preventDefault(); copySelectedItems(); return; }
-    if (isMeta && e.code === 'KeyX') { e.preventDefault(); cutSelectedItems(); return; }
-    if (isMeta && e.code === 'KeyV') { e.preventDefault(); pasteClipboardItems(); return; }
-    if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); deleteSelectedItem(); return; }
-    if (e.code === 'KeyS' && !isMeta) { e.preventDefault(); splitSelectedAtPlayhead(); return; }
+    if (isMeta && e.code === 'KeyC') {
+        e.preventDefault();
+        if (mode.value === 'motion') copySelectedMotionTrack(); else copySelectedItems();
+        return;
+    }
+    if (isMeta && e.code === 'KeyX') {
+        e.preventDefault();
+        if (mode.value === 'motion') deleteSelectedMotionTrack(); else cutSelectedItems();
+        return;
+    }
+    if (isMeta && e.code === 'KeyV') {
+        e.preventDefault();
+        if (mode.value === 'motion') pasteMotionTrack(); else pasteClipboardItems();
+        return;
+    }
+    if (e.code === 'Delete' || e.code === 'Backspace') {
+        e.preventDefault();
+        if (mode.value === 'motion') deleteSelectedMotionTrack(); else deleteSelectedItem();
+        return;
+    }
+    if (e.code === 'KeyS' && !isMeta && mode.value !== 'motion') { e.preventDefault(); splitSelectedAtPlayhead(); return; }
     if (isMeta && e.code === 'KeyK') { e.preventDefault(); splitSelectedAtPlayhead(); return; }
     if (e.code === 'KeyR' && !isMeta) { e.preventDefault(); rippleMode.value = !rippleMode.value; return; }
     if (isMeta && !e.shiftKey && e.code === 'Digit0') {
@@ -1364,7 +1720,10 @@ const onKeyDown = (e: KeyboardEvent) => {
         e.preventDefault();
         const dir = e.code === 'ArrowLeft' ? -1 : 1;
         const multiplier = e.shiftKey ? 10 : 1;
-        if (selection.hasSelection.value) {
+        if (mode.value === 'motion' && selectedMotionTrackId.value) {
+            nudgeSelectedMotionTrack(dir * NUDGE_MS * multiplier);
+            markDirty();
+        } else if (selection.hasSelection.value) {
             nudgeSelectedItem(dir * NUDGE_MS * multiplier);
             markDirty();
         } else {
@@ -1383,6 +1742,7 @@ const onKeyUp = (e: KeyboardEvent) => {
 
 onMounted(() => {
     loadProject();
+    videoExport.checkFfmpegAvailable();
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 });
@@ -1390,10 +1750,12 @@ onMounted(() => {
 onUnmounted(() => {
     stopRafLoop();
     if (saveTimer) clearTimeout(saveTimer);
+    if (uiNoticeTimer) clearTimeout(uiNoticeTimer);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     timelineWidthObserver?.disconnect();
     audio.dispose();
+    motionRenderer.dispose();
     previewCanvasComposable.dispose();
 });
 </script>
@@ -1446,6 +1808,7 @@ onUnmounted(() => {
                 </span>
             </div>
         </div>
+        <div v-if="uiNotice" class="project-notice">{{ uiNotice }}</div>
 
         <!-- Sidebar -->
         <div class="editor__sidebar">
@@ -1482,7 +1845,17 @@ onUnmounted(() => {
                 <RawLyricsPanel v-model:rawLyrics="rawLyrics" />
             </template>
             <template v-else>
-                <p class="panel-placeholder">Motion layers (Phase 2)</p>
+                <MotionTrackListPanel
+                    :lyric-tracks="project.lyricTracks"
+                    :motion-tracks="project.motionTracks"
+                    :selected-track-id="selectedMotionTrackId"
+                    @add-track="onAddMotionTrack"
+                    @delete-track="onDeleteMotionTrack"
+                    @toggle-track="onToggleMotionTrack"
+                    @select-track="onSelectMotionTrack"
+                    @duplicate-track="onDuplicateMotionTrack"
+                    @reorder-tracks="onReorderMotionTracks"
+                />
             </template>
         </div>
 
@@ -1495,7 +1868,7 @@ onUnmounted(() => {
                         <span class="monitor-frame">Frame: {{ currentFrame }}</span>
                     </div>
                     <div class="monitor-export-controls">
-                        <button class="export success" disabled>Export (Phase 3)</button>
+                        <button @click="openExportModal" class="export success">Export</button>
                     </div>
                 </div>
 
@@ -1552,10 +1925,6 @@ onUnmounted(() => {
                         <button @click="toggleEditSettings" class="edit-toggle">
                             {{ isEditingSettings ? '&#10003; Done' : '&#9998; Edit' }}
                         </button>
-                        <button @click="toggleIncludeAudio" :class="['audio-toggle', { active: project.settings.includeAudio }]">
-                            <span class="audio-icon">{{ project.settings.includeAudio ? '&#10003;' : '&#10007;' }}</span>
-                            Include Audio
-                        </button>
                     </div>
                 </div>
             </div>
@@ -1563,21 +1932,37 @@ onUnmounted(() => {
 
         <!-- Inspector -->
         <div class="editor__inspector">
-            <ProjectInspector
-                :project="project"
-                :mode="mode"
-                :tracks="project.lyricTracks"
-                :selected-item-id="selectedItemId"
-                :playhead-ms="playheadMs"
-                :overlay-opts="overlayOpts"
-                @update-project="onUpdateProject"
-                @update-item="onUpdateItem"
-                @delete-item="onDeleteItem"
-                @split-item="onSplitItem"
-                @merge-with-next="onMergeWithNext"
-                @add-item-at-location="onAddItemAtLocation"
-                @update:overlay-opts="(v: any) => overlayOpts = v"
-            />
+            <template v-if="mode === 'motion'">
+                <MotionInspector
+                    :motion-track="selectedMotionTrack"
+                    :lyric-tracks="project.lyricTracks"
+                    :background-image="project.backgroundImage"
+                    :background-color="project.backgroundColor"
+                    :background-image-fit="project.backgroundImageFit || 'cover'"
+                    @update-track="onUpdateMotionTrack"
+                    @set-background-color="onSetBackgroundColor"
+                    @set-background-fit="onSetBackgroundFit"
+                    @upload-background-image="onUploadBackgroundImage"
+                    @clear-background-image="onClearBackgroundImage"
+                />
+            </template>
+            <template v-else>
+                <ProjectInspector
+                    :project="project"
+                    :mode="mode"
+                    :tracks="project.lyricTracks"
+                    :selected-item-id="selectedItemId"
+                    :playhead-ms="playheadMs"
+                    :overlay-opts="overlayOpts"
+                    @update-project="onUpdateProject"
+                    @update-item="onUpdateItem"
+                    @delete-item="onDeleteItem"
+                    @split-item="onSplitItem"
+                    @merge-with-next="onMergeWithNext"
+                    @add-item-at-location="onAddItemAtLocation"
+                    @update:overlay-opts="(v: any) => overlayOpts = v"
+                />
+            </template>
         </div>
 
         <!-- Timeline — same grid/lane/playhead pattern as TimelineRoot.vue -->
@@ -1600,6 +1985,19 @@ onUnmounted(() => {
                                 <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
                                 {{ track.name }}
                             </div>
+                            <template v-if="mode === 'motion'">
+                                <div
+                                    v-for="track in (project?.motionTracks ?? [])"
+                                    :key="'motion-label-' + track.id"
+                                    class="lane-label"
+                                    :class="{ selected: selectedMotionTrackId === track.id }"
+                                    :style="{ height: '42px' }"
+                                    @click="onSelectMotionTrack(track.id)"
+                                >
+                                    <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
+                                    {{ track.name }}
+                                </div>
+                            </template>
                             <template v-if="analysis.waveform.value && analysis.waveform.value.length > 0">
                                 <div
                                     class="lane-label"
@@ -1665,7 +2063,7 @@ onUnmounted(() => {
                                     v-if="!collapsed[`track-${track.id}`]"
                                     :viewport="viewport"
                                     :fps="fps"
-                                    :track="track"
+                                    :track="mode === 'motion' ? { ...track, locked: true } : track"
                                     :playhead-frame="playhead.frame"
                                     :selected-item-id="selectedItemId"
                                     :selected-item-ids="selection.selectedIds.value"
@@ -1696,6 +2094,28 @@ onUnmounted(() => {
                                 </div>
                                 <div class="lane-resizer" @pointerdown="(e: PointerEvent) => startResize(`track-${track.id}`, e)"></div>
                             </div>
+                            <template v-if="mode === 'motion'">
+                                <div
+                                    v-for="track in (project?.motionTracks ?? [])"
+                                    :key="'motion-lane-' + track.id"
+                                    class="lane"
+                                    :style="{ height: '42px' }"
+                                >
+                                    <MotionTrackLane
+                                        :viewport="viewport"
+                                        :fps="fps"
+                                        :track="track"
+                                        :selected="selectedMotionTrackId === track.id"
+                                        :snap-find="snapEngine.findSnap"
+                                        :snap-clear="snapEngine.clearSnap"
+                                        @select-track="onSelectMotionTrack"
+                                        @update-track="onUpdateMotionTrack"
+                                        @push-undo="onPushUndo"
+                                        @pan="onPan"
+                                        @zoom-around="onZoom"
+                                    />
+                                </div>
+                            </template>
                             <!-- Waveform -->
                             <template v-if="analysis.waveform.value && analysis.waveform.value.length > 0">
                                 <div class="lane" :style="{ height: `${collapsed.waveform ? 28 : laneHeights.waveform}px` }">
@@ -1783,4 +2203,18 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
+    <ExportModal
+        :show="videoExport.showExportModal.value"
+        :state="videoExport.exportState.value"
+        :export-mode="exportMode"
+        :include-audio="project?.settings.includeAudio ?? true"
+        @cancel="handleExportCancel"
+        @stop="handleExportStop"
+        @start="handleExportStart"
+        @retry="handleExportRetry"
+        @openFolder="handleExportOpenFolder"
+        @close="handleExportClose"
+        @updateExportMode="handleUpdateExportMode"
+        @updateIncludeAudio="handleUpdateIncludeAudio"
+    />
 </template>

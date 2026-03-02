@@ -18,6 +18,30 @@ const getProjectJsonPath = (projectId: string): string => {
     return path.join(getProjectDir(projectId), 'project.json');
 };
 
+const normalizeProject = (raw: WolkProject): WolkProject => {
+    const anyRaw = raw as any;
+    return {
+        ...raw,
+        settings: {
+            ...DEFAULT_PROJECT_SETTINGS,
+            ...(raw.settings || {}),
+        },
+        font: {
+            ...DEFAULT_PROJECT_FONT,
+            ...(raw.font || {}),
+        },
+        lyricTracks: Array.isArray(raw.lyricTracks) ? raw.lyricTracks : [],
+        motionTracks: Array.isArray(anyRaw.motionTracks)
+            ? anyRaw.motionTracks
+            : (Array.isArray(anyRaw.motionLayers) ? anyRaw.motionLayers : []),
+        backgroundImage: typeof anyRaw.backgroundImage === 'string' ? anyRaw.backgroundImage : undefined,
+        backgroundColor: typeof anyRaw.backgroundColor === 'string' ? anyRaw.backgroundColor : '#000000',
+        backgroundImageFit: anyRaw.backgroundImageFit === 'contain' || anyRaw.backgroundImageFit === 'stretch'
+            ? anyRaw.backgroundImageFit
+            : 'cover',
+    };
+};
+
 export const listProjects = (): WolkProject[] => {
     const root = getProjectsRoot();
     try {
@@ -40,7 +64,7 @@ export const listProjects = (): WolkProject[] => {
         if (!fs.existsSync(jsonPath)) continue;
         try {
             const json = fs.readFileSync(jsonPath, 'utf-8');
-            const data = JSON.parse(json) as WolkProject;
+            const data = normalizeProject(JSON.parse(json) as WolkProject);
             if (data && data.version === 2 && typeof data.id === 'string') {
                 projects.push(data);
             }
@@ -58,7 +82,7 @@ export const loadProject = (projectId: string): WolkProject | null => {
     if (!fs.existsSync(jsonPath)) return null;
     try {
         const json = fs.readFileSync(jsonPath, 'utf-8');
-        const data = JSON.parse(json) as WolkProject;
+        const data = normalizeProject(JSON.parse(json) as WolkProject);
         if (data && data.version === 2) return data;
         return null;
     } catch {
@@ -82,7 +106,9 @@ export const createProject = (initial?: { title?: string; audioSrc?: string; cov
         font: { ...DEFAULT_PROJECT_FONT },
         rawLyrics: '',
         lyricTracks: [],
-        motionLayers: [],
+        motionTracks: [],
+        backgroundColor: '#000000',
+        backgroundImageFit: 'cover',
         createdAt: now,
         updatedAt: now,
     };
@@ -101,13 +127,13 @@ export const saveProject = (project: WolkProject): WolkProject => {
     const existing = loadProject(project.id);
     const now = Date.now();
 
-    const toSave: WolkProject = {
+    const toSave: WolkProject = normalizeProject({
         ...existing,
         ...project,
         version: 2,
         updatedAt: now,
         createdAt: existing?.createdAt ?? project.createdAt ?? now,
-    };
+    });
 
     const dir = getProjectDir(project.id);
     fs.mkdirSync(dir, { recursive: true });

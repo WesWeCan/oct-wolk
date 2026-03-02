@@ -104,6 +104,9 @@
 | 2026-03-02 | Old scene engine deprecated, not deleted | Will be adapted for 3D motion block types in Phase 4+. Seed RNG system reused. |
 | 2026-03-02 | Motion rendering on main thread (Canvas 2D) | Avoids Worker font-loading issues. Worker pipeline preserved for future 3D types. |
 | 2026-03-02 | Enter/exit animation uses dynamic duration (fraction + min/max clamp) | Adapts to fast words (100ms) and slow verses (5s) alike |
+| 2026-03-02 | Motion block type is immutable after creation | Prevents renderer/state mismatch; changing type now requires delete + re-create |
+| 2026-03-02 | New motion block defaults to 10s at playhead (clamped to project end) | Faster authoring while keeping duration constraints predictable |
+| 2026-03-02 | Next iteration will be subtitle-first DRY | Consolidate most 2D text behaviors as subtitle parameters; consider deprecating separate `wordReveal`/`paragraph` block types |
 
 ---
 
@@ -125,25 +128,111 @@
 > This has been **superseded** by the Motion Block architecture described in `MOTION-ARCHITECTURE.md`.
 > The old `MotionLayer`, `SnippetOverride` types in `project_types.ts` are to be replaced.
 > The old scene engine code is **deprecated but not deleted** — it will be adapted in Phase 4+ for 3D motion block types.
+>
+> **UX execution companion:** `MOTION-UX-FOUNDATION.md` is now the active checklist for splitting
+> Foundation stabilization vs UX polish (and keeping deferred block types out of current MVP scope).
 
 **New approach:** Motion Blocks on Motion Tracks (see `MOTION-ARCHITECTURE.md` for full spec)
 
-- [ ] Step 1: Extract seed RNG to shared utility
-- [ ] Step 2: Update data model types (MotionBlock, MotionTrack replace MotionLayer)
-- [ ] Step 3: Enter/exit animation utilities
-- [ ] Step 4: Lyric item resolution for motion blocks
-- [ ] Step 5: Motion block renderer interface + registry
-- [ ] Step 6: Subtitle renderer (first block type)
-- [ ] Step 7: WordReveal renderer (second block type)
-- [ ] Step 8: Paragraph renderer (third block type)
-- [ ] Step 9: Motion canvas compositor (useMotionRenderer composable)
-- [ ] Step 10: Motion track lane UI (timeline)
-- [ ] Step 11: Motion inspector
-- [ ] Step 12: Motion track list panel (left panel)
-- [ ] Step 13: Wire into ProjectEditor.vue
-- [ ] Step 14: Background image support
-- [ ] Step 15: Per-item rich text overrides (TipTap)
-- [ ] Step 16: Export integration
+### Phase 2 Completion (strict complete only)
+- **Complete:** 6 / 16 steps (**38%**)
+- **Status legend:** `[ ]` not started, `[-]` partial/in-progress, `[x]` fully complete + manually verified
+- **Promotion rule:** never move a step to `[x]` until manual verification is explicitly confirmed.
+
+- [x] Step 1: Extract seed RNG to shared utility
+  - Implemented: `src/front-end/utils/seededRng.ts`, worker type re-export compatibility
+  - Manual verification requested: open app + confirm legacy scene paths still boot
+  - Result: pass
+- [x] Step 2: Update data model types
+  - Implemented: `MotionTrack`/`MotionBlock` model, project settings extensions, storage normalization for legacy `motionLayers`
+  - Manual verification requested: load/create/save/reload project with no schema errors
+  - Result: pass
+- [x] Step 3: Enter/exit animation utilities
+  - Implemented: `computeEnterExitProgress`, alpha/transform helpers, ms↔frame helpers
+  - Manual verification requested: subtitle fade behavior while scrubbing
+  - Result: pass
+- [x] Step 4: Lyric item resolution for motion blocks
+  - Implemented: active/all item resolution, orphan cleanup utility
+  - Manual verification requested: missing source/override gracefully degrades
+  - Result: pass
+- [x] Step 5: Motion block renderer interface + registry
+  - Implemented: motion renderer contract + type registry
+  - Manual verification requested: block type switches resolve correct renderer without crash
+  - Result: pass
+- [x] Step 6: Subtitle renderer
+  - Implemented: text render + style/transform + enter/exit alpha behavior
+  - Manual verification requested: subtitle appears on scrub/play in motion mode
+  - Result: pass
+
+- [-] Step 7: WordReveal renderer
+  - Implemented: `src/front-end/motion/renderers/WordRevealRenderer.ts`, `accumulate` param support
+  - Remaining for completion: manual UX tuning for spacing and per-word animation polish
+  - Manual verification requested: words reveal sequentially in both accumulate and replace modes
+  - Result: needs verification
+- [-] Step 8: Paragraph renderer
+  - Implemented: `src/front-end/motion/renderers/ParagraphRenderer.ts` with line-wrap + per-word opacity
+  - Remaining for completion: typography polish (line breaks/overflow edge cases)
+  - Manual verification requested: paragraph wraps consistently across canvas sizes
+  - Result: needs verification
+- [-] Step 9: Motion canvas compositor (useMotionRenderer)
+  - Implemented: multi-track compositing, renderer lifecycle, property-track evaluation, type registration for subtitle/wordReveal/paragraph
+  - Remaining for completion: background image pipeline (Step 14 dependency), export integration hooks (Step 16 dependency)
+  - Manual verification requested: overlapping tracks respect z-order and remain stable while scrubbing
+  - Result: needs verification
+- [-] Step 10: Motion track UI — timeline lane
+  - Implemented: visible motion lanes, selection, drag move, trim left/right, snap integration hooks
+  - Implemented: wheel pan/zoom interactions on motion lanes (parity with lyric lane viewport behavior)
+  - Remaining for completion: additional gesture polish parity with lyric lane
+  - Manual verification requested: drag/trim/snap behavior works across zoom levels
+  - Result: needs verification
+- [-] Step 11: Motion inspector
+  - Implemented: block settings, source binding, timing, style, transform, enter/exit controls, basic item overrides, wordReveal param
+  - Remaining for completion: richer per-item style/transform override UX + TipTap editor (Step 15)
+  - Manual verification requested: inspector edits live-update preview without regressions
+  - Result: needs verification
+- [-] Step 12: Motion track list panel
+  - Implemented: add by block type, select, enable/disable, duplicate, reorder (up/down), delete
+  - Remaining for completion: context menu UX parity + drag reorder polish
+  - Manual verification requested: add/duplicate/reorder/delete maintain correct timeline and render order
+  - Result: needs verification
+- [-] Step 13: Wire into ProjectEditor.vue
+  - Implemented: motion sidebar/inspector/lanes, lyric-lane lock in motion mode, orphan cleanup on load/mode switch with non-blocking notice, motion keyboard parity (copy/paste/delete/nudge)
+  - Remaining for completion: final polish pass for all motion-mode shortcuts and selection edge cases
+  - Manual verification requested: full mode toggle behavior and shortcut parity
+  - Result: needs verification
+- [-] Step 14: Background image support
+  - Implemented: project-level `backgroundImageFit` (`cover`/`contain`/`stretch`) in project model/storage defaults
+  - Implemented: `useMotionRenderer` draws background image before motion tracks and applies fit mode
+  - Implemented: motion inspector background controls (color/transparent toggle/image upload/fit/remove)
+  - Manual verification requested:
+    - Upload a background image and verify it appears behind text in Motion mode
+    - Switch fit mode across `cover`, `contain`, `stretch` and confirm behavior
+    - Toggle transparent background and confirm alpha canvas base still works
+  - Result: needs verification
+- [-] Step 15: Per-item rich text overrides (TipTap)
+  - Implemented: added `MotionItemOverrideEditor.vue` using TipTap for per-item override authoring (foundation pass: bold/italic editor controls)
+  - Implemented: override storage now accepts TipTap JSON payloads via existing `textOverride` field, preserving backward compatibility with plain-string overrides
+  - Implemented: render pipeline parses per-item TipTap JSON and applies rich spans in `subtitle`, `wordReveal`, and `paragraph` renderers (bold/italic/color/underline/font attrs when present)
+  - Implemented: override fallback semantics stabilized — hidden suppresses rendering, empty override falls back to source lyric text, and reset actions are explicitly available in the inspector/editor
+  - Remaining for completion: richer toolbar UX (underline/color/font-size/font-family controls), paragraph typography polish for complex mixed-style wrapping, manual export-path validation under Step 16
+  - Manual verification requested:
+    - Open Motion mode -> Item Overrides -> `Edit Rich Override` and set bold/italic text on at least 2 lyric items
+    - Scrub/play and confirm rich override styling appears in preview for `subtitle`, `wordReveal`, and `paragraph` blocks
+    - Confirm `Reset to Default` restores original source text behavior without stale formatting
+  - Result: needs verification
+- [-] Step 16: Export integration
+  - Implemented: wired `ExportModal` and export controls into `ProjectEditor.vue` monitor UI for Motion mode
+  - Implemented: moved `Include Audio` control from monitor settings into `ExportModal` (export-only context)
+  - Implemented: monitor export controls simplified (single entry point button; stop remains in export modal flow)
+  - Implemented: added `startCanvasFrameExport()` in `useVideoExport.ts` to support frame-by-frame export from main-thread canvas renderers (no worker dependency)
+  - Implemented: motion export frame loop now calls motion renderer per frame, captures PNGs, saves batched frames, yields with `setTimeout(0)`, then assembles via existing ffmpeg pipeline
+  - Implemented: stopping frame export now prompts to optionally assemble already-rendered frames into a usable partial output
+  - Remaining for completion: verify transparent-background alpha behavior in final encoded outputs with your preferred codec/container workflow
+  - Manual verification requested:
+    - Open Motion mode -> Export -> choose `Frame-by-Frame` -> run a short export and verify text timing/style match preview
+    - Start another export and press `Stop Export` during frame rendering; verify export stops cleanly
+    - If using transparent background, run an export and confirm expected transparency behavior in your target playback/editing tool
+  - Result: needs verification
 
 ## Notes
 - Generator UX intentionally stays chained (`verse -> line -> word`) and differs from the earlier direct-button wording in the PRD.
@@ -153,5 +242,6 @@
 - **2026-03-02:** Motion Mode redesigned from "persistent layers" to "motion blocks on tracks" — see `MOTION-ARCHITECTURE.md`.
 - **2026-03-02:** Old scene engine (Three.js) deprecated but preserved for future 3D motion block types (Phase 4+).
 - **2026-03-02:** Motion rendering will use main-thread Canvas 2D (not Web Worker) to avoid font-loading issues.
+- **2026-03-02:** Motion UX execution split documented in `MOTION-UX-FOUNDATION.md` (Foundation first, UX pass second, deferred block types explicit).
 
-## Phase 3: Export + Polish — NOT STARTED
+## Phase 3: Export + Polish — IN PROGRESS

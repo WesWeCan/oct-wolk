@@ -132,6 +132,16 @@ body:has(.project-editor) {
     }
 }
 
+.project-notice {
+    margin: 6px 10px 0;
+    padding: 6px 10px;
+    background: rgba(42, 106, 240, 0.2);
+    border: 1px solid rgba(42, 106, 240, 0.45);
+    border-radius: 4px;
+    font-size: 12px;
+    color: #d8e3ff;
+}
+
 // Track color dot in timeline left column labels
 .pe-track-color {
     display: inline-block;
@@ -140,6 +150,10 @@ body:has(.project-editor) {
     border-radius: 50%;
     margin-right: 4px;
     flex-shrink: 0;
+}
+
+.lane-label.selected {
+    background: rgba(42, 106, 240, 0.18);
 }
 
 .editor-loading {
@@ -493,6 +507,10 @@ body:has(.project-editor) {
     border-bottom: 1px solid #222;
 
     &.muted { opacity: 0.5; }
+    &.active {
+        background: rgba(42, 106, 240, 0.15);
+        border-radius: 3px;
+    }
 
     &__color {
         width: 8px;
@@ -520,6 +538,59 @@ body:has(.project-editor) {
         gap: 2px;
         flex-shrink: 0;
     }
+}
+
+.motion-track-lane {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #181818;
+    overflow: hidden;
+
+    &.disabled {
+        opacity: 0.5;
+    }
+
+    &__block {
+        position: absolute;
+        top: 4px;
+        bottom: 4px;
+        border: 1px solid;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        padding: 0 6px;
+        min-width: 4px;
+        overflow: hidden;
+    }
+
+    &__block.selected {
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+    }
+
+    &__block.dragging {
+        cursor: grabbing;
+    }
+
+    &__text {
+        font-size: 11px;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    &__handle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        background: rgba(255, 255, 255, 0.15);
+        cursor: ew-resize;
+    }
+
+    &__handle.left { left: 0; }
+    &__handle.right { right: 0; }
 }
 
 .track-btn {

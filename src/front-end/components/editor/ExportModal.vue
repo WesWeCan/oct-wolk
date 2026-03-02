@@ -13,6 +13,7 @@ const props = defineProps<{
     state: ExportState;
     show: boolean;
     exportMode: 'realtime' | 'frames';
+    includeAudio?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -22,6 +23,7 @@ const emit = defineEmits<{
     openFolder: [];
     close: [];
     updateExportMode: [mode: 'realtime' | 'frames'];
+    updateIncludeAudio: [include: boolean];
     start: [];
 }>();
 
@@ -85,6 +87,17 @@ const progressBarStyle = computed(() => {
                             <span class="mode-desc">Lossless, faster, no drops</span>
                         </button>
                     </div>
+                </div>
+
+                <div v-if="state.phase === 'idle' || state.phase === 'preparing'" class="export-modal__audio-toggle">
+                    <label class="export-modal__audio-checkbox">
+                        <input
+                            type="checkbox"
+                            :checked="includeAudio !== false"
+                            @change="emit('updateIncludeAudio', ($event.target as HTMLInputElement).checked)"
+                        />
+                        Include Audio
+                    </label>
                 </div>
 
                 <!-- Progress Bar -->
@@ -234,6 +247,18 @@ const progressBarStyle = computed(() => {
 
 .export-modal__mode-selector {
     margin-bottom: 24px;
+}
+
+.export-modal__audio-toggle {
+    margin-bottom: 20px;
+}
+
+.export-modal__audio-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #ddd;
+    font-size: 14px;
 }
 
 .export-modal__mode-label {

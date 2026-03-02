@@ -11,6 +11,14 @@ export interface ExportState {
     folderPath?: string;
 }
 
+export interface CanvasFrameExportOptions {
+    fps: number;
+    totalFrames: number;
+    includeAudio?: boolean;
+    audioPath?: string | null;
+    drawFrame: (frame: number) => Promise<void> | void;
+}
+
 /**
  * Video export management for the editor.
  * 
@@ -770,6 +778,197 @@ export function useVideoExport(
             }
         }
     };
+
+    /**
+     * Starts frame-by-frame export from a main-thread canvas renderer.
+     * This is used by Motion mode where rendering is done directly on canvas.
+     */
+    const startCanvasFrameExport = async (
+        options: CanvasFrameExportOptions,
+    ) => {
+        cancelFrameExport = false;
+        const fps = Math.max(1, Math.round(options.fps || 60));
+        const totalFrames = Math.max(1, Math.round(options.totalFrames || 1));
+        let copiedAudioPath: string | null = null;
+
+        try {
+            exportState.value = {
+                phase: 'preparing',
+                progress: 0,
+                message: 'Initializing export...',
+                error: undefined,
+                folderPath: undefined
+            };
+
+            const canvas = renderCanvas.value;
+            if (!canvas || !timeline.value) {
+                throw new Error('Canvas or timeline not available');
+            }
+
+            exportState.value.message = 'Copying fonts...';
+            exportState.value.progress = 5;
+            await copyFontsForExport();
+
+            exportState.value.message = 'Creating export folder...';
+            const res = await (window as any).electronAPI.export.createFrameExport(songId.value);
+            if (!res?.rootDir || !res?.framesDir) {
+                throw new Error('Failed to create export folder');
+            }
+            const { rootDir, framesDir } = res;
+
+            const includeAudio = options.includeAudio ?? (timeline.value.settings.includeAudio ?? true);
+            if (includeAudio && options.audioPath) {
+                exportState.value.message = 'Copying audio file...';
+                exportState.value.progress = 10;
+                try {
+                    if (typeof (window as any).electronAPI?.export?.copyAudioForExport === 'function') {
+                        const copyResult = await (window as any).electronAPI.export.copyAudioForExport(rootDir, options.audioPath);
+                        if (copyResult?.success && copyResult?.audioPath) {
+                            copiedAudioPath = copyResult.audioPath;
+                        } else {
+                            copiedAudioPath = options.audioPath;
+                        }
+                    } else {
+                        copiedAudioPath = options.audioPath;
+                    }
+                } catch {
+                    copiedAudioPath = options.audioPath;
+                }
+            }
+
+            frameExportContext = { framesDir, rootDir, totalFrames, renderedFrames: 0 };
+            isRecording.value = true;
+            exportState.value.phase = 'recording';
+            exportState.value.progress = 15;
+            exportState.value.message = 'Rendering frames...';
+
+            const framePromises: Promise<void>[] = [];
+            for (let frame = 0; frame < totalFrames; frame++) {
+                if (cancelFrameExport) {
+                    if (framePromises.length > 0) await Promise.all(framePromises);
+                    throw new Error('Export cancelled by user');
+                }
+
+                await options.drawFrame(frame);
+                const blob = await new Promise<Blob | null>((resolve) => {
+                    canvas.toBlob(resolve, 'image/png', 1.0);
+                });
+                if (!blob) throw new Error(`Failed to capture frame ${frame}`);
+                const arrayBuffer = await blob.arrayBuffer();
+                const frameName = `frame_${String(frame).padStart(6, '0')}.png`;
+
+                framePromises.push(
+                    (window as any).electronAPI.export.saveFrame(framesDir, frameName, arrayBuffer)
+                );
+                frameExportContext.renderedFrames = frame + 1;
+
+                const progress = 15 + Math.floor((frame / totalFrames) * 70);
+                exportState.value.progress = progress;
+                exportState.value.message = `Rendering frames... ${frame + 1} / ${totalFrames}`;
+
+                if (framePromises.length >= 10) {
+                    await Promise.all(framePromises);
+                    framePromises.length = 0;
+                }
+
+                // Yield to keep UI responsive during long exports.
+                await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+
+            if (framePromises.length > 0) await Promise.all(framePromises);
+            isRecording.value = false;
+
+            exportState.value.phase = 'encoding';
+            exportState.value.progress = 85;
+            exportState.value.message = 'Assembling video with ffmpeg...';
+
+            const assembleResult = await (window as any).electronAPI.export.assembleVideo(
+                framesDir,
+                rootDir,
+                fps,
+                copiedAudioPath
+            );
+            if (!assembleResult?.success) {
+                throw new Error(assembleResult?.error || 'Failed to assemble video');
+            }
+
+            exportState.value.message = 'Cleaning up frames...';
+            exportState.value.progress = 98;
+            try {
+                await (window as any).electronAPI.export.cleanupFrames(framesDir);
+            } catch {}
+
+            exportState.value = {
+                phase: 'complete',
+                progress: 100,
+                message: 'Export completed successfully!',
+                folderPath: rootDir
+            };
+            frameExportContext = null;
+        } catch (error) {
+            isRecording.value = false;
+
+            if (error instanceof Error && error.message === 'Export cancelled by user' && frameExportContext && frameExportContext.renderedFrames > 0) {
+                const shouldGenerate = await new Promise<boolean>((resolve) => {
+                    const result = globalThis.confirm(
+                        `Export was stopped after rendering ${frameExportContext!.renderedFrames} frames.\n\n` +
+                        `Do you still want to assemble these frames into a video file?`
+                    );
+                    resolve(result);
+                });
+
+                if (shouldGenerate) {
+                    try {
+                        exportState.value.phase = 'encoding';
+                        exportState.value.progress = 85;
+                        exportState.value.message = `Assembling video from ${frameExportContext.renderedFrames} frames...`;
+
+                        const assembleResult = await (window as any).electronAPI.export.assembleVideo(
+                            frameExportContext.framesDir,
+                            frameExportContext.rootDir,
+                            fps,
+                            copiedAudioPath
+                        );
+                        if (!assembleResult?.success) {
+                            throw new Error(assembleResult?.error || 'Failed to assemble video');
+                        }
+
+                        exportState.value.message = 'Cleaning up frames...';
+                        exportState.value.progress = 98;
+                        try {
+                            await (window as any).electronAPI.export.cleanupFrames(frameExportContext.framesDir);
+                        } catch {}
+
+                        exportState.value = {
+                            phase: 'complete',
+                            progress: 100,
+                            message: `Export completed with ${frameExportContext.renderedFrames} frames!`,
+                            folderPath: frameExportContext.rootDir
+                        };
+                        frameExportContext = null;
+                        return;
+                    } catch (assembleError) {
+                        exportState.value = {
+                            phase: 'error',
+                            progress: 0,
+                            message: 'Failed to assemble video',
+                            error: assembleError instanceof Error ? assembleError.message : String(assembleError)
+                        };
+                        frameExportContext = null;
+                        return;
+                    }
+                }
+            }
+
+            exportState.value = {
+                phase: 'error',
+                progress: 0,
+                message: 'Export failed',
+                error: error instanceof Error ? error.message : String(error)
+            };
+            frameExportContext = null;
+        }
+    };
     
     /**
      * Opens the export modal.
@@ -839,6 +1038,7 @@ export function useVideoExport(
         checkFfmpegAvailable,
         startExport,
         startFrameExport,
+        startCanvasFrameExport,
         stopExport,
         openExportModal,
         closeExportModal,

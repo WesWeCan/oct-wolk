@@ -2,6 +2,7 @@
 // WolkProject v2 — Lyric-timeline-first data model
 // See PRD-lyrics-motion-rebuild.md for full specification
 // ---------------------------------------------------------------------------
+import type { PropertyTrack } from '@/types/timeline_types';
 
 // ---- Layer A: Lyric Mode --------------------------------------------------
 
@@ -25,14 +26,24 @@ export interface LyricTrack {
     locked: boolean;
 }
 
-// ---- Layer B: Motion Mode -------------------------------------------------
+// ---- Layer B: Motion Mode (redesigned) -----------------------------------
 
-export interface SnippetOverride {
-    itemId: string;
-    hidden: boolean;
-    fadeInMs: number;
-    fadeOutMs: number;
-    textOverride?: string;
+export type MotionBlockType = 'subtitle' | 'wordReveal' | 'paragraph';
+export type MotionAnimationStyle =
+    | 'fade'
+    | 'slideUp'
+    | 'slideDown'
+    | 'slideLeft'
+    | 'slideRight'
+    | 'scale'
+    | 'none';
+
+export interface MotionEnterExit {
+    fraction: number;
+    minFrames: number;
+    maxFrames: number;
+    easing: string;
+    style: MotionAnimationStyle;
 }
 
 export interface MotionStyle {
@@ -41,6 +52,8 @@ export interface MotionStyle {
     fontWeight: number;
     fontStyle: 'normal' | 'italic' | 'oblique';
     textCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+    letterSpacing: number;
+    lineHeight: number;
     color: string;
     opacity: number;
     backgroundColor: string | null;
@@ -59,17 +72,36 @@ export interface MotionTransform {
     rotation: number;
 }
 
-export type DisplayMode = 'single' | 'block';
+export interface ItemOverride {
+    sourceItemId: string;
+    hidden: boolean;
+    textOverride?: string;
+    styleOverride?: Partial<MotionStyle>;
+    transformOverride?: Partial<MotionTransform>;
+}
 
-export interface MotionLayer {
+export interface MotionBlock {
     id: string;
-    name: string;
-    enabled: boolean;
+    type: MotionBlockType;
     sourceTrackId: string;
-    displayMode: DisplayMode;
-    snippets: SnippetOverride[];
+    startMs: number;
+    endMs: number;
     style: MotionStyle;
     transform: MotionTransform;
+    enter: MotionEnterExit;
+    exit: MotionEnterExit;
+    overrides: ItemOverride[];
+    params: Record<string, any>;
+    propertyTracks: PropertyTrack[];
+}
+
+export interface MotionTrack {
+    id: string;
+    name: string;
+    color: string;
+    enabled: boolean;
+    collapsed: boolean;
+    block: MotionBlock;
 }
 
 // ---- Project Root ---------------------------------------------------------
@@ -86,6 +118,7 @@ export interface WolkProjectSettings {
     renderWidth: number;
     renderHeight: number;
     seed: string;
+    durationMs: number;
     exportBitrateMbps?: number;
     includeAudio?: boolean;
 }
@@ -107,7 +140,10 @@ export interface WolkProject {
     font: WolkProjectFont;
     rawLyrics: string;
     lyricTracks: LyricTrack[];
-    motionLayers: MotionLayer[];
+    motionTracks: MotionTrack[];
+    backgroundImage?: string;
+    backgroundColor: string;
+    backgroundImageFit: 'cover' | 'contain' | 'stretch';
     createdAt: number;
     updatedAt: number;
 }
@@ -119,6 +155,7 @@ export const DEFAULT_PROJECT_SETTINGS: WolkProjectSettings = {
     renderWidth: 1920,
     renderHeight: 1080,
     seed: 'wolk-default',
+    durationMs: 30_000,
 };
 
 export const DEFAULT_PROJECT_FONT: WolkProjectFont = {
@@ -134,6 +171,8 @@ export const DEFAULT_MOTION_STYLE: MotionStyle = {
     fontWeight: 400,
     fontStyle: 'normal',
     textCase: 'none',
+    letterSpacing: 0,
+    lineHeight: 1.2,
     color: '#ffffff',
     opacity: 1,
     backgroundColor: null,
@@ -147,6 +186,14 @@ export const DEFAULT_MOTION_TRANSFORM: MotionTransform = {
     offsetY: 0,
     scale: 1,
     rotation: 0,
+};
+
+export const DEFAULT_MOTION_ENTER_EXIT: MotionEnterExit = {
+    fraction: 0.3,
+    minFrames: 3,
+    maxFrames: 30,
+    easing: 'easeOut',
+    style: 'fade',
 };
 
 export const TRACK_COLORS = [
