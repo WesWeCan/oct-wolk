@@ -1,7 +1,14 @@
-import type { MotionStyle, MotionTransform } from '@/types/project_types';
+import type { MotionStyle, MotionTransform, TextAlign, BoundsMode, WrapMode, OverflowBehavior } from '@/types/project_types';
 import type { MotionBlockRenderer, MotionRenderContext, ResolvedItem, RendererBounds } from '@/front-end/motion/types';
 import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
 import { buildFont, spansFromRichText, spansFromWordStyleMap } from '@/front-end/utils/motion/renderTipTapSpans';
+import type { StyledSpan } from '@/front-end/utils/motion/parseTipTapToSpans';
+
+const clamp01 = (value: unknown, fallback = 1): number => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(0, Math.min(1, numeric));
+};
 
 const applyTextCase = (text: string, textCase: MotionStyle['textCase']): string => {
     switch (textCase) {
@@ -36,17 +43,29 @@ function applyAnimatedStyle(base: MotionStyle, animatedProps: Record<string, any
     return {
         ...base,
         opacity: Number(animatedProps['style.opacity'] ?? base.opacity),
+        globalOpacity: Number(animatedProps['style.globalOpacity'] ?? base.globalOpacity ?? 1),
         fontSize: Number(animatedProps['style.fontSize'] ?? base.fontSize),
         fontWeight: Number(animatedProps['style.fontWeight'] ?? base.fontWeight),
         letterSpacing: Number(animatedProps['style.letterSpacing'] ?? base.letterSpacing),
         lineHeight: Number(animatedProps['style.lineHeight'] ?? base.lineHeight),
         backgroundPadding: Number(animatedProps['style.backgroundPadding'] ?? base.backgroundPadding),
+        backgroundOpacity: Number(animatedProps['style.backgroundOpacity'] ?? base.backgroundOpacity ?? (base.backgroundColor ? 1 : 0)),
+        backgroundBorderRadius: Number(animatedProps['style.backgroundBorderRadius'] ?? base.backgroundBorderRadius ?? 0),
         color: (animatedProps['style.color'] as string) ?? base.color,
         backgroundColor: (animatedProps['style.backgroundColor'] as string | null) ?? base.backgroundColor,
         fontFamily: (animatedProps['style.fontFamily'] as string) ?? base.fontFamily,
         fontStyle: (animatedProps['style.fontStyle'] as MotionStyle['fontStyle']) ?? base.fontStyle,
         textCase: (animatedProps['style.textCase'] as MotionStyle['textCase']) ?? base.textCase,
         underline: (animatedProps['style.underline'] as boolean) ?? base.underline,
+        textAlign: (animatedProps['style.textAlign'] as TextAlign) ?? base.textAlign ?? 'center',
+        writingMode: base.writingMode ?? 'horizontal',
+        outlineWidth: Number(animatedProps['style.outlineWidth'] ?? base.outlineWidth ?? 0),
+        outlineColor: (animatedProps['style.outlineColor'] as string) ?? base.outlineColor ?? '#000000',
+        boundsMode: (base.boundsMode ?? 'safeArea') as BoundsMode,
+        wrapMode: (base.wrapMode ?? 'word') as WrapMode,
+        maxLines: Number(base.maxLines ?? 5),
+        overflowBehavior: (base.overflowBehavior ?? 'none') as OverflowBehavior,
+        safeAreaPadding: Number(animatedProps['style.safeAreaPadding'] ?? base.safeAreaPadding ?? 40),
     };
 }
 
@@ -58,6 +77,115 @@ function applyAnimatedTransform(base: MotionTransform, animatedProps: Record<str
         scale: Number(animatedProps['transform.scale'] ?? base.scale),
         rotation: Number(animatedProps['transform.rotation'] ?? base.rotation),
     };
+}
+
+interface SpanMetric {
+    span: StyledSpan;
+    width: number;
+}
+
+interface WrappedLine {
+    metrics: SpanMetric[];
+    width: number;
+}
+
+function measureSpans(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    spans: StyledSpan[],
+    resolvedStyle: MotionStyle,
+): SpanMetric[] {
+    const ls = resolvedStyle.letterSpacing ?? 0;
+    (ctx as any).letterSpacing = ls !== 0 ? `${ls}px` : '0px';
+    return spans.map((span) => {
+        ctx.font = buildFont(resolvedStyle, span);
+        return { span, width: ctx.measureText(span.text).width };
+    });
+}
+
+function wrapSpans(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    spanMetrics: SpanMetric[],
+    maxWidth: number,
+    resolvedStyle: MotionStyle,
+    wrapMode: WrapMode,
+): WrappedLine[] {
+    if (wrapMode === 'none' || maxWidth <= 0) {
+        const totalWidth = spanMetrics.reduce((sum, m) => sum + m.width, 0);
+        return [{ metrics: spanMetrics, width: totalWidth }];
+    }
+
+    const words: { text: string; span: StyledSpan; width: number }[] = [];
+    for (const m of spanMetrics) {
+        const chunks = m.span.text.split(/(\s+)/);
+        for (const chunk of chunks) {
+            if (!chunk) continue;
+            ctx.font = buildFont(resolvedStyle, m.span);
+            words.push({ text: chunk, span: m.span, width: ctx.measureText(chunk).width });
+        }
+    }
+
+    const lines: WrappedLine[] = [];
+    let currentLine: SpanMetric[] = [];
+    let currentWidth = 0;
+
+    for (const word of words) {
+        const isSpace = /^\s+$/.test(word.text);
+        if (currentWidth + word.width > maxWidth && currentWidth > 0 && !isSpace) {
+            lines.push({ metrics: currentLine, width: currentWidth });
+            currentLine = [];
+            currentWidth = 0;
+        }
+        currentLine.push({ span: { ...word.span, text: word.text }, width: word.width });
+        currentWidth += word.width;
+    }
+    if (currentLine.length > 0) {
+        lines.push({ metrics: currentLine, width: currentWidth });
+    }
+
+    if (wrapMode === 'balanced' && lines.length > 1) {
+        const totalWidth = lines.reduce((sum, l) => sum + l.width, 0);
+        const targetWidth = totalWidth / lines.length;
+        const balanced: WrappedLine[] = [];
+        let bLine: SpanMetric[] = [];
+        let bWidth = 0;
+        const allMetrics = lines.flatMap(l => l.metrics);
+        for (const m of allMetrics) {
+            if (bWidth + m.width > targetWidth * 1.15 && bWidth > 0 && !/^\s+$/.test(m.span.text)) {
+                balanced.push({ metrics: bLine, width: bWidth });
+                bLine = [];
+                bWidth = 0;
+            }
+            bLine.push(m);
+            bWidth += m.width;
+        }
+        if (bLine.length > 0) balanced.push({ metrics: bLine, width: bWidth });
+        return balanced;
+    }
+
+    return lines;
+}
+
+function applyOverflow(
+    lines: WrappedLine[],
+    maxLines: number,
+    overflow: OverflowBehavior,
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    resolvedStyle: MotionStyle,
+): WrappedLine[] {
+    if (maxLines <= 0 || lines.length <= maxLines || overflow === 'none') return lines;
+
+    const truncated = lines.slice(0, maxLines);
+
+    if (overflow === 'ellipsis') {
+        const last = truncated[truncated.length - 1];
+        const ellSpan: StyledSpan = { text: '…' };
+        ctx.font = buildFont(resolvedStyle, ellSpan);
+        const ellW = ctx.measureText('…').width;
+        last.metrics.push({ span: ellSpan, width: ellW });
+        last.width += ellW;
+    }
+
+    return truncated;
 }
 
 export class SubtitleRenderer implements MotionBlockRenderer {
@@ -92,13 +220,15 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         }
         if (!displayText && spans.length === 0) return;
 
-        const alpha = applyEnterExitToAlpha(
+        const enterExitAlpha = applyEnterExitToAlpha(
             item.enterProgress,
             item.exitProgress,
             item.enter,
             item.exit,
-        ) * resolvedStyle.opacity;
-        if (alpha <= 0) return;
+        );
+        if (enterExitAlpha <= 0) return;
+        const textOpacity = clamp01(resolvedStyle.opacity, 1);
+        const globalOpacity = clamp01(resolvedStyle.globalOpacity, 1);
 
         const enterExitTransform = applyEnterExitToTransform(
             item.enterProgress,
@@ -107,63 +237,175 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             item.exit.style,
         );
 
-        const { x, y } = resolveAnchorPoint(resolvedTransform, context.canvasSize.width, context.canvasSize.height);
         const fontSize = Math.max(8, resolvedStyle.fontSize);
+        const textAlign = resolvedStyle.textAlign ?? 'center';
+        const outlineWidth = resolvedStyle.outlineWidth ?? 0;
+        const outlineColor = resolvedStyle.outlineColor ?? '#000000';
+        const boundsMode = resolvedStyle.boundsMode ?? 'safeArea';
+        const wrapMode = resolvedStyle.wrapMode ?? 'word';
+        const maxLines = resolvedStyle.maxLines ?? 5;
+        const overflowBehavior = resolvedStyle.overflowBehavior ?? 'none';
+        const safeAreaPadding = resolvedStyle.safeAreaPadding ?? 40;
+
+        const cw = context.canvasSize.width;
+        const ch = context.canvasSize.height;
+
+        let drawX: number;
+        let drawY: number;
+
+        if (boundsMode === 'safeArea') {
+            if (textAlign === 'left') drawX = safeAreaPadding;
+            else if (textAlign === 'right') drawX = cw - safeAreaPadding;
+            else drawX = cw / 2;
+            drawX += resolvedTransform.offsetX;
+
+            let anchorY = ch / 2;
+            if (resolvedTransform.anchorY === 'top') anchorY = safeAreaPadding;
+            if (resolvedTransform.anchorY === 'bottom') anchorY = ch - safeAreaPadding;
+            drawY = anchorY + resolvedTransform.offsetY;
+        } else {
+            const anchor = resolveAnchorPoint(resolvedTransform, cw, ch);
+            drawX = anchor.x;
+            drawY = anchor.y;
+        }
 
         ctx.save();
-        ctx.translate(x + enterExitTransform.translateX, y + enterExitTransform.translateY);
+        ctx.translate(drawX + enterExitTransform.translateX, drawY + enterExitTransform.translateY);
         ctx.rotate((resolvedTransform.rotation * Math.PI) / 180);
         ctx.scale(resolvedTransform.scale * enterExitTransform.scale, resolvedTransform.scale * enterExitTransform.scale);
 
-        ctx.textAlign = 'left';
         ctx.textBaseline = resolvedTransform.anchorY === 'top' ? 'top' : resolvedTransform.anchorY === 'bottom' ? 'bottom' : 'middle';
-        ctx.globalAlpha = alpha;
-        const spanMetrics = spans.map((span) => {
-            ctx.font = buildFont(resolvedStyle, span);
-            return { span, width: ctx.measureText(span.text).width };
-        });
-        const textWidth = spanMetrics.reduce((sum, metric) => sum + metric.width, 0);
-        const textHeight = Math.max(fontSize, fontSize * 1.05);
+        ctx.globalAlpha = enterExitAlpha * globalOpacity;
+
+        const spanMetrics = measureSpans(ctx, spans, resolvedStyle);
+
+        const availableWidth = boundsMode === 'safeArea'
+            ? context.canvasSize.width - 2 * safeAreaPadding
+            : Infinity;
+
+        let lines = wrapSpans(ctx, spanMetrics, availableWidth, resolvedStyle, wrapMode);
+
+        if (wrapMode !== 'none') {
+            lines = applyOverflow(lines, maxLines, overflowBehavior, ctx, resolvedStyle);
+        }
+
+        // Scale down if overflow behavior demands it
+        let scaleFactor = 1;
+        if (overflowBehavior === 'scaleDown' && wrapMode !== 'none') {
+            let reLines = wrapSpans(ctx, spanMetrics, availableWidth, resolvedStyle, wrapMode);
+            let attempts = 0;
+            while (reLines.length > maxLines && scaleFactor > 0.2 && attempts < 20) {
+                scaleFactor *= 0.9;
+                const scaledAvail = availableWidth / scaleFactor;
+                reLines = wrapSpans(ctx, spanMetrics, scaledAvail, resolvedStyle, wrapMode);
+                attempts++;
+            }
+            if (scaleFactor < 1) {
+                ctx.scale(scaleFactor, scaleFactor);
+                lines = reLines.slice(0, maxLines);
+            }
+        }
+
+        const lineHeightPx = Math.max(fontSize, fontSize * resolvedStyle.lineHeight);
+        const totalTextHeight = lines.length * lineHeightPx;
         const pad = Math.max(0, resolvedStyle.backgroundPadding);
 
-        if (resolvedStyle.backgroundColor) {
-            let bgX = -textWidth / 2 - pad;
-            if (resolvedTransform.anchorX === 'left') bgX = -pad;
-            if (resolvedTransform.anchorX === 'right') bgX = -textWidth - pad;
+        const maxLineWidth = Math.max(...lines.map(l => l.width), 0);
 
-            const bgY = -textHeight / 2 - pad;
-            ctx.fillStyle = resolvedStyle.backgroundColor;
-            ctx.fillRect(bgX, bgY, textWidth + pad * 2, textHeight + pad * 2);
-        }
+        // Background
+        const bgOpacity = resolvedStyle.backgroundOpacity ?? 0;
+        const bgColor = resolvedStyle.backgroundColor || '#000000';
+        if (bgOpacity > 0 && bgColor) {
+            let bgX: number;
+            if (textAlign === 'left') bgX = -pad;
+            else if (textAlign === 'right') bgX = -maxLineWidth - pad;
+            else bgX = -maxLineWidth / 2 - pad;
 
-        let startX = -textWidth / 2;
-        if (resolvedTransform.anchorX === 'left') startX = 0;
-        if (resolvedTransform.anchorX === 'right') startX = -textWidth;
-        let cursorX = startX;
-        for (const metric of spanMetrics) {
-            ctx.font = buildFont(resolvedStyle, metric.span);
-            ctx.fillStyle = metric.span.color || resolvedStyle.color;
-            ctx.fillText(metric.span.text, cursorX, 0);
-            if (metric.span.underline || resolvedStyle.underline) {
-                ctx.strokeStyle = metric.span.color || resolvedStyle.color;
-                ctx.lineWidth = 1;
+            const bgY = -totalTextHeight / 2 - pad;
+            const bgW = maxLineWidth + pad * 2;
+            const bgH = totalTextHeight + pad * 2;
+            const bgRadius = Math.max(0, resolvedStyle.backgroundBorderRadius ?? 0);
+
+            const prevAlpha = ctx.globalAlpha;
+            ctx.globalAlpha = prevAlpha * bgOpacity;
+            ctx.fillStyle = bgColor;
+
+            if (bgRadius > 0) {
                 ctx.beginPath();
-                ctx.moveTo(cursorX, textHeight * 0.35);
-                ctx.lineTo(cursorX + metric.width, textHeight * 0.35);
-                ctx.stroke();
+                (ctx as any).roundRect(bgX, bgY, bgW, bgH, bgRadius);
+                ctx.fill();
+            } else {
+                ctx.fillRect(bgX, bgY, bgW, bgH);
             }
-            cursorX += metric.width;
+            ctx.globalAlpha = prevAlpha;
         }
+
+        // Render lines
+        const startY = -((lines.length - 1) * lineHeightPx) / 2;
+
+        const baseAlpha = ctx.globalAlpha;
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx];
+            const lineY = startY + lineIdx * lineHeightPx;
+
+            let startX: number;
+            if (textAlign === 'left') {
+                startX = 0;
+            } else if (textAlign === 'right') {
+                startX = -line.width;
+            } else {
+                startX = -line.width / 2;
+            }
+
+            ctx.textAlign = 'left';
+            let cursorX = startX;
+
+            for (const metric of line.metrics) {
+                ctx.font = buildFont(resolvedStyle, metric.span);
+
+                // Outline (rendered before fill for correct layering)
+                if (outlineWidth > 0) {
+                    ctx.globalAlpha = baseAlpha;
+                    ctx.strokeStyle = outlineColor;
+                    ctx.lineWidth = outlineWidth;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(metric.span.text, cursorX, lineY);
+                }
+
+                const spanColor = metric.span.color || resolvedStyle.color;
+                if (textOpacity > 0) {
+                    ctx.globalAlpha = baseAlpha * textOpacity;
+                    ctx.fillStyle = spanColor;
+                    ctx.fillText(metric.span.text, cursorX, lineY);
+                }
+
+                if (metric.span.underline || resolvedStyle.underline) {
+                    if (textOpacity > 0) {
+                        ctx.globalAlpha = baseAlpha * textOpacity;
+                        ctx.strokeStyle = spanColor;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(cursorX, lineY + fontSize * 0.35);
+                        ctx.lineTo(cursorX + metric.width, lineY + fontSize * 0.35);
+                        ctx.stroke();
+                    }
+                }
+                ctx.globalAlpha = baseAlpha;
+                cursorX += metric.width;
+            }
+        }
+
         ctx.restore();
 
+        const totalScale = resolvedTransform.scale * enterExitTransform.scale * scaleFactor;
         this.lastBounds = {
-            x: x + enterExitTransform.translateX,
-            y: y + enterExitTransform.translateY,
-            width: (textWidth + pad * 2) * resolvedTransform.scale * enterExitTransform.scale,
-            height: (textHeight + pad * 2) * resolvedTransform.scale * enterExitTransform.scale,
+            x: drawX + enterExitTransform.translateX,
+            y: drawY + enterExitTransform.translateY,
+            width: (maxLineWidth + pad * 2) * totalScale,
+            height: (totalTextHeight + pad * 2) * totalScale,
             rotation: resolvedTransform.rotation,
-            scale: resolvedTransform.scale * enterExitTransform.scale,
-            anchorX: resolvedTransform.anchorX,
+            scale: totalScale,
+            anchorX: boundsMode === 'safeArea' ? textAlign as any : resolvedTransform.anchorX,
         };
     }
 

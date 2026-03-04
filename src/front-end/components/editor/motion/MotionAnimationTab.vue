@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MotionTrack, MotionEnterExit, MotionAnimationStyle } from '@/types/project_types';
+import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 
 const props = defineProps<{
     track: MotionTrack;
@@ -52,12 +53,26 @@ const easings = ['linear', 'easeIn', 'easeOut', 'easeInOut', 'easeInCubic', 'eas
 
         <div class="motion-tab__row">
             <div class="motion-tab__field">
-                <label>Opacity Start</label>
-                <input type="number" class="inspector-input" min="0" max="1" step="0.05" :value="track.block.enter.opacityStart" @change="emit('update-enter-exit', 'enter', 'opacityStart', Number(($event.target as HTMLInputElement).value))" />
+                <AnimatableNumberField
+                    label="Opacity Start"
+                    :model-value="Number(track.block.enter.opacityStart)"
+                    :min="0"
+                    :max="1"
+                    :step="0.05"
+                    :fallback-value="0"
+                    @update:model-value="(value:number) => emit('update-enter-exit', 'enter', 'opacityStart', value)"
+                />
             </div>
             <div class="motion-tab__field">
-                <label>Opacity End</label>
-                <input type="number" class="inspector-input" min="0" max="1" step="0.05" :value="track.block.enter.opacityEnd" @change="emit('update-enter-exit', 'enter', 'opacityEnd', Number(($event.target as HTMLInputElement).value))" />
+                <AnimatableNumberField
+                    label="Opacity End"
+                    :model-value="Number(track.block.enter.opacityEnd)"
+                    :min="0"
+                    :max="1"
+                    :step="0.05"
+                    :fallback-value="1"
+                    @update:model-value="(value:number) => emit('update-enter-exit', 'enter', 'opacityEnd', value)"
+                />
             </div>
         </div>
 
@@ -91,12 +106,26 @@ const easings = ['linear', 'easeIn', 'easeOut', 'easeInOut', 'easeInCubic', 'eas
 
         <div class="motion-tab__row">
             <div class="motion-tab__field">
-                <label>Opacity Start</label>
-                <input type="number" class="inspector-input" min="0" max="1" step="0.05" :value="track.block.exit.opacityStart" @change="emit('update-enter-exit', 'exit', 'opacityStart', Number(($event.target as HTMLInputElement).value))" />
+                <AnimatableNumberField
+                    label="Opacity Start"
+                    :model-value="Number(track.block.exit.opacityStart)"
+                    :min="0"
+                    :max="1"
+                    :step="0.05"
+                    :fallback-value="1"
+                    @update:model-value="(value:number) => emit('update-enter-exit', 'exit', 'opacityStart', value)"
+                />
             </div>
             <div class="motion-tab__field">
-                <label>Opacity End</label>
-                <input type="number" class="inspector-input" min="0" max="1" step="0.05" :value="track.block.exit.opacityEnd" @change="emit('update-enter-exit', 'exit', 'opacityEnd', Number(($event.target as HTMLInputElement).value))" />
+                <AnimatableNumberField
+                    label="Opacity End"
+                    :model-value="Number(track.block.exit.opacityEnd)"
+                    :min="0"
+                    :max="1"
+                    :step="0.05"
+                    :fallback-value="0"
+                    @update:model-value="(value:number) => emit('update-enter-exit', 'exit', 'opacityEnd', value)"
+                />
             </div>
         </div>
     </div>

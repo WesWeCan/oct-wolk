@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SvgIcon from '@jamescoyle/vue-icon';
-import { mdiArrowDown, mdiArrowUp, mdiClose, mdiLock } from '@mdi/js';
+import { mdiClose } from '@mdi/js';
 import type { LyricTrack } from '@/types/project_types';
 import {
     generateVerseTrack,
@@ -20,9 +20,6 @@ const emit = defineEmits<{
     (e: 'generateLines'): void;
     (e: 'generateWords'): void;
     (e: 'deleteTrack', trackId: string): void;
-    (e: 'updateTrack', track: LyricTrack): void;
-    (e: 'duplicateTrack', trackId: string): void;
-    (e: 'reorderTracks', trackIds: string[]): void;
 }>();
 
 const hasLyrics = () => !!props.rawLyrics.trim();
@@ -45,43 +42,6 @@ const generateWords = () => {
 
 const addCustom = () => {
     emit('addTrack', createCustomTrack(props.tracks.length));
-};
-
-const toggleMute = (track: LyricTrack) => {
-    emit('updateTrack', { ...track, muted: !track.muted });
-};
-
-const toggleSolo = (track: LyricTrack) => {
-    emit('updateTrack', { ...track, solo: !track.solo });
-};
-
-const toggleLock = (track: LyricTrack) => {
-    emit('updateTrack', { ...track, locked: !track.locked });
-};
-
-const moveTrack = (trackId: string, direction: -1 | 1) => {
-    const ids = props.tracks.map(t => t.id);
-    const idx = ids.indexOf(trackId);
-    if (idx < 0) return;
-    const nextIdx = idx + direction;
-    if (nextIdx < 0 || nextIdx >= ids.length) return;
-    [ids[idx], ids[nextIdx]] = [ids[nextIdx], ids[idx]];
-    emit('reorderTracks', ids);
-};
-
-const renamingId = defineModel<string | null>('renamingId', { default: null });
-const renameValue = defineModel<string>('renameValue', { default: '' });
-
-const startRename = (track: LyricTrack) => {
-    renamingId.value = track.id;
-    renameValue.value = track.name;
-};
-
-const commitRename = (track: LyricTrack) => {
-    if (renamingId.value === track.id && renameValue.value.trim()) {
-        emit('updateTrack', { ...track, name: renameValue.value.trim() });
-    }
-    renamingId.value = null;
 };
 
 const deletingId = defineModel<string | null>('deletingId', { default: null });
@@ -125,68 +85,12 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                 v-for="track in tracks"
                 :key="track.id"
                 class="track-row"
-                :class="{ muted: track.muted, locked: track.locked }"
             >
                 <div class="track-row__color" :style="{ backgroundColor: track.color }"></div>
                 <div class="track-row__name">
-                    <template v-if="renamingId === track.id">
-                        <input
-                            v-model="renameValue"
-                            class="track-rename-input"
-                            @keydown.enter="commitRename(track)"
-                            @blur="commitRename(track)"
-                            autofocus
-                        />
-                    </template>
-                    <template v-else>
-                        <span @dblclick="startRename(track)" title="Double-click to rename">
-                            {{ track.name }}
-                            <span v-if="track.locked" class="track-locked-icon" aria-label="Locked">
-                                <SvgIcon type="mdi" :path="mdiLock" :size="12" />
-                            </span>
-                        </span>
-                    </template>
+                    <span>{{ track.name }}</span>
                 </div>
                 <div class="track-row__controls">
-                    <button
-                        class="track-btn"
-                        :class="{ active: track.muted }"
-                        @click="toggleMute(track)"
-                        title="Mute track"
-                    >Mute</button>
-                    <button
-                        class="track-btn"
-                        :class="{ active: track.solo }"
-                        @click="toggleSolo(track)"
-                        title="Solo track"
-                    >Solo</button>
-                    <button
-                        class="track-btn"
-                        :class="{ active: track.locked }"
-                        @click="toggleLock(track)"
-                        title="Lock track (prevent edits)"
-                    >Lock</button>
-                    <button
-                        class="track-btn"
-                        @click="emit('duplicateTrack', track.id)"
-                        title="Duplicate track"
-                    >Dup</button>
-                    <button
-                        class="track-btn"
-                        @click="moveTrack(track.id, -1)"
-                        :disabled="tracks.findIndex(t => t.id === track.id) === 0"
-                        title="Move track up"
-                    >
-                        <SvgIcon type="mdi" :path="mdiArrowUp" :size="12" />
-                    </button>
-                    <button
-                        class="track-btn"
-                        @click="moveTrack(track.id, 1)"
-                        :disabled="tracks.findIndex(t => t.id === track.id) === tracks.length - 1"
-                        title="Move track down"
-                    >
-                        <SvgIcon type="mdi" :path="mdiArrowDown" :size="12" />
-                    </button>
                     <button
                         v-if="deletingId !== track.id"
                         class="track-btn danger"

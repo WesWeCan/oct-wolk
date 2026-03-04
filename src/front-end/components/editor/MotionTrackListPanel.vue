@@ -11,23 +11,26 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: 'add-track', payload: { type: MotionTrack['block']['type'] }): void;
     (e: 'delete-track', trackId: string): void;
-    (e: 'toggle-track', payload: { trackId: string; enabled: boolean }): void;
     (e: 'select-track', trackId: string): void;
-    (e: 'duplicate-track', trackId: string): void;
-    (e: 'reorder-tracks', orderedIds: string[]): void;
+    (e: 'update-track', track: MotionTrack): void;
 }>();
 
 const addType = ref<MotionTrack['block']['type']>('subtitle');
 
-const moveTrack = (trackId: string, delta: number) => {
-    const ids = props.motionTracks.map((track) => track.id);
-    const index = ids.indexOf(trackId);
-    if (index < 0) return;
-    const target = index + delta;
-    if (target < 0 || target >= ids.length) return;
-    const [moved] = ids.splice(index, 1);
-    ids.splice(target, 0, moved);
-    emit('reorder-tracks', ids);
+const renamingId = ref<string | null>(null);
+const renameValue = ref('');
+
+const startRename = (track: MotionTrack) => {
+    renamingId.value = track.id;
+    renameValue.value = track.name;
+};
+
+const commitRename = (track: MotionTrack) => {
+    if (renamingId.value !== track.id) return;
+    const nextName = renameValue.value.trim();
+    renamingId.value = null;
+    if (!nextName || nextName === track.name) return;
+    emit('update-track', { ...track, name: nextName });
 };
 </script>
 
@@ -71,15 +74,23 @@ const moveTrack = (trackId: string, delta: number) => {
             >
                 <span class="track-row__color" :style="{ backgroundColor: track.color }"></span>
                 <div class="track-row__name">
-                    <span>{{ track.name }} <small>({{ track.block.type }})</small></span>
+                    <template v-if="renamingId === track.id">
+                        <input
+                            v-model="renameValue"
+                            class="track-rename-input"
+                            @keydown.enter="commitRename(track)"
+                            @blur="commitRename(track)"
+                            @click.stop
+                            autofocus
+                        />
+                    </template>
+                    <template v-else>
+                        <span @dblclick.stop="startRename(track)" title="Double-click to rename">
+                            {{ track.name }} <small>({{ track.block.type }})</small>
+                        </span>
+                    </template>
                 </div>
                 <div class="track-row__controls">
-                    <button class="track-btn" @click.stop="moveTrack(track.id, -1)">↑</button>
-                    <button class="track-btn" @click.stop="moveTrack(track.id, 1)">↓</button>
-                    <button class="track-btn" @click.stop="emit('duplicate-track', track.id)">DUP</button>
-                    <button class="track-btn" :class="{ active: track.enabled }" @click.stop="emit('toggle-track', { trackId: track.id, enabled: !track.enabled })">
-                        {{ track.enabled ? 'ON' : 'OFF' }}
-                    </button>
                     <button class="track-btn danger" @click.stop="emit('delete-track', track.id)">DEL</button>
                 </div>
             </div>

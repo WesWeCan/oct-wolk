@@ -6,8 +6,7 @@ import type { MotionBlockRenderer } from '@/front-end/motion/types';
 import { msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
 import { resolveActiveItems, resolveBlockItems } from '@/front-end/utils/motion/resolveMotionItems';
 import { SubtitleRenderer } from '@/front-end/motion/renderers/SubtitleRenderer';
-import { WordRevealRenderer } from '@/front-end/motion/renderers/WordRevealRenderer';
-import { ParagraphRenderer } from '@/front-end/motion/renderers/ParagraphRenderer';
+
 import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 
 export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
@@ -18,12 +17,7 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
     if (!hasBlockType('subtitle')) {
         registerBlockType('subtitle', () => new SubtitleRenderer());
     }
-    if (!hasBlockType('wordReveal')) {
-        registerBlockType('wordReveal', () => new WordRevealRenderer());
-    }
-    if (!hasBlockType('paragraph')) {
-        registerBlockType('paragraph', () => new ParagraphRenderer());
-    }
+
 
     const ensureRenderer = (trackId: string, type: MotionBlockType): MotionBlockRenderer => {
         const existing = rendererByTrackId.value.get(trackId);
@@ -92,8 +86,14 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
             }
         }
 
+        const anySoloed = project.motionTracks.some((track) => track.solo && !track.muted && track.enabled);
         for (const track of project.motionTracks) {
             if (!track.enabled) continue;
+            if (anySoloed) {
+                if (!track.solo || track.muted) continue;
+            } else if (track.muted) {
+                continue;
+            }
             const block = track.block;
             const blockStart = msToFrame(block.startMs, fps);
             const blockEnd = msToFrame(block.endMs, fps);

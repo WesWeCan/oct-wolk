@@ -17,6 +17,7 @@ export function useMotionGizmo(
     renderHeight: ComputedRef<number>,
     callbacks: GizmoCallbacks,
     getBoundsForTrack?: (trackId: string) => RendererBounds | null,
+    showSafeArea?: Ref<boolean>,
 ) {
     const HANDLE_SIZE = 8;
     const ROTATION_OFFSET = 30;
@@ -73,6 +74,27 @@ export function useMotionGizmo(
         return { cx, cy, hw, hh, rotation };
     };
 
+    const drawSafeAreaGuide = (ctx: CanvasRenderingContext2D) => {
+        if (showSafeArea && !showSafeArea.value) return;
+        const track = selectedTrack.value;
+        if (!track) return;
+        const style = track.block.style;
+        if ((style.boundsMode ?? 'safeArea') !== 'safeArea') return;
+
+        const scale = getScaleFactor();
+        const padding = (style.safeAreaPadding ?? 40) * scale;
+        const w = renderWidth.value * scale;
+        const h = renderHeight.value * scale;
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 200, 50, 0.45)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
+        ctx.setLineDash([]);
+        ctx.restore();
+    };
+
     const drawGizmo = () => {
         const canvas = overlayCanvas.value;
         const preview = previewCanvas.value;
@@ -83,6 +105,10 @@ export function useMotionGizmo(
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (selectedTrack.value) {
+            drawSafeAreaGuide(ctx);
+        }
 
         if (!enabled.value || !selectedTrack.value) return;
 

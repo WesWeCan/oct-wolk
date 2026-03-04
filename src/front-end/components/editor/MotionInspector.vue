@@ -5,6 +5,7 @@ import MotionAppearanceTab from '@/front-end/components/editor/motion/MotionAppe
 import MotionPositionTab from '@/front-end/components/editor/motion/MotionPositionTab.vue';
 import MotionAnimationTab from '@/front-end/components/editor/motion/MotionAnimationTab.vue';
 import MotionItemsTab from '@/front-end/components/editor/motion/MotionItemsTab.vue';
+import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import { upsertKeyframe, removeKeyframeAtIndex, evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 
@@ -42,6 +43,7 @@ const currentFrame = computed(() => {
 });
 
 const fpsVal = computed(() => Math.max(1, props.fps ?? 60));
+const isLocked = computed(() => !!props.motionTrack?.locked);
 
 const startFrame = computed(() => {
     if (!props.motionTrack) return 0;
@@ -53,11 +55,8 @@ const endFrame = computed(() => {
     return Math.round((props.motionTrack.block.endMs / 1000) * fpsVal.value);
 });
 
-const formatTime = (ms: number): string => {
-    const totalSec = ms / 1000;
-    const min = Math.floor(totalSec / 60);
-    const sec = (totalSec % 60).toFixed(2);
-    return `${min}:${sec.padStart(5, '0')}`;
+const formatFrameAndMs = (frame: number, ms: number): string => {
+    return `Frame ${Math.max(0, Math.round(frame))} (${Math.max(0, Math.round(ms))} ms)`;
 };
 
 const editingItemLabel = computed(() => {
@@ -74,19 +73,19 @@ const selectedItemWords = computed<string[]>(() => {
 // --- Mutators ---
 
 const updateSourceTrack = (sourceTrackId: string) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, sourceTrackId } });
 };
 
 const updateStartFrame = (frame: number) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     const startMs = Math.max(0, Math.round((frame / fpsVal.value) * 1000));
     const endMs = Math.max(startMs + 100, props.motionTrack.block.endMs);
     emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, startMs, endMs } });
 };
 
 const updateEndFrame = (frame: number) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     const endMs = Math.round((frame / fpsVal.value) * 1000);
     const minEnd = props.motionTrack.block.startMs + 100;
     emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, endMs: Math.max(minEnd, endMs) } });
@@ -105,7 +104,7 @@ const autoKeyframe = (path: string, value: any, propertyTracks: any[]): any[] =>
 };
 
 const updateStyle = (key: keyof MotionStyle, value: any) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     if (selectedWordIndex.value !== null && selectedItemId.value) {
         updateWordStyle(key, value);
         return;
@@ -121,7 +120,7 @@ const updateStyle = (key: keyof MotionStyle, value: any) => {
 };
 
 const updateTransform = (key: keyof MotionTransform, value: any) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     if (selectedItemId.value) {
         updateItemTransformOverride(selectedItemId.value, key, value);
         return;
@@ -133,7 +132,7 @@ const updateTransform = (key: keyof MotionTransform, value: any) => {
 };
 
 const updateAnchor = (x: AnchorX, y: AnchorY) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     emit('update-track', {
         ...props.motionTrack,
         block: { ...props.motionTrack.block, transform: { ...props.motionTrack.block.transform, anchorX: x, anchorY: y } },
@@ -141,7 +140,7 @@ const updateAnchor = (x: AnchorX, y: AnchorY) => {
 };
 
 const updateEnterExit = (which: 'enter' | 'exit', key: keyof MotionEnterExit, value: any) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     if (selectedItemId.value) {
         updateItemEnterExitOverride(selectedItemId.value, which, key, value);
         return;
@@ -152,21 +151,43 @@ const updateEnterExit = (which: 'enter' | 'exit', key: keyof MotionEnterExit, va
     });
 };
 
-const updateStyleOpacity = (value: number) => updateStyle('opacity', value);
+const updateStyleGlobalOpacity = (value: number) => updateStyle('globalOpacity' as any, value);
 
 // --- Keyframe toggling ---
 
 const toggleKeyframe = (path: string, value: any) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     const block = { ...props.motionTrack.block };
     const propertyTracks = [...(block.propertyTracks || [])];
     const frame = currentFrame.value;
     let ptIdx = propertyTracks.findIndex((pt) => pt.propertyPath === path);
+
+    // Diamond-first: if property track doesn't exist yet, auto-create it with
+    // the first keyframe at current frame (implicit enable on first diamond click)
     if (ptIdx < 0) {
-        propertyTracks.push({ propertyPath: path, keyframes: [], enabled: true });
-        ptIdx = propertyTracks.length - 1;
+        const def = getPropertyDef(path);
+        const interp = def?.defaultInterpolation ?? 'linear';
+        propertyTracks.push({
+            propertyPath: path,
+            keyframes: [{ frame, value, interpolation: interp }],
+            enabled: true,
+        });
+        emit('update-track', { ...props.motionTrack, block: { ...block, propertyTracks } });
+        return;
     }
+
     const pt = { ...propertyTracks[ptIdx] };
+
+    // If track exists but is disabled, re-enable and add keyframe
+    if (pt.enabled === false) {
+        pt.enabled = true;
+        const def = getPropertyDef(path);
+        const interp = def?.defaultInterpolation ?? 'linear';
+        propertyTracks[ptIdx] = upsertKeyframe(pt as any, frame, value, interp) as any;
+        emit('update-track', { ...props.motionTrack, block: { ...block, propertyTracks } });
+        return;
+    }
+
     const sorted = [...(pt.keyframes || [])].sort((a, b) => a.frame - b.frame);
     const existingIdx = sorted.findIndex((kf) => kf.frame === frame);
     const def = getPropertyDef(path);
@@ -181,7 +202,7 @@ const toggleKeyframe = (path: string, value: any) => {
 };
 
 const togglePropertyKeyframing = (path: string) => {
-    if (!props.motionTrack) return;
+    if (!props.motionTrack || isLocked.value) return;
     const block = { ...props.motionTrack.block };
     const propertyTracks = [...(block.propertyTracks || [])];
     const ptIdx = propertyTracks.findIndex((pt) => pt.propertyPath === path);
@@ -217,7 +238,7 @@ const togglePropertyKeyframing = (path: string) => {
 // --- Item override helpers ---
 
 const getOrCreateOverride = (itemId: string) => {
-    if (!props.motionTrack) return { overrides: [], idx: -1, override: null as any };
+    if (!props.motionTrack || isLocked.value) return { overrides: [], idx: -1, override: null as any };
     const overrides = [...props.motionTrack.block.overrides];
     let idx = overrides.findIndex((o) => o.sourceItemId === itemId);
     if (idx < 0) {
@@ -264,7 +285,7 @@ const onSelectWord = (idx: number) => {
 };
 
 const updateWordStyle = (key: keyof MotionStyle, value: any) => {
-    if (!props.motionTrack || !selectedItemId.value || selectedWordIndex.value === null) return;
+    if (!props.motionTrack || isLocked.value || !selectedItemId.value || selectedWordIndex.value === null) return;
     const overrides = [...props.motionTrack.block.overrides];
     let idx = overrides.findIndex((o) => o.sourceItemId === selectedItemId.value);
     if (idx < 0) {
@@ -332,16 +353,28 @@ const onUploadBackgroundImage = (event: Event) => {
                         </select>
                         <span v-if="sourceMissing" class="inspector-hint" style="color:#e57373;">Source track missing.</span>
                     </div>
-                    <div class="motion-tab__row">
-                        <div class="inspector-field" style="flex:1;">
-                            <label>Start <span class="inspector-hint">{{ formatTime(motionTrack.block.startMs) }}</span></label>
-                            <input type="number" class="inspector-input" :value="startFrame" min="0" @change="updateStartFrame(Number(($event.target as HTMLInputElement).value) || 0)" />
-                        </div>
-                        <div class="inspector-field" style="flex:1;">
-                            <label>End <span class="inspector-hint">{{ formatTime(motionTrack.block.endMs) }}</span></label>
-                            <input type="number" class="inspector-input" :value="endFrame" min="0" @change="updateEndFrame(Number(($event.target as HTMLInputElement).value) || 0)" />
-                        </div>
-                    </div>
+                    <AnimatableNumberField
+                        class="motion-inspector__timing-field"
+                        label="Start Frame"
+                        :model-value="startFrame"
+                        :min="0"
+                        :step="1"
+                        :fallback-value="0"
+                        :hint="formatFrameAndMs(startFrame, motionTrack.block.startMs)"
+                        :scrub-per-px="0.2"
+                        @update:model-value="updateStartFrame"
+                    />
+                    <AnimatableNumberField
+                        class="motion-inspector__timing-field"
+                        label="End Frame"
+                        :model-value="endFrame"
+                        :min="0"
+                        :step="1"
+                        :fallback-value="0"
+                        :hint="formatFrameAndMs(endFrame, motionTrack.block.endMs)"
+                        :scrub-per-px="0.2"
+                        @update:model-value="updateEndFrame"
+                    />
                 </div>
             </details>
 
@@ -369,7 +402,7 @@ const onUploadBackgroundImage = (event: Event) => {
                         :current-frame="currentFrame"
                         @update-transform="updateTransform"
                         @update-anchor="updateAnchor"
-                        @update-style-opacity="updateStyleOpacity"
+                        @update-style-global-opacity="updateStyleGlobalOpacity"
                         @toggle-keyframe="toggleKeyframe"
                         @toggle-property-keyframing="togglePropertyKeyframing"
                     />

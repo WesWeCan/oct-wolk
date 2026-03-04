@@ -2,7 +2,24 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import SvgIcon from '@jamescoyle/vue-icon';
-import { mdiArrowLeft, mdiCheck, mdiCrosshairs, mdiDiamond, mdiMusicNote, mdiPencil } from '@mdi/js';
+import {
+    mdiArrowDown,
+    mdiArrowLeft,
+    mdiArrowUp,
+    mdiCheck,
+    mdiContentCopy,
+    mdiCropFree,
+    mdiCrosshairs,
+    mdiDiamond,
+    mdiDiamondOutline,
+    mdiLock,
+    mdiMusicNote,
+    mdiEye,
+    mdiEyeOff,
+    mdiPencil,
+    mdiSkipNext,
+    mdiSkipPrevious,
+} from '@mdi/js';
 import {
     DEFAULT_MOTION_ENTER_EXIT,
     DEFAULT_MOTION_STYLE,
@@ -386,7 +403,7 @@ const drawMotionPreview = () => {
     const currentMs = (playhead.value.frame / Math.max(1, fps.value)) * 1000;
     motionRenderer.renderMotionFrame(project.value, currentMs);
     previewCanvasComposable.drawPreview();
-    if (audio.isPlaying.value) {
+    if (videoExport.showExportModal.value) {
         const oc = previewOverlay.value;
         if (oc) {
             const ctx = oc.getContext('2d');
@@ -763,10 +780,78 @@ const selectedMotionTrack = computed<MotionTrack | null>(() => {
     return project.value.motionTracks.find((track) => track.id === selectedMotionTrackId.value) || null;
 });
 const monitorManipulationEnabled = ref(false);
+const showSafeAreaGuide = ref(true);
 
 const kfLabel = (path: string): string => {
     const def = getPropertyDef(path);
     return def?.label ?? path.split('.').pop() ?? '?';
+};
+
+const ensureMotionTrackDefaults = (track: MotionTrack): MotionTrack => ({
+    ...track,
+    enabled: track.enabled !== false,
+    muted: !!track.muted,
+    solo: !!track.solo,
+    locked: !!track.locked,
+});
+
+const toggleLyricMute = (track: LyricTrack) => onUpdateTrack({ ...track, muted: !track.muted });
+const toggleLyricSolo = (track: LyricTrack) => onUpdateTrack({ ...track, solo: !track.solo });
+const toggleLyricLock = (track: LyricTrack) => onUpdateTrack({ ...track, locked: !track.locked });
+const moveLyricTrack = (trackId: string, direction: -1 | 1) => {
+    if (!project.value) return;
+    const ids = project.value.lyricTracks.map((track) => track.id);
+    const idx = ids.indexOf(trackId);
+    if (idx < 0) return;
+    const nextIdx = idx + direction;
+    if (nextIdx < 0 || nextIdx >= ids.length) return;
+    [ids[idx], ids[nextIdx]] = [ids[nextIdx], ids[idx]];
+    onReorderTracks(ids);
+};
+
+const toggleMotionMute = (track: MotionTrack) => onUpdateMotionTrack({ ...track, muted: !track.muted, enabled: track.muted });
+const toggleMotionSolo = (track: MotionTrack) => onUpdateMotionTrack({ ...track, solo: !track.solo });
+const toggleMotionLock = (track: MotionTrack) => onUpdateMotionTrack({ ...track, locked: !track.locked });
+const moveMotionTrack = (trackId: string, direction: -1 | 1) => {
+    if (!project.value) return;
+    const ids = project.value.motionTracks.map((track) => track.id);
+    const idx = ids.indexOf(trackId);
+    if (idx < 0) return;
+    const nextIdx = idx + direction;
+    if (nextIdx < 0 || nextIdx >= ids.length) return;
+    [ids[idx], ids[nextIdx]] = [ids[nextIdx], ids[idx]];
+    onReorderMotionTracks(ids);
+};
+
+const jumpToPropertyKeyframe = (trackId: string, propertyPath: string, direction: 'prev' | 'next') => {
+    if (!project.value) return;
+    const track = project.value.motionTracks.find((item) => item.id === trackId);
+    if (!track) return;
+    const pt = (track.block.propertyTracks || []).find((item) => item.propertyPath === propertyPath);
+    const frames = (pt?.keyframes || []).map((kf) => kf.frame).sort((a, b) => a - b);
+    if (frames.length === 0) return;
+    const current = playhead.value.frame;
+    const target = direction === 'prev'
+        ? [...frames].reverse().find((frame) => frame < current)
+        : frames.find((frame) => frame > current);
+    if (target === undefined) return;
+    onScrub({ timeSec: target / Math.max(1, fps.value), frame: target });
+};
+
+const setPropertyKeyframeAtPlayhead = (trackId: string, propertyPath: string) => {
+    if (!project.value) return;
+    const track = project.value.motionTracks.find((item) => item.id === trackId);
+    if (!track || track.locked) return;
+    const ptIdx = (track.block.propertyTracks || []).findIndex((item) => item.propertyPath === propertyPath);
+    if (ptIdx < 0) return;
+    const def = getPropertyDef(propertyPath);
+    if (!def) return;
+    const value = def.getValue(track.block);
+    const interp = def.defaultInterpolation ?? 'linear';
+    const pts = [...(track.block.propertyTracks || [])];
+    pushUndo();
+    pts[ptIdx] = upsertKeyframe(pts[ptIdx] as any, playhead.value.frame, value, interp) as any;
+    onUpdateMotionTrack({ ...track, block: { ...track.block, propertyTracks: pts } });
 };
 
 const gizmoAutoKeyframe = (track: MotionTrack, path: string, value: any) => {
@@ -791,7 +876,7 @@ const motionGizmo = useMotionGizmo(
     {
         onTransformDelta(gizmoMode, dx, dy) {
             const track = selectedMotionTrack.value;
-            if (!track) return;
+            if (!track || track.locked) return;
             if (gizmoMode === 'move') {
                 track.block.transform.offsetX = Math.round(track.block.transform.offsetX + dx);
                 track.block.transform.offsetY = Math.round(track.block.transform.offsetY + dy);
@@ -810,6 +895,7 @@ const motionGizmo = useMotionGizmo(
         onDragEnd() { scheduleSave(); },
     },
     (trackId) => motionRenderer.getRendererBounds(trackId),
+    showSafeAreaGuide,
 );
 
 const selectedTrack = computed<LyricTrack | null>(() => {
@@ -1309,6 +1395,9 @@ const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
         name: `${payload.type} - ${sourceTrack.name}`,
         color,
         enabled: true,
+        muted: false,
+        solo: false,
+        locked: false,
         collapsed: false,
         block: {
             id: randomUUID(),
@@ -1345,17 +1434,16 @@ const onDeleteMotionTrack = (trackId: string) => {
     scheduleSave();
 };
 
-const onToggleMotionTrack = (payload: { trackId: string; enabled: boolean }) => {
-    if (!project.value) return;
-    const track = project.value.motionTracks.find((item) => item.id === payload.trackId);
-    if (!track) return;
-    track.enabled = payload.enabled;
-    scheduleSave();
-};
-
 const onSelectMotionTrack = (trackId: string) => {
     selectedMotionTrackId.value = trackId;
     selection.clearSelection();
+};
+
+const normalizePropertyTracks = (propertyTracks: any[] | undefined) => {
+    return (propertyTracks || []).filter((pt) => {
+        if (!pt || pt.enabled === false) return false;
+        return Array.isArray(pt.keyframes) && pt.keyframes.length > 0;
+    });
 };
 
 const onUpdateMotionTrack = (updated: MotionTrack) => {
@@ -1365,9 +1453,14 @@ const onUpdateMotionTrack = (updated: MotionTrack) => {
     const existing = project.value.motionTracks[idx];
     project.value.motionTracks[idx] = {
         ...updated,
+        enabled: updated.enabled !== false,
+        muted: !!updated.muted,
+        solo: !!updated.solo,
+        locked: !!updated.locked,
         block: {
             ...updated.block,
             type: existing.block.type,
+            propertyTracks: normalizePropertyTracks(updated.block.propertyTracks as any[] | undefined),
         },
     };
     markDirty();
@@ -1438,7 +1531,7 @@ const deleteSelectedMotionTrack = () => {
 const nudgeSelectedMotionTrack = (deltaMs: number) => {
     if (!project.value || !selectedMotionTrackId.value) return;
     const track = project.value.motionTracks.find((item) => item.id === selectedMotionTrackId.value);
-    if (!track) return;
+    if (!track || track.locked) return;
     pushUndo();
     const duration = track.block.endMs - track.block.startMs;
     const nextStart = Math.max(0, track.block.startMs + deltaMs);
@@ -1488,6 +1581,7 @@ const loadProject = async () => {
         if (removedOnLoad > 0) {
             showNotice(`${removedOnLoad} item override(s) removed because source lyrics changed.`);
         }
+        project.value.motionTracks = project.value.motionTracks.map((track) => ensureMotionTrackDefaults(track));
         selectedMotionTrackId.value = project.value.motionTracks[0]?.id || null;
 
         await nextTick();
@@ -1916,9 +2010,6 @@ onUnmounted(() => {
                     @generate-lines="onGenerateLines"
                     @generate-words="onGenerateWords"
                     @delete-track="onDeleteTrack"
-                    @update-track="onUpdateTrack"
-                    @duplicate-track="onDuplicateTrack"
-                    @reorder-tracks="onReorderTracks"
                 />
                 <RawLyricsPanel v-model:rawLyrics="rawLyrics" />
             </template>
@@ -1929,10 +2020,8 @@ onUnmounted(() => {
                     :selected-track-id="selectedMotionTrackId"
                     @add-track="onAddMotionTrack"
                     @delete-track="onDeleteMotionTrack"
-                    @toggle-track="onToggleMotionTrack"
                     @select-track="onSelectMotionTrack"
-                    @duplicate-track="onDuplicateMotionTrack"
-                    @reorder-tracks="onReorderMotionTracks"
+                    @update-track="onUpdateMotionTrack"
                 />
             </template>
         </div>
@@ -1947,6 +2036,15 @@ onUnmounted(() => {
                     </div>
                     <div class="monitor-export-controls">
                         
+                        <button
+                            v-if="mode === 'motion'"
+                            class="toolbar-toggle gizmo-toggle"
+                            :class="{ active: showSafeAreaGuide }"
+                            title="Toggle safe area guide"
+                            @click="showSafeAreaGuide = !showSafeAreaGuide"
+                        >
+                            <SvgIcon type="mdi" :path="mdiCropFree" :size="16" />
+                        </button>
                         <button
                             v-if="mode === 'motion'"
                             class="toolbar-toggle gizmo-toggle"
@@ -2075,36 +2173,140 @@ onUnmounted(() => {
                             <div
                                 v-for="track in (project?.lyricTracks ?? [])"
                                 :key="'label-' + track.id"
-                                class="lane-label"
+                                class="lane-label lane-label--track lane-label--lyric"
                                 :class="{ collapsed: collapsed[`track-${track.id}`] }"
                                 :style="{ height: `${collapsed[`track-${track.id}`] ? 28 : getTrackHeight(track.id)}px` }"
                                 :title="track.name"
                                 @click="collapsed[`track-${track.id}`] = !collapsed[`track-${track.id}`]"
                             >
-                                <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
-                                {{ track.name }}
+                                <div class="lane-label__content">
+                                    <span class="lane-kind-icon lane-kind-icon--lyric" aria-hidden="true">
+                                        <SvgIcon type="mdi" :path="mdiMusicNote" :size="10" />
+                                    </span>
+                                    <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
+                                    <span class="lane-label__name">{{ track.name }}</span>
+                                </div>
+                                <div v-if="mode === 'lyric'" class="lane-label__actions" @click.stop>
+                                    <button class="lane-icon-btn" :class="{ active: track.muted }" aria-label="Mute track" data-tooltip="Mute track" @click.stop="toggleLyricMute(track)">
+                                        <SvgIcon type="mdi" :path="mdiEyeOff" :size="12" />
+                                    </button>
+                                    <button class="lane-icon-btn" :class="{ active: track.solo }" aria-label="Solo track" data-tooltip="Solo track" @click.stop="toggleLyricSolo(track)">
+                                        <SvgIcon type="mdi" :path="mdiEye" :size="12" />
+                                    </button>
+                                    <button class="lane-icon-btn" :class="{ active: track.locked }" aria-label="Lock track" data-tooltip="Lock track" @click.stop="toggleLyricLock(track)">
+                                        <SvgIcon type="mdi" :path="mdiLock" :size="12" />
+                                    </button>
+                                    <button class="lane-icon-btn" aria-label="Duplicate track" data-tooltip="Duplicate track" @click.stop="onDuplicateTrack(track.id)">
+                                        <SvgIcon type="mdi" :path="mdiContentCopy" :size="12" />
+                                    </button>
+                                    <button
+                                        class="lane-icon-btn"
+                                        :disabled="project?.lyricTracks?.findIndex((t) => t.id === track.id) === 0"
+                                        aria-label="Move track up"
+                                        data-tooltip="Move track up"
+                                        @click.stop="moveLyricTrack(track.id, -1)"
+                                    >
+                                        <SvgIcon type="mdi" :path="mdiArrowUp" :size="12" />
+                                    </button>
+                                    <button
+                                        class="lane-icon-btn"
+                                        :disabled="project?.lyricTracks?.findIndex((t) => t.id === track.id) === (project?.lyricTracks?.length || 1) - 1"
+                                        aria-label="Move track down"
+                                        data-tooltip="Move track down"
+                                        @click.stop="moveLyricTrack(track.id, 1)"
+                                    >
+                                        <SvgIcon type="mdi" :path="mdiArrowDown" :size="12" />
+                                    </button>
+                                </div>
                             </div>
                             <template v-if="mode === 'motion'">
                                 <template v-for="track in (project?.motionTracks ?? [])" :key="'motion-label-group-' + track.id">
                                     <div
-                                        class="lane-label lane-label--motion"
-                                        :class="{ selected: selectedMotionTrackId === track.id }"
-                                        :style="{ height: '42px' }"
-                                        @click="onSelectMotionTrack(track.id)"
+                                        class="lane-label lane-label--motion lane-label--track"
+                                        :class="{ selected: selectedMotionTrackId === track.id, collapsed: collapsed[`motion-${track.id}`] }"
+                                        :style="{ height: `${collapsed[`motion-${track.id}`] ? 28 : 58}px` }"
+                                        @click="onSelectMotionTrack(track.id); collapsed[`motion-${track.id}`] = !collapsed[`motion-${track.id}`]"
                                     >
-                                        <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
-                                        {{ track.name }}
+                                        <div class="lane-label__content">
+                                            <span class="lane-kind-icon lane-kind-icon--motion" aria-hidden="true">
+                                                <SvgIcon type="mdi" :path="mdiCrosshairs" :size="10" />
+                                            </span>
+                                            <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
+                                            <span class="lane-label__name">{{ track.name }}</span>
+                                        </div>
+                                        <div class="lane-label__actions" @click.stop>
+                                            <button class="lane-icon-btn" :class="{ active: track.muted }" aria-label="Mute track" data-tooltip="Mute track" @click.stop="toggleMotionMute(track)">
+                                                <SvgIcon type="mdi" :path="mdiEyeOff" :size="12" />
+                                            </button>
+                                            <button class="lane-icon-btn" :class="{ active: track.solo }" aria-label="Solo track" data-tooltip="Solo track" @click.stop="toggleMotionSolo(track)">
+                                                <SvgIcon type="mdi" :path="mdiEye" :size="12" />
+                                            </button>
+                                            <button class="lane-icon-btn" :class="{ active: track.locked }" aria-label="Lock track" data-tooltip="Lock track" @click.stop="toggleMotionLock(track)">
+                                                <SvgIcon type="mdi" :path="mdiLock" :size="12" />
+                                            </button>
+                                            <button class="lane-icon-btn" aria-label="Duplicate track" data-tooltip="Duplicate track" @click.stop="onDuplicateMotionTrack(track.id)">
+                                                <SvgIcon type="mdi" :path="mdiContentCopy" :size="12" />
+                                            </button>
+                                            <button
+                                                class="lane-icon-btn"
+                                                :disabled="project?.motionTracks?.findIndex((t) => t.id === track.id) === 0"
+                                                aria-label="Move track up"
+                                                data-tooltip="Move track up"
+                                                @click.stop="moveMotionTrack(track.id, -1)"
+                                            >
+                                                <SvgIcon type="mdi" :path="mdiArrowUp" :size="12" />
+                                            </button>
+                                            <button
+                                                class="lane-icon-btn"
+                                                :disabled="project?.motionTracks?.findIndex((t) => t.id === track.id) === (project?.motionTracks?.length || 1) - 1"
+                                                aria-label="Move track down"
+                                                data-tooltip="Move track down"
+                                                @click.stop="moveMotionTrack(track.id, 1)"
+                                            >
+                                                <SvgIcon type="mdi" :path="mdiArrowDown" :size="12" />
+                                            </button>
+                                        </div>
                                     </div>
                                     <div
-                                        v-for="pt in (track.block.propertyTracks || []).filter(p => p.enabled !== false)"
+                                        v-if="!collapsed[`motion-${track.id}`]"
+                                        v-for="pt in (track.block.propertyTracks || []).filter(p => p.enabled !== false && (p.keyframes?.length || 0) > 0)"
                                         :key="'kf-label-' + track.id + '-' + pt.propertyPath"
                                         class="lane-label lane-label--kf"
                                         :style="{ height: '22px' }"
                                     >
-                                        <span class="kf-label-diamond" aria-hidden="true">
-                                            <SvgIcon type="mdi" :path="mdiDiamond" :size="8" />
-                                        </span>
-                                        {{ kfLabel(pt.propertyPath) }}
+                                        <div class="lane-label__content">
+                                            <span class="kf-label-diamond" aria-hidden="true">
+                                                <SvgIcon type="mdi" :path="mdiDiamond" :size="8" />
+                                            </span>
+                                            <span class="lane-label__name">{{ kfLabel(pt.propertyPath) }}</span>
+                                        </div>
+                                        <div class="lane-label__actions" @click.stop>
+                                            <button
+                                                class="lane-icon-btn"
+                                                aria-label="Previous keyframe"
+                                                data-tooltip="Previous keyframe"
+                                                @click.stop="jumpToPropertyKeyframe(track.id, pt.propertyPath, 'prev')"
+                                            >
+                                                <SvgIcon type="mdi" :path="mdiSkipPrevious" :size="12" />
+                                            </button>
+                                            <button
+                                                class="lane-icon-btn"
+                                                aria-label="Next keyframe"
+                                                data-tooltip="Next keyframe"
+                                                @click.stop="jumpToPropertyKeyframe(track.id, pt.propertyPath, 'next')"
+                                            >
+                                                <SvgIcon type="mdi" :path="mdiSkipNext" :size="12" />
+                                            </button>
+                                            <button
+                                                class="lane-icon-btn"
+                                                :disabled="track.locked"
+                                                aria-label="Set keyframe at playhead"
+                                                data-tooltip="Set keyframe at playhead"
+                                                @click.stop="setPropertyKeyframeAtPlayhead(track.id, pt.propertyPath)"
+                                            >
+                                                <SvgIcon type="mdi" :path="mdiDiamondOutline" :size="12" />
+                                            </button>
+                                        </div>
                                     </div>
                                 </template>
                             </template>
@@ -2206,8 +2408,9 @@ onUnmounted(() => {
                             </div>
                             <template v-if="mode === 'motion'">
                                 <template v-for="track in (project?.motionTracks ?? [])" :key="'motion-group-' + track.id">
-                                    <div class="lane" :style="{ height: '42px' }">
+                                    <div class="lane" :style="{ height: `${collapsed[`motion-${track.id}`] ? 28 : 58}px` }">
                                         <MotionTrackLane
+                                            v-if="!collapsed[`motion-${track.id}`]"
                                             :viewport="viewport"
                                             :fps="fps"
                                             :track="track"
@@ -2220,9 +2423,20 @@ onUnmounted(() => {
                                             @pan="onPan"
                                             @zoom-around="onZoom"
                                         />
+                                        <div v-else class="lane-mini-blocks">
+                                            <div
+                                                class="lane-mini-block"
+                                                :style="{
+                                                    left: `${((track.block.startMs / 1000 - viewport.startSec) / viewport.durationSec) * 100}%`,
+                                                    width: `${(((track.block.endMs - track.block.startMs) / 1000) / viewport.durationSec) * 100}%`,
+                                                    backgroundColor: track.color,
+                                                }"
+                                            ></div>
+                                        </div>
                                     </div>
                                     <div
-                                        v-for="pt in (track.block.propertyTracks || []).filter(p => p.enabled !== false)"
+                                        v-if="!collapsed[`motion-${track.id}`]"
+                                        v-for="pt in (track.block.propertyTracks || []).filter(p => p.enabled !== false && (p.keyframes?.length || 0) > 0)"
                                         :key="'kf-' + track.id + '-' + pt.propertyPath"
                                         class="lane"
                                         :style="{ height: '22px' }"
@@ -2234,6 +2448,7 @@ onUnmounted(() => {
                                             :property-track="pt"
                                             :selected="selectedMotionTrackId === track.id"
                                             :playhead-frame="playhead.frame"
+                                            :locked="track.locked"
                                             @update-track="onUpdateMotionTrack"
                                             @push-undo="onPushUndo"
                                             @pan="onPan"

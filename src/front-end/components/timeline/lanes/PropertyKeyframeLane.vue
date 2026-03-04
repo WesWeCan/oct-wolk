@@ -15,6 +15,7 @@ const props = defineProps<{
     propertyTrack: PropertyTrack;
     selected: boolean;
     playheadFrame: number;
+    locked?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -69,6 +70,7 @@ const emitUpdatedPropertyTrack = (updated: PropertyTrack) => {
 };
 
 const onLaneClick = (e: MouseEvent) => {
+    if (props.locked) return;
     if ((e.target as HTMLElement).closest('.kf-marker')) return;
     closeContextMenu();
     const frame = pixelToFrame(e.clientX);
@@ -83,6 +85,7 @@ const onLaneClick = (e: MouseEvent) => {
 };
 
 const onKeyframeDoubleClick = (idx: number, e: MouseEvent) => {
+    if (props.locked) return;
     e.stopPropagation();
     closeContextMenu();
     emit('push-undo');
@@ -92,6 +95,7 @@ const onKeyframeDoubleClick = (idx: number, e: MouseEvent) => {
 };
 
 const onKeyframeContextMenu = (idx: number, e: MouseEvent) => {
+    if (props.locked) return;
     e.preventDefault();
     e.stopPropagation();
     contextMenuKfIdx.value = idx;
@@ -129,6 +133,7 @@ let dragStartX = 0;
 let dragOriginalFrame = 0;
 
 const onKeyframePointerDown = (idx: number, e: PointerEvent) => {
+    if (props.locked) return;
     e.stopPropagation();
     closeContextMenu();
     dragIdx = idx;
@@ -189,7 +194,7 @@ onUnmounted(() => window.removeEventListener('pointerdown', onGlobalClick));
     <div
         ref="containerRef"
         class="property-keyframe-lane"
-        :class="{ selected }"
+        :class="{ selected, locked: !!locked }"
         @click="onLaneClick"
     >
         <span class="property-keyframe-lane__label">{{ label }}</span>

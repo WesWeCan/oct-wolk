@@ -48,7 +48,7 @@ const blockClass = computed(() => ({
 }));
 
 const onPointerDown = (e: PointerEvent) => {
-    if (!props.track.enabled) return;
+    if (!props.track.enabled || props.track.locked) return;
     emit('select-track', props.track.id);
     // Use full lane width (not block width) for pixel->time conversion.
     const laneEl = containerRef.value;
@@ -138,7 +138,7 @@ useLaneInteractions(containerRef as any, {
     <div
         ref="containerRef"
         class="motion-track-lane"
-        :class="{ disabled: !track.enabled }"
+        :class="{ disabled: !track.enabled, locked: track.locked }"
     >
         <div class="motion-track-lane__block" :class="blockClass" :style="blockStyle" @pointerdown.stop="onPointerDown">
             <span class="motion-track-lane__handle left" data-zone="trimLeft"></span>

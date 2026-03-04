@@ -66,10 +66,12 @@ const toggleExpand = (itemId: string) => {
 };
 
 const emitOverrides = (overrides: ItemOverride[]) => {
+    if (props.track.locked) return;
     emit('update-track', { ...props.track, block: { ...props.track.block, overrides } });
 };
 
 const toggleHidden = (itemId: string) => {
+    if (props.track.locked) return;
     const overrides = [...props.track.block.overrides];
     const idx = overrides.findIndex((o) => o.sourceItemId === itemId);
     const current = idx >= 0 ? overrides[idx] : null;
@@ -92,6 +94,7 @@ const toggleHidden = (itemId: string) => {
 };
 
 const updateTextOverride = (itemId: string, text: string) => {
+    if (props.track.locked) return;
     const overrides = [...props.track.block.overrides];
     let idx = overrides.findIndex((o) => o.sourceItemId === itemId);
     if (idx < 0) {
@@ -106,6 +109,7 @@ const updateTextOverride = (itemId: string, text: string) => {
 };
 
 const clearOverride = (itemId: string) => {
+    if (props.track.locked) return;
     const overrides = props.track.block.overrides.filter((o) => o.sourceItemId !== itemId);
     emitOverrides(overrides);
     expandedItemId.value = null;

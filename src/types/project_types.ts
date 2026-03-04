@@ -48,6 +48,12 @@ export interface MotionEnterExit {
     opacityEnd: number;
 }
 
+export type TextAlign = 'left' | 'center' | 'right' | 'justify';
+export type WritingMode = 'horizontal' | 'vertical-rl' | 'vertical-lr';
+export type BoundsMode = 'free' | 'safeArea';
+export type WrapMode = 'none' | 'word' | 'balanced';
+export type OverflowBehavior = 'none' | 'scaleDown' | 'ellipsis' | 'clip';
+
 export interface MotionStyle {
     fontFamily: string;
     fontSize: number;
@@ -59,8 +65,20 @@ export interface MotionStyle {
     lineHeight: number;
     color: string;
     opacity: number;
+    globalOpacity?: number;
     backgroundColor: string | null;
+    backgroundOpacity?: number;
     backgroundPadding: number;
+    backgroundBorderRadius?: number;
+    textAlign?: TextAlign;
+    writingMode?: WritingMode;
+    outlineWidth?: number;
+    outlineColor?: string;
+    boundsMode?: BoundsMode;
+    wrapMode?: WrapMode;
+    maxLines?: number;
+    overflowBehavior?: OverflowBehavior;
+    safeAreaPadding?: number;
 }
 
 export type AnchorX = 'left' | 'center' | 'right';
@@ -106,6 +124,9 @@ export interface MotionTrack {
     name: string;
     color: string;
     enabled: boolean;
+    muted: boolean;
+    solo: boolean;
+    locked: boolean;
     collapsed: boolean;
     block: MotionBlock;
 }
@@ -182,8 +203,20 @@ export const DEFAULT_MOTION_STYLE: MotionStyle = {
     lineHeight: 1.2,
     color: '#ffffff',
     opacity: 1,
-    backgroundColor: null,
+    globalOpacity: 1,
+    backgroundColor: '#000000',
+    backgroundOpacity: 0,
     backgroundPadding: 0,
+    backgroundBorderRadius: 0,
+    textAlign: 'center',
+    writingMode: 'horizontal',
+    outlineWidth: 0,
+    outlineColor: '#000000',
+    boundsMode: 'safeArea',
+    wrapMode: 'word',
+    maxLines: 5,
+    overflowBehavior: 'none',
+    safeAreaPadding: 40,
 };
 
 export const DEFAULT_MOTION_TRANSFORM: MotionTransform = {
