@@ -6,6 +6,7 @@ import {
   evalStepAtFrame,
   evalInterpolatedAtFrame,
   extractFrames,
+  parseHexColor,
 } from '@/front-end/utils/tracks';
 import type { PropertyTrack, Keyframe } from '@/types/timeline_types';
 
@@ -118,6 +119,78 @@ describe('evalInterpolatedAtFrame', () => {
     const result = evalInterpolatedAtFrame(t, 50, [0, 0]) as number[];
     expect(result[0]).toBeCloseTo(50, 1);
     expect(result[1]).toBeCloseTo(60, 1);
+  });
+});
+
+describe('parseHexColor', () => {
+  it('parses #rrggbb', () => {
+    expect(parseHexColor('#ff8000')).toEqual([255, 128, 0, 1]);
+  });
+
+  it('parses shorthand #rgb', () => {
+    expect(parseHexColor('#f00')).toEqual([255, 0, 0, 1]);
+  });
+
+  it('parses #rrggbbaa', () => {
+    const result = parseHexColor('#ff000080');
+    expect(result).toBeTruthy();
+    expect(result![0]).toBe(255);
+    expect(result![3]).toBeCloseTo(128 / 255, 2);
+  });
+
+  it('returns null for non-hex strings', () => {
+    expect(parseHexColor('red')).toBeNull();
+    expect(parseHexColor('rgb(255,0,0)')).toBeNull();
+    expect(parseHexColor('')).toBeNull();
+  });
+
+  it('returns null for non-string input', () => {
+    expect(parseHexColor(42 as any)).toBeNull();
+  });
+});
+
+describe('evalInterpolatedAtFrame – color interpolation', () => {
+  it('interpolates hex colors at midpoint', () => {
+    const t = track([
+      { frame: 0, value: '#000000' },
+      { frame: 100, value: '#ff8040' },
+    ]);
+    const result = evalInterpolatedAtFrame(t, 50, '#000000');
+    expect(result).toBe('#804020');
+  });
+
+  it('returns exact color at keyframe boundary', () => {
+    const t = track([
+      { frame: 0, value: '#ff0000' },
+      { frame: 100, value: '#0000ff' },
+    ]);
+    expect(evalInterpolatedAtFrame(t, 0, '#000000')).toBe('#ff0000');
+    expect(evalInterpolatedAtFrame(t, 100, '#000000')).toBe('#0000ff');
+  });
+
+  it('respects step interpolation for colors', () => {
+    const t = track([
+      { frame: 0, value: '#ff0000', interpolation: 'step' as any },
+      { frame: 100, value: '#0000ff' },
+    ]);
+    expect(evalInterpolatedAtFrame(t, 50, '#000000')).toBe('#ff0000');
+  });
+
+  it('falls back to next value for non-hex strings', () => {
+    const t = track([
+      { frame: 0, value: 'red' },
+      { frame: 100, value: 'blue' },
+    ]);
+    expect(evalInterpolatedAtFrame(t, 50, 'black')).toBe('blue');
+  });
+
+  it('interpolates shorthand #rgb colors', () => {
+    const t = track([
+      { frame: 0, value: '#000' },
+      { frame: 100, value: '#fff' },
+    ]);
+    const result = evalInterpolatedAtFrame(t, 50, '#000');
+    expect(result).toBe('#808080');
   });
 });
 

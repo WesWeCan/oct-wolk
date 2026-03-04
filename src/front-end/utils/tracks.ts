@@ -49,12 +49,70 @@ export function hashWords(list: string[]): string {
 }
 
 /**
- * Interpolates between two values (number or tuple-like array of numbers).
+ * Parse a CSS hex color (#rgb, #rrggbb, #rrggbbaa) into [r, g, b, a] (0-255, alpha 0-1).
+ * Returns null for unsupported formats.
+ */
+export function parseHexColor(s: string): [number, number, number, number] | null {
+    if (typeof s !== 'string' || s[0] !== '#') return null;
+    const hex = s.slice(1);
+    if (hex.length === 3) {
+        return [
+            parseInt(hex[0] + hex[0], 16),
+            parseInt(hex[1] + hex[1], 16),
+            parseInt(hex[2] + hex[2], 16),
+            1,
+        ];
+    }
+    if (hex.length === 6) {
+        return [
+            parseInt(hex.slice(0, 2), 16),
+            parseInt(hex.slice(2, 4), 16),
+            parseInt(hex.slice(4, 6), 16),
+            1,
+        ];
+    }
+    if (hex.length === 8) {
+        return [
+            parseInt(hex.slice(0, 2), 16),
+            parseInt(hex.slice(2, 4), 16),
+            parseInt(hex.slice(4, 6), 16),
+            parseInt(hex.slice(6, 8), 16) / 255,
+        ];
+    }
+    return null;
+}
+
+function toHex2(n: number): string {
+    const v = Math.round(Math.max(0, Math.min(255, n)));
+    return v.toString(16).padStart(2, '0');
+}
+
+/**
+ * Linearly interpolate two parsed RGBA tuples and return a #rrggbb(aa) string.
+ */
+function lerpColor(a: [number, number, number, number], b: [number, number, number, number], t: number): string {
+    const u = Math.min(1, Math.max(0, t));
+    const r = a[0] + (b[0] - a[0]) * u;
+    const g = a[1] + (b[1] - a[1]) * u;
+    const bl = a[2] + (b[2] - a[2]) * u;
+    const al = a[3] + (b[3] - a[3]) * u;
+    if (Math.abs(al - 1) < 1e-4) return `#${toHex2(r)}${toHex2(g)}${toHex2(bl)}`;
+    return `#${toHex2(r)}${toHex2(g)}${toHex2(bl)}${toHex2(al * 255)}`;
+}
+
+/**
+ * Interpolates between two values (number, number-array, or CSS hex color string).
  */
 function lerpValue(a: any, b: any, t: number): any {
     const u = Math.min(1, Math.max(0, t));
     if (typeof a === 'number' && typeof b === 'number') {
         return a + (b - a) * u;
+    }
+    if (typeof a === 'string' && typeof b === 'string') {
+        const ca = parseHexColor(a);
+        const cb = parseHexColor(b);
+        if (ca && cb) return lerpColor(ca, cb, u);
+        return b;
     }
     if (Array.isArray(a) && Array.isArray(b)) {
         const n = Math.min(a.length, b.length);
@@ -66,7 +124,6 @@ function lerpValue(a: any, b: any, t: number): any {
         }
         return out;
     }
-    // Fallback: if types mismatch, prefer b
     return b;
 }
 

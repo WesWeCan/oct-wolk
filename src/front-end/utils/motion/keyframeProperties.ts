@@ -34,9 +34,9 @@ export const KEYFRAMEABLE_PROPERTIES: KeyframePropertyDef[] = [
     { path: 'style.lineHeight', label: 'Line Height', shortLabel: 'LH', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('lineHeight'), min: 0.8, max: 3, step: 0.05 },
     { path: 'style.backgroundPadding', label: 'BG Padding', shortLabel: 'Pad', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('backgroundPadding'), min: 0, max: 200, step: 1 },
 
-    // Stationary (discrete, step)
-    { path: 'style.color', label: 'Color', shortLabel: 'Col', kind: 'stationary', defaultInterpolation: 'step', getValue: styleGetter('color') },
-    { path: 'style.backgroundColor', label: 'BG Color', shortLabel: 'BG', kind: 'stationary', defaultInterpolation: 'step', getValue: styleGetter('backgroundColor') },
+    // Colors (moving — smoothly interpolated between hex values)
+    { path: 'style.color', label: 'Color', shortLabel: 'Col', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('color') },
+    { path: 'style.backgroundColor', label: 'BG Color', shortLabel: 'BG', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('backgroundColor') },
     { path: 'style.fontFamily', label: 'Font Family', shortLabel: 'Fnt', kind: 'stationary', defaultInterpolation: 'step', getValue: styleGetter('fontFamily') },
     { path: 'style.fontStyle', label: 'Font Style', shortLabel: 'Sty', kind: 'stationary', defaultInterpolation: 'step', getValue: styleGetter('fontStyle') },
     { path: 'style.textCase', label: 'Text Case', shortLabel: 'Cs', kind: 'stationary', defaultInterpolation: 'step', getValue: styleGetter('textCase') },
