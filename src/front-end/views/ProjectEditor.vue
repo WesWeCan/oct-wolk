@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiArrowLeft, mdiCheck, mdiCrosshairs, mdiDiamond, mdiMusicNote, mdiPencil } from '@mdi/js';
 import {
     DEFAULT_MOTION_ENTER_EXIT,
     DEFAULT_MOTION_STYLE,
@@ -1840,7 +1842,9 @@ onUnmounted(() => {
         <!-- Toolbar -->
         <div class="editor__toolbar">
             <div class="toolbar__left">
-                <button class="toolbar-back" @click="router.push({ name: 'ProjectList' })">&larr;</button>
+                <button class="toolbar-back" @click="router.push({ name: 'ProjectList' })" aria-label="Back to projects">
+                    <SvgIcon type="mdi" :path="mdiArrowLeft" :size="16" />
+                </button>
 
                 <input
                     v-if="editingTitle"
@@ -1894,7 +1898,9 @@ onUnmounted(() => {
                         @dragleave="onAudioDragLeave"
                         @click="audioInputRef?.click()"
                     >
-                        <span class="audio-drop-zone__icon">&#127925;</span>
+                        <span class="audio-drop-zone__icon">
+                            <SvgIcon type="mdi" :path="mdiMusicNote" :size="24" />
+                        </span>
                         <span class="audio-drop-zone__text">Click or drag audio file here</span>
                         <span class="audio-drop-zone__hint">MP3, WAV, OGG, FLAC, AAC</span>
                     </div>
@@ -1948,7 +1954,7 @@ onUnmounted(() => {
                             title="Toggle transform gizmo"
                             @click="monitorManipulationEnabled = !monitorManipulationEnabled"
                         >
-                            &#9674;
+                            <SvgIcon type="mdi" :path="mdiCrosshairs" :size="16" />
                         </button>
                         <button @click="openExportModal" class="export success">Export</button>
                     </div>
@@ -2005,7 +2011,14 @@ onUnmounted(() => {
                     </div>
                     <div class="monitor-controls">
                         <button @click="toggleEditSettings" class="edit-toggle">
-                            {{ isEditingSettings ? '&#10003; Done' : '&#9998; Edit' }}
+                            <template v-if="isEditingSettings">
+                                <SvgIcon type="mdi" :path="mdiCheck" :size="12" />
+                                <span>Done</span>
+                            </template>
+                            <template v-else>
+                                <SvgIcon type="mdi" :path="mdiPencil" :size="12" />
+                                <span>Edit</span>
+                            </template>
                         </button>
                     </div>
                 </div>
@@ -2088,7 +2101,9 @@ onUnmounted(() => {
                                         class="lane-label lane-label--kf"
                                         :style="{ height: '22px' }"
                                     >
-                                        <span class="kf-label-diamond">&#9670;</span>
+                                        <span class="kf-label-diamond" aria-hidden="true">
+                                            <SvgIcon type="mdi" :path="mdiDiamond" :size="8" />
+                                        </span>
                                         {{ kfLabel(pt.propertyPath) }}
                                     </div>
                                 </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiDiamond } from '@mdi/js';
 import type { MotionTrack, MotionStyle } from '@/types/project_types';
 
 const props = defineProps<{
@@ -61,7 +63,7 @@ const kfClick = (path: string, value: any) => {
                     @change="emit('update-style', 'fontFamily', ($event.target as HTMLInputElement).value || projectFontFamily || 'system-ui')"
                 />
                 <button class="kf-diamond" :class="diamondState('style.fontFamily')" :disabled="!isKeyframingEnabled('style.fontFamily')" @click="kfClick('style.fontFamily', style().fontFamily)">
-                    <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                    <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                 </button>
             </div>
         </div>
@@ -76,7 +78,7 @@ const kfClick = (path: string, value: any) => {
                 <div class="motion-tab__kf-row">
                     <input type="number" class="inspector-input" :value="style().fontSize" min="8" @change="emit('update-style', 'fontSize', Number(($event.target as HTMLInputElement).value) || 72)" />
                     <button class="kf-diamond" :class="diamondState('style.fontSize')" :disabled="!isKeyframingEnabled('style.fontSize')" @click="kfClick('style.fontSize', style().fontSize)">
-                        <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                        <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                     </button>
                 </div>
             </div>
@@ -89,7 +91,7 @@ const kfClick = (path: string, value: any) => {
                 <div class="motion-tab__kf-row">
                     <input type="number" class="inspector-input" :value="style().fontWeight" step="100" min="100" max="900" @change="emit('update-style', 'fontWeight', Number(($event.target as HTMLInputElement).value) || 400)" />
                     <button class="kf-diamond" :class="diamondState('style.fontWeight')" :disabled="!isKeyframingEnabled('style.fontWeight')" @click="kfClick('style.fontWeight', style().fontWeight)">
-                        <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                        <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                     </button>
                 </div>
             </div>
@@ -121,7 +123,7 @@ const kfClick = (path: string, value: any) => {
                 <div class="motion-tab__kf-row">
                     <input type="color" class="inspector-input" :value="style().color" @input="emit('update-style', 'color', ($event.target as HTMLInputElement).value)" />
                     <button class="kf-diamond" :class="diamondState('style.color')" :disabled="!isKeyframingEnabled('style.color')" @click="kfClick('style.color', style().color)">
-                        <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                        <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                     </button>
                 </div>
             </div>
@@ -145,7 +147,7 @@ const kfClick = (path: string, value: any) => {
                 <button class="chip" :class="{ active: style().textCase === 'lowercase' }" @click="emit('update-style', 'textCase', 'lowercase')">aa</button>
                 <button class="chip" :class="{ active: style().textCase === 'capitalize' }" @click="emit('update-style', 'textCase', 'capitalize')">Aa.</button>
                 <button class="kf-diamond" :class="diamondState('style.textCase')" :disabled="!isKeyframingEnabled('style.textCase')" @click="kfClick('style.textCase', style().textCase)">
-                    <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                    <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                 </button>
             </div>
         </div>
@@ -161,7 +163,7 @@ const kfClick = (path: string, value: any) => {
                     <div class="motion-tab__kf-row">
                         <input type="number" class="inspector-input" min="-20" max="80" step="0.5" :value="style().letterSpacing" @change="emit('update-style', 'letterSpacing', Number(($event.target as HTMLInputElement).value) || 0)" />
                         <button class="kf-diamond" :class="diamondState('style.letterSpacing')" :disabled="!isKeyframingEnabled('style.letterSpacing')" @click="kfClick('style.letterSpacing', style().letterSpacing)">
-                            <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                            <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                         </button>
                     </div>
                 </div>
@@ -173,7 +175,7 @@ const kfClick = (path: string, value: any) => {
                     <div class="motion-tab__kf-row">
                         <input type="number" class="inspector-input" min="0.8" max="3" step="0.05" :value="style().lineHeight" @change="emit('update-style', 'lineHeight', Number(($event.target as HTMLInputElement).value) || 1.2)" />
                         <button class="kf-diamond" :class="diamondState('style.lineHeight')" :disabled="!isKeyframingEnabled('style.lineHeight')" @click="kfClick('style.lineHeight', style().lineHeight)">
-                            <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                            <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                         </button>
                     </div>
                 </div>
@@ -186,7 +188,7 @@ const kfClick = (path: string, value: any) => {
                         <div class="motion-tab__kf-row">
                             <input type="color" class="inspector-input" :value="style().backgroundColor || '#000000'" @input="emit('update-style', 'backgroundColor', ($event.target as HTMLInputElement).value)" />
                             <button class="kf-diamond" :class="diamondState('style.backgroundColor')" :disabled="!isKeyframingEnabled('style.backgroundColor')" @click="kfClick('style.backgroundColor', style().backgroundColor)">
-                                <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                                <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                             </button>
                         </div>
                     </div>
@@ -198,7 +200,7 @@ const kfClick = (path: string, value: any) => {
                         <div class="motion-tab__kf-row">
                             <input type="number" class="inspector-input" min="0" max="200" step="1" :value="style().backgroundPadding" @change="emit('update-style', 'backgroundPadding', Number(($event.target as HTMLInputElement).value) || 0)" />
                             <button class="kf-diamond" :class="diamondState('style.backgroundPadding')" :disabled="!isKeyframingEnabled('style.backgroundPadding')" @click="kfClick('style.backgroundPadding', style().backgroundPadding)">
-                                <svg viewBox="0 0 12 12" width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" /></svg>
+                                <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                             </button>
                         </div>
                     </div>

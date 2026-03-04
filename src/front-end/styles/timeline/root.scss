@@ -30,8 +30,12 @@
       position: relative;
       
       &::after {
-        content: '▼';
-        font-size: 8px;
+        content: '';
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-top: 6px solid currentColor;
         margin-left: auto;
         transition: transform 200ms;
         color: #666;

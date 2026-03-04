@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue';
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiDiamond } from '@mdi/js';
 import type { MotionTrack } from '@/types/project_types';
 import type { PropertyTrack, Keyframe } from '@/types/timeline_types';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
@@ -221,7 +223,7 @@ onUnmounted(() => window.removeEventListener('pointerdown', onGlobalClick));
             @dblclick="onKeyframeDoubleClick(i, $event)"
             @contextmenu="onKeyframeContextMenu(i, $event)"
         >
-            <svg viewBox="0 0 10 10" width="10" height="10"><path d="M5 0 L10 5 L5 10 L0 5 Z" /></svg>
+            <SvgIcon type="mdi" :path="mdiDiamond" :size="10" />
         </div>
 
         <!-- Context menu -->

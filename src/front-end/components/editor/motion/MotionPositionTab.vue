@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiDiamond } from '@mdi/js';
 import type { MotionTrack, MotionTransform, AnchorX, AnchorY } from '@/types/project_types';
 
 const props = defineProps<{
@@ -114,9 +116,7 @@ const fields: { label: string; path: string; key: keyof MotionTransform; min?: n
                     :title="!isKeyframingEnabled(field.path) ? 'Enable keyframing first' : diamondState(field.path) === 'filled' ? 'Remove keyframe' : 'Add keyframe at current frame'"
                     @click="isKeyframingEnabled(field.path) && emit('toggle-keyframe', field.path, Number(t()[field.key]))"
                 >
-                    <svg viewBox="0 0 12 12" width="12" height="12">
-                        <path d="M6 1 L11 6 L6 11 L1 6 Z" />
-                    </svg>
+                    <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                 </button>
             </div>
         </div>
@@ -148,9 +148,7 @@ const fields: { label: string; path: string; key: keyof MotionTransform; min?: n
                     title="Keyframe opacity"
                     @click="isKeyframingEnabled('style.opacity') && emit('toggle-keyframe', 'style.opacity', track.block.style.opacity)"
                 >
-                    <svg viewBox="0 0 12 12" width="12" height="12">
-                        <path d="M6 1 L11 6 L6 11 L1 6 Z" />
-                    </svg>
+                    <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
                 </button>
             </div>
         </div>

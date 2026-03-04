@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiArrowLeft, mdiClose, mdiMusicNote, mdiPlus } from '@mdi/js';
 import type { WolkProject } from '@/types/project_types';
 import { ProjectService } from '@/front-end/services/ProjectService';
 
@@ -94,11 +96,17 @@ onMounted(() => {
         <div class="page-header">
             <div class="header-content">
                 <div class="title-section">
-                    <RouterLink to="/" class="back-link">&larr; Home</RouterLink>
+                    <RouterLink to="/" class="back-link">
+                        <SvgIcon type="mdi" :path="mdiArrowLeft" :size="14" />
+                        <span>Home</span>
+                    </RouterLink>
                     <h1>Projects</h1>
                     <p class="subtitle">Create and manage lyric visual projects</p>
                 </div>
-                <button @click="createNew" class="create-btn primary">+ New Project</button>
+                <button @click="createNew" class="create-btn primary">
+                    <SvgIcon type="mdi" :path="mdiPlus" :size="14" />
+                    <span>New Project</span>
+                </button>
             </div>
         </div>
 
@@ -132,10 +140,15 @@ onMounted(() => {
             </div>
 
             <div v-else-if="!projects.length" class="empty-state">
-                <div class="empty-icon">&#127926;</div>
+                <div class="empty-icon">
+                    <SvgIcon type="mdi" :path="mdiMusicNote" :size="36" />
+                </div>
                 <h3>No projects yet</h3>
                 <p>Create your first project to start building lyric visuals</p>
-                <button @click="createNew" class="create-btn primary">+ New Project</button>
+                <button @click="createNew" class="create-btn primary">
+                    <SvgIcon type="mdi" :path="mdiPlus" :size="14" />
+                    <span>New Project</span>
+                </button>
             </div>
 
             <div v-else-if="!filteredAndSorted.length" class="empty-state">
@@ -155,7 +168,9 @@ onMounted(() => {
                             class="card-image"
                             :style="{ backgroundImage: project.song.coverSrc ? `url(${project.song.coverSrc})` : 'none' }"
                         >
-                            <div v-if="!project.song.coverSrc" class="placeholder-icon">&#127926;</div>
+                            <div v-if="!project.song.coverSrc" class="placeholder-icon">
+                                <SvgIcon type="mdi" :path="mdiMusicNote" :size="24" />
+                            </div>
                         </div>
                         <div class="card-info">
                             <h3 class="card-title">{{ project.song.title || 'Untitled' }}</h3>
@@ -178,7 +193,7 @@ onMounted(() => {
 
                     <div v-else class="card-actions">
                         <button @click.stop="confirmDelete(project.id)" class="action-btn danger" title="Delete">
-                            <span>&times;</span>
+                            <SvgIcon type="mdi" :path="mdiClose" :size="14" />
                         </button>
                     </div>
                 </div>

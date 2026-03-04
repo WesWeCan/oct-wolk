@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiChevronDown, mdiChevronRight, mdiChevronLeft, mdiDiamond } from '@mdi/js';
 import PropertyMiniLane from './PropertyMiniLane.vue';
 
 const props = defineProps<{
@@ -180,14 +182,24 @@ defineExpose({ onDeleteSelected, onNavigate, hasSelection });
                     class="collapse-btn" 
                     @click.stop="toggleCollapse(t.propertyPath)"
                     :title="collapsed[t.propertyPath] ? 'Expand' : 'Collapse'">
-              {{ collapsed[t.propertyPath] ? '▸' : '▾' }}
+              <SvgIcon
+                type="mdi"
+                :path="collapsed[t.propertyPath] ? mdiChevronRight : mdiChevronDown"
+                :size="12"
+              />
             </button>
             <div class="label-text">{{ metaMap[t.propertyPath]?.label || t.propertyPath }}</div>
           </div>
           <div v-if="!collapsed[t.propertyPath]" class="property-controls">
-            <button type="button" class="small" @click.stop="handleNavPrev(t.propertyPath)" title="Previous keyframe">◀</button>
-            <button type="button" class="small primary" @click.stop="handleAddKf(t.propertyPath)" title="Add keyframe">◆</button>
-            <button type="button" class="small" @click.stop="handleNavNext(t.propertyPath)" title="Next keyframe">▶</button>
+            <button type="button" class="small" @click.stop="handleNavPrev(t.propertyPath)" title="Previous keyframe" aria-label="Previous keyframe">
+              <SvgIcon type="mdi" :path="mdiChevronLeft" :size="12" />
+            </button>
+            <button type="button" class="small primary" @click.stop="handleAddKf(t.propertyPath)" title="Add keyframe" aria-label="Add keyframe">
+              <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
+            </button>
+            <button type="button" class="small" @click.stop="handleNavNext(t.propertyPath)" title="Next keyframe" aria-label="Next keyframe">
+              <SvgIcon type="mdi" :path="mdiChevronRight" :size="12" />
+            </button>
             <button type="button" class="small" @click.stop="handleResetToDefault(t.propertyPath)" title="Set to default at playhead">Reset</button>
             <button type="button" class="small danger" @click.stop="handleClearTrack(t.propertyPath)" title="Remove all keyframes for this property">Clear</button>
           </div>

@@ -70,15 +70,16 @@ input[type="checkbox"] {
     border-color: #00d4ff;
     
     &::after {
-      content: '✓';
+      content: '';
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      color: #000;
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1;
+      width: 8px;
+      height: 5px;
+      border-left: 2px solid #000;
+      border-bottom: 2px solid #000;
+      transform: translate(-50%, -60%) rotate(-45deg);
       display: block;
     }
   }
@@ -88,15 +89,15 @@ input[type="checkbox"] {
     border-color: rgba(0, 212, 255, 0.8);
     
     &::after {
-      content: '−';
+      content: '';
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      color: #000;
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1;
+      width: 9px;
+      height: 2px;
+      background: #000;
+      border-radius: 1px;
       display: block;
     }
   }

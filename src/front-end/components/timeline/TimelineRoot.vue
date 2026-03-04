@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch, computed } from 'vue';
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiChevronDown, mdiChevronLeft, mdiChevronRight, mdiClose, mdiDiamond } from '@mdi/js';
 import RulerLane from '@/front-end/components/timeline/lanes/RulerLane.vue';
 import ScenesLane from '@/front-end/components/timeline/lanes/ScenesLane.vue';
 import ActionsLane from '@/front-end/components/timeline/lanes/ActionsLane.vue';
@@ -367,15 +369,25 @@ onUnmounted(() => {
                     <div class="prop-label-header">
                         
                         <span class="prop-name" @click="emit('scrollToInspector', { propertyPath: propLane.propertyPath })">{{ propLane.label }}</span>
-                        <span class="collapse-icon" @click="collapsed[propLane.key] = !collapsed[propLane.key]">{{ collapsed[propLane.key] ? '▸' : '▾' }}</span>
+                        <span class="collapse-icon" @click="collapsed[propLane.key] = !collapsed[propLane.key]">
+                            <SvgIcon type="mdi" :path="collapsed[propLane.key] ? mdiChevronRight : mdiChevronDown" :size="10" />
+                        </span>
                     </div>
                     <div v-if="!collapsed[propLane.key]" class="prop-controls" @click.stop>
                         <!-- <div class="prop-value-display">{{ getPropertyValue(propLane.propertyPath).toFixed(3) }}</div> -->
                         <div class="prop-buttons">
-                            <button type="button" class="small" @click="handlePropPrev(propLane.propertyPath)" title="Previous keyframe">◀</button>
-                            <button type="button" class="small primary" @click="handlePropAdd(propLane.propertyPath)" title="Add keyframe">◆</button>
-                            <button type="button" class="small" @click="handlePropNext(propLane.propertyPath)" title="Next keyframe">▶</button>
-                        <button type="button" class="small danger" @click="handlePropDelete(propLane.propertyPath)" title="Delete selected keyframe(s)">×</button>
+                            <button type="button" class="small" @click="handlePropPrev(propLane.propertyPath)" title="Previous keyframe" aria-label="Previous keyframe">
+                                <SvgIcon type="mdi" :path="mdiChevronLeft" :size="12" />
+                            </button>
+                            <button type="button" class="small primary" @click="handlePropAdd(propLane.propertyPath)" title="Add keyframe" aria-label="Add keyframe">
+                                <SvgIcon type="mdi" :path="mdiDiamond" :size="12" />
+                            </button>
+                            <button type="button" class="small" @click="handlePropNext(propLane.propertyPath)" title="Next keyframe" aria-label="Next keyframe">
+                                <SvgIcon type="mdi" :path="mdiChevronRight" :size="12" />
+                            </button>
+                        <button type="button" class="small danger" @click="handlePropDelete(propLane.propertyPath)" title="Delete selected keyframe(s)" aria-label="Delete selected keyframes">
+                            <SvgIcon type="mdi" :path="mdiClose" :size="12" />
+                        </button>
                         </div>
                         <input 
                             type="number" 

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiArrowDown, mdiArrowUp, mdiClose, mdiLock } from '@mdi/js';
 import type { LyricTrack } from '@/types/project_types';
 import {
     generateVerseTrack,
@@ -138,7 +140,10 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                     </template>
                     <template v-else>
                         <span @dblclick="startRename(track)" title="Double-click to rename">
-                            {{ track.name }} <span v-if="track.locked" aria-label="Locked">🔒</span>
+                            {{ track.name }}
+                            <span v-if="track.locked" class="track-locked-icon" aria-label="Locked">
+                                <SvgIcon type="mdi" :path="mdiLock" :size="12" />
+                            </span>
                         </span>
                     </template>
                 </div>
@@ -171,19 +176,25 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                         @click="moveTrack(track.id, -1)"
                         :disabled="tracks.findIndex(t => t.id === track.id) === 0"
                         title="Move track up"
-                    >↑</button>
+                    >
+                        <SvgIcon type="mdi" :path="mdiArrowUp" :size="12" />
+                    </button>
                     <button
                         class="track-btn"
                         @click="moveTrack(track.id, 1)"
                         :disabled="tracks.findIndex(t => t.id === track.id) === tracks.length - 1"
                         title="Move track down"
-                    >↓</button>
+                    >
+                        <SvgIcon type="mdi" :path="mdiArrowDown" :size="12" />
+                    </button>
                     <button
                         v-if="deletingId !== track.id"
                         class="track-btn danger"
                         @click="deletingId = track.id"
                         title="Delete track"
-                    >&times;</button>
+                    >
+                        <SvgIcon type="mdi" :path="mdiClose" :size="12" />
+                    </button>
                     <template v-else>
                         <button class="track-btn danger" @click="emit('deleteTrack', track.id); deletingId = null;">Yes</button>
                         <button class="track-btn" @click="deletingId = null">No</button>

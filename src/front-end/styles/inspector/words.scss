@@ -259,9 +259,11 @@
           border-bottom: 1px solid rgba(0, 212, 255, 0.2);
           
           &::before {
-            content: '◆';
-            font-size: 10px;
-            color: #00d4ff;
+            content: '';
+            width: 7px;
+            height: 7px;
+            background: #00d4ff;
+            transform: rotate(45deg);
           }
         }
         

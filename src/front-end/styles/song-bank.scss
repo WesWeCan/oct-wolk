@@ -31,6 +31,9 @@
                 font-size: 14px;
                 transition: all 200ms;
                 width: fit-content;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
                 
                 &:hover {
                     color: #00e5ff;
@@ -57,6 +60,9 @@
             font-size: 16px;
             font-weight: 600;
             white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
     }
     
@@ -164,8 +170,12 @@
         }
         
         .empty-icon {
-            font-size: 64px;
             opacity: 0.3;
+            width: 64px;
+            height: 64px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         
         h3 {
@@ -240,9 +250,13 @@
                 justify-content: center;
                 
                 .placeholder-icon {
-                    font-size: 64px;
                     opacity: 0.3;
                     transition: all 200ms;
+                    width: 64px;
+                    height: 64px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
                 }
             }
             
