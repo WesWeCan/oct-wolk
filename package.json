@@ -46,6 +46,8 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
+    "@jamescoyle/vue-icon": "^0.1.2",
+    "@mdi/js": "^7.4.47",
     "@tiptap/extension-bubble-menu": "^3.4.1",
     "@tiptap/pm": "^3.4.1",
     "@tiptap/starter-kit": "^3.4.1",

@@ -17,6 +17,7 @@
   - predictable renderer behavior
   - timeline interaction parity
   - inspector completeness for daily authoring
+  - keyframe MVP usability in motion mode
   - stable integration in `ProjectEditor.vue`
 
 ### UX Pass (after foundation is stable)
@@ -112,6 +113,12 @@ Each item must include:
 - [ ] Confirm TipTap JSON overrides render during scrub/playback for `subtitle`, `wordReveal`, and `paragraph`.
 - [ ] Confirm clearing an override falls back to source lyric text with no stale styles.
 
+### F8 — 2D keyframe + monitor manipulation baseline
+
+- [ ] Confirm keyframe mini-lanes are available for selected motion tracks (`offsetX`, `offsetY`, `scale`, `rotation`, `opacity`).
+- [ ] Confirm keyframe edits affect motion preview during scrub/playback.
+- [ ] Confirm monitor manipulation tool can move, scale, and rotate selected subtitle blocks and can be toggled off.
+
 ---
 
 ## 3.1 Step-to-Foundation Mapping
@@ -125,42 +132,49 @@ Each item must include:
 | Step 11 (inspector completeness) | F5 |
 | Step 12 (track list parity) | F6 |
 | Step 15 (rich text overrides) | F7 |
+| Keyframe MVP + monitor interactions | F8 |
 
-Execution order for current iteration is: **F1 -> F2 -> F3 -> F4 -> F5 -> F6 -> F7**.
+Execution order for current iteration is: **F1 -> F2 -> F3 -> F4 -> F5 -> F6 -> F7 -> F8**.
 
 ---
 
-## 4) UX Pass Checklist (After Foundation)
+## 4) UX Redesign (Implemented)
 
-### U1 — Transform UX
+### U1 — Inspector Redesign (Tabbed, Single-Column)
 
-- [ ] Add anchor presets and reset controls.
-- [ ] Reduce reliance on raw numeric entry.
-- [ ] Add safe ranges and better labels for offsets/scale/rotation.
+- [x] Refactored `MotionInspector.vue` into 4-tab layout: Style, Position, Anim, Items.
+- [x] New sub-components: `MotionAppearanceTab.vue`, `MotionPositionTab.vue`, `MotionAnimationTab.vue`, `MotionItemsTab.vue`.
+- [x] Single-column layout throughout with collapsible Advanced section.
+- [x] Background section moved to collapsed `<details>` (project-level, not per-track).
+- [x] Removed "Type Parameters" section (wordReveal/paragraph deprecated).
 
-### U2 — Block UX by type
+### U2 — Transform Gizmo in Monitor
 
-- [ ] Subtitle: presets for common subtitle placements.
-- [ ] WordReveal: explicit mode naming and visual hints.
-- [ ] Paragraph: explicit text-box width/alignment controls.
+- [x] New `useMotionGizmo.ts` composable: draws dashed bounding box, corner scale handles, rotation handle on overlay canvas.
+- [x] Pointer events: drag inside = move, drag corner = scale, drag rotation handle = rotate.
+- [x] Icon toggle button (diamond) replaces old "Transform Tool" text button.
+- [x] Removed old `onPreviewPointerDown`/`applyMonitorTransformDelta` from ProjectEditor.
 
-### U3 — Inspector information architecture
+### U3 — Keyframe Diamond Workflow
 
-- [ ] Basic/Advanced sections.
-- [ ] Cleaner default collapsed/expanded behavior.
-- [ ] Reduce cognitive load for first-time setup.
+- [x] Keyframe diamonds inline with each animatable property (offsetX, offsetY, scale, rotation, opacity) in Position tab.
+- [x] Diamond states: hollow (empty), half-filled, filled — reflecting keyframe presence at current frame.
+- [x] Click toggles keyframe at current frame via `upsertKeyframe`/`removeKeyframeAtIndex`.
+- [x] Removed timeline keyframe sublanes (PropertyMiniLane), "Keyframes" toggle, expando CSS.
 
-### U4 — Item override UX overhaul (subtitle-first)
+### U4 — Item Overrides Redesign
 
-- [ ] Replace per-item override rows with a focused editor component designed for subtitle authoring.
-- [ ] Add searchable source item navigation (text search + next/prev match) inside override workflow.
-- [ ] Surface current playhead context in the override UI (current active lyric item and timing state).
-- [ ] Add frame timestamp support in override editor (`mm:ss:ff` and absolute frame) for precise word styling decisions.
-- [ ] Add per-word styling interactions for subtitles (select word tokens and apply style marks quickly).
-- [ ] Add explicit reset/default semantics:
-  - hidden = do not render
-  - empty override = use source lyric text
-  - reset action always visible
+- [x] Compact word list in Items tab: search, eye toggle (hide), seek-to-playhead, override indicator dot.
+- [x] Context-switch: selecting an item switches Style/Position/Anim tabs to show that item's overrides.
+- [x] "Editing: [word]" banner with "Back to block" button.
+- [x] Per-word styling: word chips for multi-word items, scoping Appearance tab to individual word via `wordStyleMap`.
+- [x] `ItemOverride.wordStyleMap` added to data model for full per-word style parity.
+- [x] `SubtitleRenderer` reads `wordStyleMap` and generates `StyledSpan[]` when no TipTap rich text.
+- [x] Deleted `MotionItemOverrideEditor.vue` (TipTap editor for overrides).
+
+### U5 — Enter/Exit Opacity Defaults
+
+- [x] `DEFAULT_MOTION_ENTER_EXIT.opacityStart` changed from 1 to 0 (fade-in default).
 
 ---
 

@@ -46,8 +46,6 @@ const moveTrack = (trackId: string, delta: number) => {
                 <label>Block Type</label>
                 <select v-model="addType" class="inspector-input" :disabled="lyricTracks.length === 0">
                     <option value="subtitle">Subtitle</option>
-                    <option value="wordReveal">Word Reveal</option>
-                    <option value="paragraph">Paragraph</option>
                 </select>
             </div>
         </div>
@@ -55,6 +53,9 @@ const moveTrack = (trackId: string, delta: number) => {
         <button class="btn-sm" :disabled="lyricTracks.length === 0" @click="emit('add-track', { type: addType })">
             + Add Motion
         </button>
+        <p class="track-list-panel__hint">
+            New authoring is subtitle-first. Legacy `wordReveal` / `paragraph` tracks still render for backwards compatibility.
+        </p>
 
         <div v-if="lyricTracks.length === 0" class="track-list-empty">
             No lyric tracks available. Create one in Lyric mode first.

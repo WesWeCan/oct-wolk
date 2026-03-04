@@ -27,6 +27,8 @@ import BandsLane from '@/front-end/components/timeline/lanes/BandsLane.vue';
 import BeatStrengthLane from '@/front-end/components/timeline/lanes/BeatStrengthLane.vue';
 import LyricTrackLane from '@/front-end/components/timeline/lanes/LyricTrackLane.vue';
 import MotionTrackLane from '@/front-end/components/timeline/lanes/MotionTrackLane.vue';
+import PropertyKeyframeLane from '@/front-end/components/timeline/lanes/PropertyKeyframeLane.vue';
+import { useMotionGizmo } from '@/front-end/composables/editor/useMotionGizmo';
 import SnapOverlay from '@/front-end/components/timeline/SnapOverlay.vue';
 import RawLyricsPanel from '@/front-end/components/editor/RawLyricsPanel.vue';
 import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
@@ -39,6 +41,8 @@ import { useTimelineSelection } from '@/front-end/composables/timeline/useTimeli
 import { useVideoExport } from '@/front-end/composables/editor/useVideoExport';
 import { enforceNoOverlap, generateLineTrackFromVerseTrack, generateWordTrackFromLineTrack } from '@/front-end/utils/lyricTrackGenerators';
 import { cleanOrphanedOverrides } from '@/front-end/utils/motion/resolveMotionItems';
+import { upsertKeyframe } from '@/front-end/utils/tracks';
+import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import type { TimelineDocument } from '@/types/timeline_types';
 
 const props = defineProps<{ projectId: string }>();
@@ -380,6 +384,15 @@ const drawMotionPreview = () => {
     const currentMs = (playhead.value.frame / Math.max(1, fps.value)) * 1000;
     motionRenderer.renderMotionFrame(project.value, currentMs);
     previewCanvasComposable.drawPreview();
+    if (audio.isPlaying.value) {
+        const oc = previewOverlay.value;
+        if (oc) {
+            const ctx = oc.getContext('2d');
+            if (ctx) ctx.clearRect(0, 0, oc.width, oc.height);
+        }
+    } else {
+        motionGizmo.drawGizmo();
+    }
 };
 
 const drawCurrentPreview = () => {
@@ -528,6 +541,12 @@ const handleUpdateIncludeAudio = (include: boolean) => {
     if (!project.value) return;
     project.value.settings.includeAudio = include;
     scheduleSave();
+};
+
+const onSeekToMs = async (ms: number) => {
+    const timeSec = Math.max(0, ms / 1000);
+    const frame = Math.round(timeSec * fps.value);
+    await onScrub({ timeSec, frame });
 };
 
 const onScrub = async (payload: { timeSec: number; frame: number }) => {
@@ -741,6 +760,56 @@ const selectedMotionTrack = computed<MotionTrack | null>(() => {
     if (!project.value || !selectedMotionTrackId.value) return null;
     return project.value.motionTracks.find((track) => track.id === selectedMotionTrackId.value) || null;
 });
+const monitorManipulationEnabled = ref(false);
+
+const kfLabel = (path: string): string => {
+    const def = getPropertyDef(path);
+    return def?.label ?? path.split('.').pop() ?? '?';
+};
+
+const gizmoAutoKeyframe = (track: MotionTrack, path: string, value: any) => {
+    const pts = track.block.propertyTracks;
+    if (!pts) return;
+    const ptIdx = pts.findIndex((pt) => pt.propertyPath === path);
+    if (ptIdx < 0 || pts[ptIdx].enabled === false) return;
+    if (!pts[ptIdx].keyframes?.length) return;
+    const def = getPropertyDef(path);
+    const interp = def?.defaultInterpolation ?? 'linear';
+    const frame = playhead.value.frame;
+    pts[ptIdx] = upsertKeyframe(pts[ptIdx] as any, frame, value, interp) as any;
+};
+
+const motionGizmo = useMotionGizmo(
+    previewOverlay,
+    previewCanvas,
+    selectedMotionTrack,
+    monitorManipulationEnabled,
+    targetWidth,
+    targetHeight,
+    {
+        onTransformDelta(gizmoMode, dx, dy) {
+            const track = selectedMotionTrack.value;
+            if (!track) return;
+            if (gizmoMode === 'move') {
+                track.block.transform.offsetX = Math.round(track.block.transform.offsetX + dx);
+                track.block.transform.offsetY = Math.round(track.block.transform.offsetY + dy);
+                gizmoAutoKeyframe(track, 'transform.offsetX', track.block.transform.offsetX);
+                gizmoAutoKeyframe(track, 'transform.offsetY', track.block.transform.offsetY);
+            } else if (gizmoMode === 'scale') {
+                track.block.transform.scale = Math.max(0.05, Math.min(10, track.block.transform.scale + dx * 0.005));
+                gizmoAutoKeyframe(track, 'transform.scale', track.block.transform.scale);
+            } else if (gizmoMode === 'rotate') {
+                track.block.transform.rotation += dx * 0.5;
+                gizmoAutoKeyframe(track, 'transform.rotation', track.block.transform.rotation);
+            }
+            markDirty();
+        },
+        onDragStart() { pushUndo(); },
+        onDragEnd() { scheduleSave(); },
+    },
+    (trackId) => motionRenderer.getRendererBounds(trackId),
+);
+
 const selectedTrack = computed<LyricTrack | null>(() => {
     if (!project.value || !selectedItemId.value) return null;
     for (const track of project.value.lyricTracks) {
@@ -1250,8 +1319,8 @@ const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
                 fontFamily: project.value.font.family || DEFAULT_MOTION_STYLE.fontFamily,
             },
             transform: { ...DEFAULT_MOTION_TRANSFORM },
-            enter: { ...DEFAULT_MOTION_ENTER_EXIT },
-            exit: { ...DEFAULT_MOTION_ENTER_EXIT },
+            enter: { ...DEFAULT_MOTION_ENTER_EXIT, opacityStart: 0, opacityEnd: 1 },
+            exit: { ...DEFAULT_MOTION_ENTER_EXIT, opacityStart: 1, opacityEnd: 0 },
             overrides: [],
             params: payload.type === 'wordReveal' ? { accumulate: false } : {},
             propertyTracks: [],
@@ -1299,18 +1368,21 @@ const onUpdateMotionTrack = (updated: MotionTrack) => {
             type: existing.block.type,
         },
     };
+    markDirty();
     scheduleSave();
 };
 
 const onSetBackgroundColor = (color: string) => {
     if (!project.value) return;
     project.value.backgroundColor = color;
+    markDirty();
     scheduleSave();
 };
 
 const onSetBackgroundFit = (fit: 'cover' | 'contain' | 'stretch') => {
     if (!project.value) return;
     project.value.backgroundImageFit = fit;
+    markDirty();
     scheduleSave();
 };
 
@@ -1868,6 +1940,16 @@ onUnmounted(() => {
                         <span class="monitor-frame">Frame: {{ currentFrame }}</span>
                     </div>
                     <div class="monitor-export-controls">
+                        
+                        <button
+                            v-if="mode === 'motion'"
+                            class="toolbar-toggle gizmo-toggle"
+                            :class="{ active: monitorManipulationEnabled }"
+                            title="Toggle transform gizmo"
+                            @click="monitorManipulationEnabled = !monitorManipulationEnabled"
+                        >
+                            &#9674;
+                        </button>
                         <button @click="openExportModal" class="export success">Export</button>
                     </div>
                 </div>
@@ -1939,11 +2021,15 @@ onUnmounted(() => {
                     :background-image="project.backgroundImage"
                     :background-color="project.backgroundColor"
                     :background-image-fit="project.backgroundImageFit || 'cover'"
+                    :playhead-ms="playheadMs"
+                    :fps="fps"
+                    :project-font-family="project.font.family"
                     @update-track="onUpdateMotionTrack"
                     @set-background-color="onSetBackgroundColor"
                     @set-background-fit="onSetBackgroundFit"
                     @upload-background-image="onUploadBackgroundImage"
                     @clear-background-image="onClearBackgroundImage"
+                    @seek-to-ms="onSeekToMs"
                 />
             </template>
             <template v-else>
@@ -1986,17 +2072,26 @@ onUnmounted(() => {
                                 {{ track.name }}
                             </div>
                             <template v-if="mode === 'motion'">
-                                <div
-                                    v-for="track in (project?.motionTracks ?? [])"
-                                    :key="'motion-label-' + track.id"
-                                    class="lane-label"
-                                    :class="{ selected: selectedMotionTrackId === track.id }"
-                                    :style="{ height: '42px' }"
-                                    @click="onSelectMotionTrack(track.id)"
-                                >
-                                    <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
-                                    {{ track.name }}
-                                </div>
+                                <template v-for="track in (project?.motionTracks ?? [])" :key="'motion-label-group-' + track.id">
+                                    <div
+                                        class="lane-label lane-label--motion"
+                                        :class="{ selected: selectedMotionTrackId === track.id }"
+                                        :style="{ height: '42px' }"
+                                        @click="onSelectMotionTrack(track.id)"
+                                    >
+                                        <span class="pe-track-color" :style="{ backgroundColor: track.color }"></span>
+                                        {{ track.name }}
+                                    </div>
+                                    <div
+                                        v-for="pt in (track.block.propertyTracks || []).filter(p => p.enabled !== false)"
+                                        :key="'kf-label-' + track.id + '-' + pt.propertyPath"
+                                        class="lane-label lane-label--kf"
+                                        :style="{ height: '22px' }"
+                                    >
+                                        <span class="kf-label-diamond">&#9670;</span>
+                                        {{ kfLabel(pt.propertyPath) }}
+                                    </div>
+                                </template>
                             </template>
                             <template v-if="analysis.waveform.value && analysis.waveform.value.length > 0">
                                 <div
@@ -2095,26 +2190,42 @@ onUnmounted(() => {
                                 <div class="lane-resizer" @pointerdown="(e: PointerEvent) => startResize(`track-${track.id}`, e)"></div>
                             </div>
                             <template v-if="mode === 'motion'">
-                                <div
-                                    v-for="track in (project?.motionTracks ?? [])"
-                                    :key="'motion-lane-' + track.id"
-                                    class="lane"
-                                    :style="{ height: '42px' }"
-                                >
-                                    <MotionTrackLane
-                                        :viewport="viewport"
-                                        :fps="fps"
-                                        :track="track"
-                                        :selected="selectedMotionTrackId === track.id"
-                                        :snap-find="snapEngine.findSnap"
-                                        :snap-clear="snapEngine.clearSnap"
-                                        @select-track="onSelectMotionTrack"
-                                        @update-track="onUpdateMotionTrack"
-                                        @push-undo="onPushUndo"
-                                        @pan="onPan"
-                                        @zoom-around="onZoom"
-                                    />
-                                </div>
+                                <template v-for="track in (project?.motionTracks ?? [])" :key="'motion-group-' + track.id">
+                                    <div class="lane" :style="{ height: '42px' }">
+                                        <MotionTrackLane
+                                            :viewport="viewport"
+                                            :fps="fps"
+                                            :track="track"
+                                            :selected="selectedMotionTrackId === track.id"
+                                            :snap-find="snapEngine.findSnap"
+                                            :snap-clear="snapEngine.clearSnap"
+                                            @select-track="onSelectMotionTrack"
+                                            @update-track="onUpdateMotionTrack"
+                                            @push-undo="onPushUndo"
+                                            @pan="onPan"
+                                            @zoom-around="onZoom"
+                                        />
+                                    </div>
+                                    <div
+                                        v-for="pt in (track.block.propertyTracks || []).filter(p => p.enabled !== false)"
+                                        :key="'kf-' + track.id + '-' + pt.propertyPath"
+                                        class="lane"
+                                        :style="{ height: '22px' }"
+                                    >
+                                        <PropertyKeyframeLane
+                                            :viewport="viewport"
+                                            :fps="fps"
+                                            :track="track"
+                                            :property-track="pt"
+                                            :selected="selectedMotionTrackId === track.id"
+                                            :playhead-frame="playhead.frame"
+                                            @update-track="onUpdateMotionTrack"
+                                            @push-undo="onPushUndo"
+                                            @pan="onPan"
+                                            @zoom-around="onZoom"
+                                        />
+                                    </div>
+                                </template>
                             </template>
                             <!-- Waveform -->
                             <template v-if="analysis.waveform.value && analysis.waveform.value.length > 0">

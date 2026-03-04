@@ -5,18 +5,20 @@ export function sortKeyframes<T>(keyframes: Keyframe<T>[]): Keyframe<T>[] {
     return keyframes.slice().sort((a, b) => ((a.frame | 0) - (b.frame | 0)));
 }
 
-export function upsertKeyframe<T>(track: PropertyTrack<T>, frame: number, value: T): PropertyTrack<T> {
+export function upsertKeyframe<T>(track: PropertyTrack<T>, frame: number, value: T, interpolation?: Keyframe<T>['interpolation']): PropertyTrack<T> {
     const list = Array.isArray(track.keyframes) ? track.keyframes.slice() : [];
     const f = Math.max(0, frame | 0);
     const idx = list.findIndex(k => (k.frame | 0) === f);
-    if (idx >= 0) list[idx] = { frame: f, value } as Keyframe<T>; else list.push({ frame: f, value } as Keyframe<T>);
-    return { propertyPath: track.propertyPath, keyframes: sortKeyframes(list) };
+    const kf: Keyframe<T> = { frame: f, value };
+    if (interpolation) kf.interpolation = interpolation;
+    if (idx >= 0) list[idx] = kf; else list.push(kf);
+    return { propertyPath: track.propertyPath, keyframes: sortKeyframes(list), enabled: track.enabled };
 }
 
 export function removeKeyframeAtIndex<T>(track: PropertyTrack<T>, index: number): PropertyTrack<T> {
     const list = Array.isArray(track.keyframes) ? track.keyframes.slice() : [];
     if (index >= 0 && index < list.length) list.splice(index, 1);
-    return { propertyPath: track.propertyPath, keyframes: list };
+    return { propertyPath: track.propertyPath, keyframes: list, enabled: track.enabled };
 }
 
 export function evalStepAtFrame<T>(track: PropertyTrack<T> | null | undefined, frame: number, fallback: T): T {
@@ -68,22 +70,15 @@ function lerpValue(a: any, b: any, t: number): any {
     return b;
 }
 
-/**
- * Apply interpolation mode to normalized t
- */
 function applyInterpolation(t: number, interpolation?: Keyframe['interpolation']): number {
     if (!interpolation) return t;
     if (typeof interpolation === 'string') {
+        if (interpolation === 'step') return 0;
         return ease(t, interpolation as any);
     }
-    // cubic with handles not yet implemented: linear fallback
     return t;
 }
 
-/**
- * Evaluate a property track at a specific frame with step/linear/ease interpolation.
- * Supports both numbers and tuple-like arrays of numbers.
- */
 export function evalInterpolatedAtFrame<T>(
     track: PropertyTrack<T> | null | undefined,
     frame: number,
@@ -92,7 +87,6 @@ export function evalInterpolatedAtFrame<T>(
     if (!track || !Array.isArray(track.keyframes) || track.keyframes.length === 0) return fallback;
     const list = sortKeyframes(track.keyframes);
     const f = frame | 0;
-    // Find index of keyframe at or before f
     let i = -1;
     for (let k = 0; k < list.length; k++) {
         if ((list[k].frame | 0) <= f) i = k; else break;
@@ -101,6 +95,7 @@ export function evalInterpolatedAtFrame<T>(
     if (i >= list.length - 1) return (list[i].value as T);
     const a = list[i];
     const b = list[i + 1];
+    if (a.interpolation === 'step') return a.value as T;
     if ((b.frame | 0) === (a.frame | 0)) return (b.value as T);
     const rawT = (f - (a.frame | 0)) / Math.max(1, (b.frame | 0) - (a.frame | 0));
     const interpT = applyInterpolation(rawT, a.interpolation || 'linear');

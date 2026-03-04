@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { LyricTrack, MotionTrack } from '@/types/project_types';
-import MotionItemOverrideEditor from '@/front-end/components/editor/MotionItemOverrideEditor.vue';
+import type { LyricTrack, MotionTrack, MotionStyle, MotionTransform, MotionEnterExit, AnchorX, AnchorY } from '@/types/project_types';
+import MotionAppearanceTab from '@/front-end/components/editor/motion/MotionAppearanceTab.vue';
+import MotionPositionTab from '@/front-end/components/editor/motion/MotionPositionTab.vue';
+import MotionAnimationTab from '@/front-end/components/editor/motion/MotionAnimationTab.vue';
+import MotionItemsTab from '@/front-end/components/editor/motion/MotionItemsTab.vue';
+import { upsertKeyframe, removeKeyframeAtIndex, evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
+import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 
 const props = defineProps<{
     motionTrack: MotionTrack | null;
@@ -9,6 +14,9 @@ const props = defineProps<{
     backgroundImage?: string;
     backgroundColor: string;
     backgroundImageFit?: 'cover' | 'contain' | 'stretch';
+    playheadMs?: number;
+    fps?: number;
+    projectFontFamily?: string;
 }>();
 
 const emit = defineEmits<{
@@ -17,173 +25,264 @@ const emit = defineEmits<{
     (e: 'set-background-fit', fit: 'cover' | 'contain' | 'stretch'): void;
     (e: 'upload-background-image', file: File): void;
     (e: 'clear-background-image'): void;
+    (e: 'seek-to-ms', ms: number): void;
 }>();
+
+const selectedItemId = ref<string | null>(null);
+const selectedWordIndex = ref<number | null>(null);
 
 const sourceMissing = computed(() => {
     if (!props.motionTrack) return false;
     return !props.lyricTracks.some((track) => track.id === props.motionTrack!.block.sourceTrackId);
 });
 
-const updateSourceTrack = (sourceTrackId: string) => {
-    if (!props.motionTrack) return;
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            sourceTrackId,
-        },
-    });
-};
-
-const updateStartMs = (value: number) => {
-    if (!props.motionTrack) return;
-    const startMs = Math.max(0, Math.round(value));
-    const endMs = Math.max(startMs + 100, props.motionTrack.block.endMs);
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            startMs,
-            endMs,
-        },
-    });
-};
-
-const updateEndMs = (value: number) => {
-    if (!props.motionTrack) return;
-    const startMs = props.motionTrack.block.startMs;
-    const endMs = Math.max(startMs + 100, Math.round(value));
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            endMs,
-        },
-    });
-};
-
-const updateStyle = <K extends keyof MotionTrack['block']['style']>(key: K, value: MotionTrack['block']['style'][K]) => {
-    if (!props.motionTrack) return;
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            style: {
-                ...props.motionTrack.block.style,
-                [key]: value,
-            },
-        },
-    });
-};
-
-const updateTransform = <K extends keyof MotionTrack['block']['transform']>(key: K, value: MotionTrack['block']['transform'][K]) => {
-    if (!props.motionTrack) return;
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            transform: {
-                ...props.motionTrack.block.transform,
-                [key]: value,
-            },
-        },
-    });
-};
-
-const updateEnterExit = (
-    which: 'enter' | 'exit',
-    key: keyof MotionTrack['block']['enter'],
-    value: MotionTrack['block']['enter'][keyof MotionTrack['block']['enter']],
-) => {
-    if (!props.motionTrack) return;
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            [which]: {
-                ...props.motionTrack.block[which],
-                [key]: value,
-            },
-        },
-    });
-};
-
-const toggleOverrideHidden = (itemId: string, hidden: boolean) => {
-    if (!props.motionTrack) return;
-    const overrides = [...props.motionTrack.block.overrides];
-    const idx = overrides.findIndex((item) => item.sourceItemId === itemId);
-    if (idx >= 0) {
-        overrides[idx] = { ...overrides[idx], hidden };
-    } else if (hidden) {
-        overrides.push({ sourceItemId: itemId, hidden });
-    }
-    const clean = overrides.filter((item) => item.hidden || (item.textOverride && item.textOverride.trim().length > 0));
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            overrides: clean,
-        },
-    });
-};
-
-const updateOverrideText = (itemId: string, textOverride: string) => {
-    if (!props.motionTrack) return;
-    const overrides = [...props.motionTrack.block.overrides];
-    const idx = overrides.findIndex((item) => item.sourceItemId === itemId);
-    const normalizedText = textOverride ?? '';
-    if (idx >= 0) {
-        const next = { ...overrides[idx], textOverride: normalizedText };
-        if (!next.hidden && (!next.textOverride || next.textOverride.trim().length === 0)) {
-            overrides.splice(idx, 1);
-        } else {
-            overrides[idx] = next;
-        }
-    } else if (normalizedText.trim().length > 0) {
-        overrides.push({ sourceItemId: itemId, hidden: false, textOverride: normalizedText });
-    }
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            overrides,
-        },
-    });
-};
-
-const updateParam = (key: string, value: any) => {
-    if (!props.motionTrack) return;
-    emit('update-track', {
-        ...props.motionTrack,
-        block: {
-            ...props.motionTrack.block,
-            params: {
-                ...(props.motionTrack.block.params || {}),
-                [key]: value,
-            },
-        },
-    });
-};
-
-const rangeItems = computed(() => {
-    if (!props.motionTrack) return [];
-    const source = props.lyricTracks.find((track) => track.id === props.motionTrack!.block.sourceTrackId);
-    if (!source) return [];
-    return source.items.filter((item) => item.endMs > props.motionTrack!.block.startMs && item.startMs < props.motionTrack!.block.endMs);
+const currentFrame = computed(() => {
+    const ms = props.playheadMs ?? 0;
+    return Math.round((ms / 1000) * Math.max(1, props.fps ?? 60));
 });
 
-const overrideFor = (itemId: string) => props.motionTrack?.block.overrides.find((item) => item.sourceItemId === itemId) || null;
-const editingOverrideItemId = ref<string | null>(null);
-const hasRichOverride = (itemId: string): boolean => {
-    const text = overrideFor(itemId)?.textOverride;
-    if (!text) return false;
-    try {
-        const parsed = JSON.parse(text);
-        return !!parsed && typeof parsed === 'object';
-    } catch {
-        return false;
-    }
+const fpsVal = computed(() => Math.max(1, props.fps ?? 60));
+
+const startFrame = computed(() => {
+    if (!props.motionTrack) return 0;
+    return Math.round((props.motionTrack.block.startMs / 1000) * fpsVal.value);
+});
+
+const endFrame = computed(() => {
+    if (!props.motionTrack) return 0;
+    return Math.round((props.motionTrack.block.endMs / 1000) * fpsVal.value);
+});
+
+const formatTime = (ms: number): string => {
+    const totalSec = ms / 1000;
+    const min = Math.floor(totalSec / 60);
+    const sec = (totalSec % 60).toFixed(2);
+    return `${min}:${sec.padStart(5, '0')}`;
 };
+
+const editingItemLabel = computed(() => {
+    if (!selectedItemId.value || !props.motionTrack) return null;
+    const src = props.lyricTracks.find((t) => t.id === props.motionTrack!.block.sourceTrackId);
+    return src?.items.find((i) => i.id === selectedItemId.value)?.text ?? null;
+});
+
+const selectedItemWords = computed<string[]>(() => {
+    if (!editingItemLabel.value) return [];
+    return editingItemLabel.value.split(/\s+/).filter(Boolean);
+});
+
+// --- Mutators ---
+
+const updateSourceTrack = (sourceTrackId: string) => {
+    if (!props.motionTrack) return;
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, sourceTrackId } });
+};
+
+const updateStartFrame = (frame: number) => {
+    if (!props.motionTrack) return;
+    const startMs = Math.max(0, Math.round((frame / fpsVal.value) * 1000));
+    const endMs = Math.max(startMs + 100, props.motionTrack.block.endMs);
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, startMs, endMs } });
+};
+
+const updateEndFrame = (frame: number) => {
+    if (!props.motionTrack) return;
+    const endMs = Math.round((frame / fpsVal.value) * 1000);
+    const minEnd = props.motionTrack.block.startMs + 100;
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, endMs: Math.max(minEnd, endMs) } });
+};
+
+const autoKeyframe = (path: string, value: any, propertyTracks: any[]): any[] => {
+    const ptIdx = propertyTracks.findIndex((pt: any) => pt.propertyPath === path);
+    if (ptIdx < 0) return propertyTracks;
+    if (propertyTracks[ptIdx].enabled === false) return propertyTracks;
+    if (!propertyTracks[ptIdx].keyframes?.length) return propertyTracks;
+    const def = getPropertyDef(path);
+    const interp = def?.defaultInterpolation ?? 'linear';
+    const updated = [...propertyTracks];
+    updated[ptIdx] = upsertKeyframe(updated[ptIdx] as any, currentFrame.value, value, interp) as any;
+    return updated;
+};
+
+const updateStyle = (key: keyof MotionStyle, value: any) => {
+    if (!props.motionTrack) return;
+    if (selectedWordIndex.value !== null && selectedItemId.value) {
+        updateWordStyle(key, value);
+        return;
+    }
+    if (selectedItemId.value) {
+        updateItemStyleOverride(selectedItemId.value, key, value);
+        return;
+    }
+    const block = { ...props.motionTrack.block };
+    block.style = { ...block.style, [key]: value };
+    block.propertyTracks = autoKeyframe(`style.${key}`, value, [...(block.propertyTracks || [])]);
+    emit('update-track', { ...props.motionTrack, block });
+};
+
+const updateTransform = (key: keyof MotionTransform, value: any) => {
+    if (!props.motionTrack) return;
+    if (selectedItemId.value) {
+        updateItemTransformOverride(selectedItemId.value, key, value);
+        return;
+    }
+    const block = { ...props.motionTrack.block };
+    block.transform = { ...block.transform, [key]: value };
+    block.propertyTracks = autoKeyframe(`transform.${key}`, value, [...(block.propertyTracks || [])]);
+    emit('update-track', { ...props.motionTrack, block });
+};
+
+const updateAnchor = (x: AnchorX, y: AnchorY) => {
+    if (!props.motionTrack) return;
+    emit('update-track', {
+        ...props.motionTrack,
+        block: { ...props.motionTrack.block, transform: { ...props.motionTrack.block.transform, anchorX: x, anchorY: y } },
+    });
+};
+
+const updateEnterExit = (which: 'enter' | 'exit', key: keyof MotionEnterExit, value: any) => {
+    if (!props.motionTrack) return;
+    if (selectedItemId.value) {
+        updateItemEnterExitOverride(selectedItemId.value, which, key, value);
+        return;
+    }
+    emit('update-track', {
+        ...props.motionTrack,
+        block: { ...props.motionTrack.block, [which]: { ...props.motionTrack.block[which], [key]: value } },
+    });
+};
+
+const updateStyleOpacity = (value: number) => updateStyle('opacity', value);
+
+// --- Keyframe toggling ---
+
+const toggleKeyframe = (path: string, value: any) => {
+    if (!props.motionTrack) return;
+    const block = { ...props.motionTrack.block };
+    const propertyTracks = [...(block.propertyTracks || [])];
+    const frame = currentFrame.value;
+    let ptIdx = propertyTracks.findIndex((pt) => pt.propertyPath === path);
+    if (ptIdx < 0) {
+        propertyTracks.push({ propertyPath: path, keyframes: [], enabled: true });
+        ptIdx = propertyTracks.length - 1;
+    }
+    const pt = { ...propertyTracks[ptIdx] };
+    const sorted = [...(pt.keyframes || [])].sort((a, b) => a.frame - b.frame);
+    const existingIdx = sorted.findIndex((kf) => kf.frame === frame);
+    const def = getPropertyDef(path);
+    const interp = def?.defaultInterpolation ?? 'linear';
+
+    if (existingIdx >= 0) {
+        propertyTracks[ptIdx] = removeKeyframeAtIndex(pt as any, existingIdx) as any;
+    } else {
+        propertyTracks[ptIdx] = upsertKeyframe(pt as any, frame, value, interp) as any;
+    }
+    emit('update-track', { ...props.motionTrack, block: { ...block, propertyTracks } });
+};
+
+const togglePropertyKeyframing = (path: string) => {
+    if (!props.motionTrack) return;
+    const block = { ...props.motionTrack.block };
+    const propertyTracks = [...(block.propertyTracks || [])];
+    const ptIdx = propertyTracks.findIndex((pt) => pt.propertyPath === path);
+
+    if (ptIdx >= 0) {
+        const pt = propertyTracks[ptIdx];
+        const animVal = evalInterpolatedAtFrame(pt as any, currentFrame.value, undefined);
+        if (animVal !== undefined) {
+            const parts = path.split('.');
+            const section = parts[0];
+            const key = parts[1];
+            if (section === 'style') {
+                block.style = { ...block.style, [key]: animVal };
+            } else if (section === 'transform') {
+                block.transform = { ...block.transform, [key]: animVal };
+            }
+        }
+        propertyTracks.splice(ptIdx, 1);
+    } else {
+        const def = getPropertyDef(path);
+        const value = def?.getValue(props.motionTrack.block);
+        const frame = currentFrame.value;
+        const interp = def?.defaultInterpolation ?? 'linear';
+        propertyTracks.push({
+            propertyPath: path,
+            keyframes: [{ frame, value, interpolation: interp }],
+            enabled: true,
+        });
+    }
+    emit('update-track', { ...props.motionTrack, block: { ...block, propertyTracks } });
+};
+
+// --- Item override helpers ---
+
+const getOrCreateOverride = (itemId: string) => {
+    if (!props.motionTrack) return { overrides: [], idx: -1, override: null as any };
+    const overrides = [...props.motionTrack.block.overrides];
+    let idx = overrides.findIndex((o) => o.sourceItemId === itemId);
+    if (idx < 0) {
+        overrides.push({ sourceItemId: itemId, hidden: false });
+        idx = overrides.length - 1;
+    }
+    return { overrides, idx, override: overrides[idx] };
+};
+
+const updateItemStyleOverride = (itemId: string, key: keyof MotionStyle, value: any) => {
+    if (!props.motionTrack) return;
+    const { overrides, idx } = getOrCreateOverride(itemId);
+    overrides[idx] = { ...overrides[idx], styleOverride: { ...(overrides[idx].styleOverride || {}), [key]: value } };
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
+};
+
+const updateItemTransformOverride = (itemId: string, key: keyof MotionTransform, value: any) => {
+    if (!props.motionTrack) return;
+    const { overrides, idx } = getOrCreateOverride(itemId);
+    overrides[idx] = { ...overrides[idx], transformOverride: { ...(overrides[idx].transformOverride || {}), [key]: value } };
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
+};
+
+const updateItemEnterExitOverride = (itemId: string, which: 'enter' | 'exit', key: keyof MotionEnterExit, value: any) => {
+    if (!props.motionTrack) return;
+    const overrideKey = which === 'enter' ? 'enterOverride' : 'exitOverride';
+    const { overrides, idx } = getOrCreateOverride(itemId);
+    overrides[idx] = { ...overrides[idx], [overrideKey]: { ...((overrides[idx] as any)[overrideKey] || {}), [key]: value } };
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
+};
+
+const clearItemSelection = () => {
+    selectedItemId.value = null;
+    selectedWordIndex.value = null;
+};
+
+const onSelectItem = (itemId: string | null) => {
+    selectedItemId.value = itemId;
+    selectedWordIndex.value = null;
+};
+
+const onSelectWord = (idx: number) => {
+    selectedWordIndex.value = selectedWordIndex.value === idx ? null : idx;
+};
+
+const updateWordStyle = (key: keyof MotionStyle, value: any) => {
+    if (!props.motionTrack || !selectedItemId.value || selectedWordIndex.value === null) return;
+    const overrides = [...props.motionTrack.block.overrides];
+    let idx = overrides.findIndex((o) => o.sourceItemId === selectedItemId.value);
+    if (idx < 0) {
+        overrides.push({ sourceItemId: selectedItemId.value, hidden: false });
+        idx = overrides.length - 1;
+    }
+    const existing = overrides[idx].wordStyleMap || {};
+    const wordEntry = { ...(existing[selectedWordIndex.value!] || {}), [key]: value };
+    overrides[idx] = { ...overrides[idx], wordStyleMap: { ...existing, [selectedWordIndex.value!]: wordEntry } };
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
+};
+
+const hasWordOverride = (wordIdx: number): boolean => {
+    if (!selectedItemId.value || !props.motionTrack) return false;
+    const o = props.motionTrack.block.overrides.find((x) => x.sourceItemId === selectedItemId.value);
+    return !!(o?.wordStyleMap && o.wordStyleMap[wordIdx]);
+};
+
 const backgroundFitValue = computed(() => props.backgroundImageFit || 'cover');
 const onUploadBackgroundImage = (event: Event) => {
     const input = event.target as HTMLInputElement;
@@ -195,273 +294,144 @@ const onUploadBackgroundImage = (event: Event) => {
 </script>
 
 <template>
-    <div class="item-inspector">
-        <div class="item-inspector__header">
-            <span class="item-inspector__title">Motion Inspector</span>
-        </div>
-
+    <div class="project-inspector motion-inspector">
         <div v-if="!motionTrack" class="inspector-empty">
-            Select a motion track to edit source and timing.
+            Select a motion track to edit.
         </div>
 
         <template v-else>
-            <div class="inspector-field">
-                <label>Type</label>
-                <div class="inspector-value">{{ motionTrack.block.type }}</div>
-                <span class="inspector-hint">Type is locked after creation. Delete and add a new track to change it.</span>
-            </div>
-
-            <div class="inspector-field">
-                <label>Source Track</label>
-                <select
-                    class="inspector-input"
-                    :value="motionTrack.block.sourceTrackId"
-                    @change="updateSourceTrack(($event.target as HTMLSelectElement).value)"
-                >
-                    <option v-for="track in lyricTracks" :key="track.id" :value="track.id">
-                        {{ track.name }}
-                    </option>
-                </select>
-                <span v-if="sourceMissing" class="inspector-hint" style="color:#e57373;">
-                    Source track missing. Reassign to render.
+            <!-- Item editing banner -->
+            <div v-if="selectedItemId && editingItemLabel" class="motion-inspector__item-banner">
+                <span class="motion-inspector__item-label">
+                    Editing: <strong>{{ selectedWordIndex !== null ? selectedItemWords[selectedWordIndex] : editingItemLabel }}</strong>
+                    <template v-if="selectedWordIndex !== null"> <span style="color:#666;">(word)</span></template>
                 </span>
+                <button class="btn-sm" @click="selectedWordIndex !== null ? (selectedWordIndex = null) : clearItemSelection()">
+                    {{ selectedWordIndex !== null ? 'Back to item' : 'Back to block' }}
+                </button>
+            </div>
+            <!-- Per-word chips -->
+            <div v-if="selectedItemId && selectedItemWords.length > 1" class="motion-inspector__word-chips">
+                <button
+                    v-for="(word, wi) in selectedItemWords"
+                    :key="wi"
+                    class="word-chip"
+                    :class="{ active: selectedWordIndex === wi, 'has-override': hasWordOverride(wi) }"
+                    @click="onSelectWord(wi)"
+                >{{ word }}</button>
             </div>
 
-            <div class="inspector-row">
-                <div class="inspector-field half">
-                    <label>Start (ms)</label>
-                    <input
-                        type="number"
-                        class="inspector-input"
-                        :value="motionTrack.block.startMs"
-                        @input="updateStartMs(Number(($event.target as HTMLInputElement).value || 0))"
-                    />
+            <!-- Source + timing -->
+            <details class="inspector-section" open>
+                <summary class="inspector-section__title">Source &amp; Timing</summary>
+                <div class="inspector-section__content">
+                    <div class="inspector-field">
+                        <label>Source Track</label>
+                        <select class="inspector-input" :value="motionTrack.block.sourceTrackId" @change="updateSourceTrack(($event.target as HTMLSelectElement).value)">
+                            <option v-for="track in lyricTracks" :key="track.id" :value="track.id">{{ track.name }}</option>
+                        </select>
+                        <span v-if="sourceMissing" class="inspector-hint" style="color:#e57373;">Source track missing.</span>
+                    </div>
+                    <div class="motion-tab__row">
+                        <div class="inspector-field" style="flex:1;">
+                            <label>Start <span class="inspector-hint">{{ formatTime(motionTrack.block.startMs) }}</span></label>
+                            <input type="number" class="inspector-input" :value="startFrame" min="0" @change="updateStartFrame(Number(($event.target as HTMLInputElement).value) || 0)" />
+                        </div>
+                        <div class="inspector-field" style="flex:1;">
+                            <label>End <span class="inspector-hint">{{ formatTime(motionTrack.block.endMs) }}</span></label>
+                            <input type="number" class="inspector-input" :value="endFrame" min="0" @change="updateEndFrame(Number(($event.target as HTMLInputElement).value) || 0)" />
+                        </div>
+                    </div>
                 </div>
-                <div class="inspector-field half">
-                    <label>End (ms)</label>
-                    <input
-                        type="number"
-                        class="inspector-input"
-                        :value="motionTrack.block.endMs"
-                        @input="updateEndMs(Number(($event.target as HTMLInputElement).value || 0))"
-                    />
-                </div>
-            </div>
+            </details>
 
+            <!-- Style -->
             <details class="inspector-section" open>
                 <summary class="inspector-section__title">Style</summary>
                 <div class="inspector-section__content">
-                    <div class="inspector-row">
-                        <div class="inspector-field half">
-                            <label>Font Size</label>
-                            <input type="number" class="inspector-input" :value="motionTrack.block.style.fontSize" @input="updateStyle('fontSize', Number(($event.target as HTMLInputElement).value || 8))" />
-                        </div>
-                        <div class="inspector-field half">
-                            <label>Weight</label>
-                            <input type="number" class="inspector-input" :value="motionTrack.block.style.fontWeight" @input="updateStyle('fontWeight', Number(($event.target as HTMLInputElement).value || 400))" />
-                        </div>
-                    </div>
-                    <div class="inspector-row">
-                        <div class="inspector-field half">
-                            <label>Text Case</label>
-                            <select class="inspector-input" :value="motionTrack.block.style.textCase" @change="updateStyle('textCase', ($event.target as HTMLSelectElement).value as any)">
-                                <option value="none">None</option>
-                                <option value="uppercase">UPPERCASE</option>
-                                <option value="lowercase">lowercase</option>
-                                <option value="capitalize">Capitalize</option>
-                            </select>
-                        </div>
-                        <div class="inspector-field half">
-                            <label>Opacity</label>
-                            <input type="number" min="0" max="1" step="0.05" class="inspector-input" :value="motionTrack.block.style.opacity" @input="updateStyle('opacity', Number(($event.target as HTMLInputElement).value || 1))" />
-                        </div>
-                    </div>
-                    <div class="inspector-row">
-                        <div class="inspector-field half">
-                            <label>Color</label>
-                            <input type="color" class="inspector-input" :value="motionTrack.block.style.color" @input="updateStyle('color', ($event.target as HTMLInputElement).value)" />
-                        </div>
-                        <div class="inspector-field half">
-                            <label>Background</label>
-                            <input type="color" class="inspector-input" :value="motionTrack.block.style.backgroundColor || '#000000'" @input="updateStyle('backgroundColor', ($event.target as HTMLInputElement).value)" />
-                        </div>
-                    </div>
+                    <MotionAppearanceTab
+                        :track="motionTrack"
+                        :current-frame="currentFrame"
+                        :project-font-family="projectFontFamily"
+                        @update-style="updateStyle"
+                        @toggle-keyframe="toggleKeyframe"
+                        @toggle-property-keyframing="togglePropertyKeyframing"
+                    />
                 </div>
             </details>
 
+            <!-- Position -->
             <details class="inspector-section" open>
-                <summary class="inspector-section__title">Transform</summary>
+                <summary class="inspector-section__title">Position</summary>
                 <div class="inspector-section__content">
-                    <div class="inspector-row">
-                        <div class="inspector-field half">
-                            <label>Anchor X</label>
-                            <select class="inspector-input" :value="motionTrack.block.transform.anchorX" @change="updateTransform('anchorX', ($event.target as HTMLSelectElement).value as any)">
-                                <option value="left">Left</option>
-                                <option value="center">Center</option>
-                                <option value="right">Right</option>
-                            </select>
-                        </div>
-                        <div class="inspector-field half">
-                            <label>Anchor Y</label>
-                            <select class="inspector-input" :value="motionTrack.block.transform.anchorY" @change="updateTransform('anchorY', ($event.target as HTMLSelectElement).value as any)">
-                                <option value="top">Top</option>
-                                <option value="center">Center</option>
-                                <option value="bottom">Bottom</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="inspector-row">
-                        <div class="inspector-field half">
-                            <label>Offset X</label>
-                            <input type="number" class="inspector-input" :value="motionTrack.block.transform.offsetX" @input="updateTransform('offsetX', Number(($event.target as HTMLInputElement).value || 0))" />
-                        </div>
-                        <div class="inspector-field half">
-                            <label>Offset Y</label>
-                            <input type="number" class="inspector-input" :value="motionTrack.block.transform.offsetY" @input="updateTransform('offsetY', Number(($event.target as HTMLInputElement).value || 0))" />
-                        </div>
-                    </div>
+                    <MotionPositionTab
+                        :track="motionTrack"
+                        :current-frame="currentFrame"
+                        @update-transform="updateTransform"
+                        @update-anchor="updateAnchor"
+                        @update-style-opacity="updateStyleOpacity"
+                        @toggle-keyframe="toggleKeyframe"
+                        @toggle-property-keyframing="togglePropertyKeyframing"
+                    />
                 </div>
             </details>
 
+            <!-- Animation -->
             <details class="inspector-section" open>
-                <summary class="inspector-section__title">Enter / Exit</summary>
+                <summary class="inspector-section__title">Animation</summary>
                 <div class="inspector-section__content">
-                    <div class="inspector-row">
-                        <div class="inspector-field half">
-                            <label>Enter Style</label>
-                            <select class="inspector-input" :value="motionTrack.block.enter.style" @change="updateEnterExit('enter', 'style', ($event.target as HTMLSelectElement).value as any)">
-                                <option value="fade">Fade</option>
-                                <option value="slideUp">Slide Up</option>
-                                <option value="slideDown">Slide Down</option>
-                                <option value="slideLeft">Slide Left</option>
-                                <option value="slideRight">Slide Right</option>
-                                <option value="scale">Scale</option>
-                                <option value="none">None</option>
-                            </select>
-                        </div>
-                        <div class="inspector-field half">
-                            <label>Exit Style</label>
-                            <select class="inspector-input" :value="motionTrack.block.exit.style" @change="updateEnterExit('exit', 'style', ($event.target as HTMLSelectElement).value as any)">
-                                <option value="fade">Fade</option>
-                                <option value="slideUp">Slide Up</option>
-                                <option value="slideDown">Slide Down</option>
-                                <option value="slideLeft">Slide Left</option>
-                                <option value="slideRight">Slide Right</option>
-                                <option value="scale">Scale</option>
-                                <option value="none">None</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="inspector-row">
-                        <div class="inspector-field half">
-                            <label>Enter Fraction</label>
-                            <input type="number" class="inspector-input" min="0" max="1" step="0.05" :value="motionTrack.block.enter.fraction" @input="updateEnterExit('enter', 'fraction', Number(($event.target as HTMLInputElement).value || 0))" />
-                        </div>
-                        <div class="inspector-field half">
-                            <label>Exit Fraction</label>
-                            <input type="number" class="inspector-input" min="0" max="1" step="0.05" :value="motionTrack.block.exit.fraction" @input="updateEnterExit('exit', 'fraction', Number(($event.target as HTMLInputElement).value || 0))" />
-                        </div>
-                    </div>
+                    <MotionAnimationTab
+                        :track="motionTrack"
+                        @update-enter-exit="updateEnterExit"
+                    />
                 </div>
             </details>
 
-            <details class="inspector-section" v-if="motionTrack.block.type === 'wordReveal'" open>
-                <summary class="inspector-section__title">Type Parameters</summary>
+            <!-- Items -->
+            <details class="inspector-section" open>
+                <summary class="inspector-section__title">Items</summary>
                 <div class="inspector-section__content">
-                    <label class="overlay-toggle">
-                        <input
-                            type="checkbox"
-                            :checked="!!motionTrack.block.params?.accumulate"
-                            @change="updateParam('accumulate', ($event.target as HTMLInputElement).checked)"
-                        />
-                        Accumulate Words
-                    </label>
+                    <MotionItemsTab
+                        :track="motionTrack"
+                        :lyric-tracks="lyricTracks"
+                        :playhead-ms="playheadMs ?? 0"
+                        :fps="fps ?? 60"
+                        @update-track="$emit('update-track', $event)"
+                        @seek-to-ms="$emit('seek-to-ms', $event)"
+                        @select-item="onSelectItem"
+                    />
                 </div>
             </details>
 
+            <!-- Background -->
             <details class="inspector-section">
-                <summary class="inspector-section__title">Item Overrides</summary>
-                <div class="inspector-section__content">
-                    <div v-if="rangeItems.length === 0" class="inspector-empty">No source items in this block range.</div>
-                    <div v-for="item in rangeItems" :key="item.id" class="track-row" style="display:block; padding:6px 0;">
-                        <div style="display:flex; justify-content:space-between; gap:8px;">
-                            <span class="track-row__name">{{ item.text }}</span>
-                            <label class="overlay-toggle" style="padding:0;">
-                                <input
-                                    type="checkbox"
-                                    :checked="!!overrideFor(item.id)?.hidden"
-                                    @change="toggleOverrideHidden(item.id, ($event.target as HTMLInputElement).checked)"
-                                />
-                                Hidden
-                            </label>
-                        </div>
-                        <div class="inspector-actions" style="margin-top:6px;">
-                            <button @click="editingOverrideItemId = editingOverrideItemId === item.id ? null : item.id">
-                                {{ editingOverrideItemId === item.id ? 'Close Rich Override' : 'Edit Rich Override' }}
-                            </button>
-                            <button @click="updateOverrideText(item.id, '')">
-                                Reset to Default
-                            </button>
-                        </div>
-                        <div class="inspector-hint" style="margin-top:4px;">
-                            {{ hasRichOverride(item.id) ? 'Rich override applied' : (overrideFor(item.id)?.textOverride ? 'Plain override applied' : 'No text override') }}
-                        </div>
-                        <MotionItemOverrideEditor
-                            v-if="editingOverrideItemId === item.id"
-                            :model-value="overrideFor(item.id)?.textOverride || ''"
-                            :source-text="item.text"
-                            @update:model-value="updateOverrideText(item.id, $event)"
-                            @reset="updateOverrideText(item.id, '')"
-                            @cancel="editingOverrideItemId = null"
-                        />
-                    </div>
-                </div>
-            </details>
-
-            <details class="inspector-section" open>
                 <summary class="inspector-section__title">Background</summary>
                 <div class="inspector-section__content">
-                    <div class="inspector-row">
-                        <div class="inspector-field half">
-                            <label>Background Color</label>
-                            <input
-                                type="color"
-                                class="inspector-input"
-                                :value="backgroundColor === 'transparent' ? '#000000' : backgroundColor"
-                                @input="emit('set-background-color', ($event.target as HTMLInputElement).value)"
-                            />
+                    <div class="motion-tab__row">
+                        <div class="inspector-field" style="flex:1;">
+                            <label>Color</label>
+                            <input type="color" class="inspector-input" :value="backgroundColor === 'transparent' ? '#000000' : backgroundColor" @input="emit('set-background-color', ($event.target as HTMLInputElement).value)" />
                         </div>
-                        <div class="inspector-field half">
+                        <div class="inspector-field" style="flex:1;">
                             <label>Transparent</label>
-                            <label class="overlay-toggle" style="padding-top: 7px;">
-                                <input
-                                    type="checkbox"
-                                    :checked="backgroundColor === 'transparent'"
-                                    @change="emit('set-background-color', ($event.target as HTMLInputElement).checked ? 'transparent' : '#000000')"
-                                />
-                                Alpha
+                            <label class="overlay-toggle" style="padding-top:4px;">
+                                <input type="checkbox" :checked="backgroundColor === 'transparent'" @change="emit('set-background-color', ($event.target as HTMLInputElement).checked ? 'transparent' : '#000000')" /> Alpha
                             </label>
                         </div>
                     </div>
                     <div class="inspector-field">
-                        <label>Background Image Fit</label>
-                        <select
-                            class="inspector-input"
-                            :value="backgroundFitValue"
-                            @change="emit('set-background-fit', ($event.target as HTMLSelectElement).value as any)"
-                        >
+                        <label>Image Fit</label>
+                        <select class="inspector-input" :value="backgroundFitValue" @change="emit('set-background-fit', ($event.target as HTMLSelectElement).value as any)">
                             <option value="cover">Cover</option>
                             <option value="contain">Contain</option>
                             <option value="stretch">Stretch</option>
                         </select>
                     </div>
                     <div class="inspector-field">
-                        <label>Background Image</label>
+                        <label>Image</label>
                         <input type="file" accept="image/*" class="inspector-input" @change="onUploadBackgroundImage" />
-                        <div class="inspector-hint" v-if="backgroundImage">{{ backgroundImage }}</div>
-                        <button v-if="backgroundImage" class="btn-sm danger" style="margin-top:6px;" @click="emit('clear-background-image')">
-                            Remove Background Image
-                        </button>
+                        <span v-if="backgroundImage" class="inspector-hint">{{ backgroundImage }}</span>
+                        <button v-if="backgroundImage" class="btn-sm danger" style="margin-top:4px;" @click="emit('clear-background-image')">Remove</button>
                     </div>
                 </div>
             </details>

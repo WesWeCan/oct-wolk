@@ -61,11 +61,11 @@ export function computeEnterExitProgress(
 export function applyEnterExitToAlpha(
     enterProgress: number,
     exitProgress: number,
-    enterStyle: MotionAnimationStyle,
-    exitStyle: MotionAnimationStyle,
+    enter: MotionEnterExit,
+    exit: MotionEnterExit,
 ): number {
-    const enterAlpha = enterStyle === 'none' ? 1 : clamp01(enterProgress);
-    const exitAlpha = exitStyle === 'none' ? 1 : 1 - clamp01(exitProgress);
+    const enterAlpha = enter.opacityStart + ((enter.opacityEnd - enter.opacityStart) * clamp01(enterProgress));
+    const exitAlpha = exit.opacityStart + ((exit.opacityEnd - exit.opacityStart) * clamp01(exitProgress));
     return clamp01(enterAlpha * exitAlpha);
 }
 

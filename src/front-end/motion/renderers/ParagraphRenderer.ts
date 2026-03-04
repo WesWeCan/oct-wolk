@@ -12,13 +12,17 @@ type LayoutWord = {
 };
 
 export class ParagraphRenderer implements MotionBlockRenderer {
-    prepare(): void {}
+    prepare(): void {
+        return;
+    }
 
     render(
         ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
         _activeItems: ResolvedItem[],
         context: MotionRenderContext,
+        _animatedProps: Record<string, any>,
     ): void {
+        void _animatedProps;
         const items = context.allItems.slice().sort((a, b) => a.startMs - b.startMs);
         if (items.length === 0) return;
 
@@ -79,8 +83,8 @@ export class ParagraphRenderer implements MotionBlockRenderer {
             const alpha = applyEnterExitToAlpha(
                 word.item.enterProgress,
                 word.item.exitProgress,
-                context.block.enter.style,
-                context.block.exit.style,
+                word.item.enter,
+                word.item.exit,
             ) * word.item.style.opacity;
             if (alpha <= 0) continue;
 
@@ -92,5 +96,7 @@ export class ParagraphRenderer implements MotionBlockRenderer {
         ctx.restore();
     }
 
-    dispose(): void {}
+    dispose(): void {
+        return;
+    }
 }

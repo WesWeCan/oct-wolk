@@ -166,6 +166,9 @@ Rules:
 
 ### 4.2 Layer B — Motion Mode
 
+> NOTE (2026-03-02): Section 4.2 is partially historical. Canonical implementation guidance now lives in `MOTION-ARCHITECTURE.md` and `MOTION-UX-FOUNDATION.md`.
+> In conflicts, follow those docs plus `REBUILD-PROGRESS.md` strict verification semantics.
+
 #### Visual Layer Model
 
 ```

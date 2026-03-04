@@ -1,5 +1,6 @@
 import type {
     MotionBlock,
+    MotionEnterExit,
     MotionStyle,
     MotionTrack,
     MotionTransform,
@@ -17,6 +18,9 @@ export interface ResolvedItem {
     isActive: boolean;
     style: MotionStyle;
     transform: MotionTransform;
+    enter: MotionEnterExit;
+    exit: MotionEnterExit;
+    wordStyleMap?: Record<number, Partial<MotionStyle>>;
 }
 
 export interface MotionRenderContext {
@@ -29,6 +33,16 @@ export interface MotionRenderContext {
     allItems: ResolvedItem[];
 }
 
+export interface RendererBounds {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+    scale: number;
+    anchorX?: 'left' | 'center' | 'right';
+}
+
 export interface MotionBlockRenderer {
     prepare(block: MotionBlock): void;
     render(
@@ -37,5 +51,6 @@ export interface MotionBlockRenderer {
         context: MotionRenderContext,
         animatedProps: Record<string, any>,
     ): void;
+    getLastBounds?(): RendererBounds | null;
     dispose(): void;
 }

@@ -3,13 +3,17 @@ import { applyEnterExitToAlpha } from '@/front-end/utils/motion/enterExitAnimati
 import { buildFont, spansFromRichText } from '@/front-end/utils/motion/renderTipTapSpans';
 
 export class WordRevealRenderer implements MotionBlockRenderer {
-    prepare(): void {}
+    prepare(): void {
+        return;
+    }
 
     render(
         ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
         _activeItems: ResolvedItem[],
         context: MotionRenderContext,
+        _animatedProps: Record<string, any>,
     ): void {
+        void _animatedProps;
         const items = context.allItems.slice().sort((a, b) => a.startMs - b.startMs);
         if (items.length === 0) return;
 
@@ -44,8 +48,8 @@ export class WordRevealRenderer implements MotionBlockRenderer {
             const alpha = applyEnterExitToAlpha(
                 item.enterProgress,
                 item.exitProgress,
-                context.block.enter.style,
-                context.block.exit.style,
+                item.enter,
+                item.exit,
             ) * item.style.opacity;
             if (alpha <= 0) return;
             ctx.globalAlpha = alpha;
@@ -68,5 +72,7 @@ export class WordRevealRenderer implements MotionBlockRenderer {
         ctx.restore();
     }
 
-    dispose(): void {}
+    dispose(): void {
+        return;
+    }
 }

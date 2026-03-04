@@ -44,6 +44,8 @@ export interface MotionEnterExit {
     maxFrames: number;
     easing: string;
     style: MotionAnimationStyle;
+    opacityStart: number;
+    opacityEnd: number;
 }
 
 export interface MotionStyle {
@@ -51,6 +53,7 @@ export interface MotionStyle {
     fontSize: number;
     fontWeight: number;
     fontStyle: 'normal' | 'italic' | 'oblique';
+    underline: boolean;
     textCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
     letterSpacing: number;
     lineHeight: number;
@@ -78,6 +81,9 @@ export interface ItemOverride {
     textOverride?: string;
     styleOverride?: Partial<MotionStyle>;
     transformOverride?: Partial<MotionTransform>;
+    enterOverride?: Partial<MotionEnterExit>;
+    exitOverride?: Partial<MotionEnterExit>;
+    wordStyleMap?: Record<number, Partial<MotionStyle>>;
 }
 
 export interface MotionBlock {
@@ -170,6 +176,7 @@ export const DEFAULT_MOTION_STYLE: MotionStyle = {
     fontSize: 72,
     fontWeight: 400,
     fontStyle: 'normal',
+    underline: false,
     textCase: 'none',
     letterSpacing: 0,
     lineHeight: 1.2,
@@ -194,6 +201,8 @@ export const DEFAULT_MOTION_ENTER_EXIT: MotionEnterExit = {
     maxFrames: 30,
     easing: 'easeOut',
     style: 'fade',
+    opacityStart: 0,
+    opacityEnd: 1,
 };
 
 export const TRACK_COLORS = [

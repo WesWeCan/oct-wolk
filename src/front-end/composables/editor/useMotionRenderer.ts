@@ -105,7 +105,9 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
             const animatedProps: Record<string, any> = {};
             for (const propertyTrack of block.propertyTracks || []) {
                 if (!propertyTrack?.propertyPath) continue;
-                const last = propertyTrack.keyframes?.at(-1);
+                if (propertyTrack.enabled === false) continue;
+                if (!propertyTrack.keyframes?.length) continue;
+                const last = propertyTrack.keyframes.at(-1);
                 animatedProps[propertyTrack.propertyPath] = evalInterpolatedAtFrame(
                     propertyTrack as any,
                     currentFrame,
@@ -133,8 +135,14 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
         bgImageFailed.clear();
     };
 
+    const getRendererBounds = (trackId: string) => {
+        const entry = rendererByTrackId.value.get(trackId);
+        return entry?.renderer.getLastBounds?.() ?? null;
+    };
+
     return {
         renderMotionFrame,
+        getRendererBounds,
         dispose,
     };
 }

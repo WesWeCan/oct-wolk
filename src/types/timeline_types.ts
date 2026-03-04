@@ -52,6 +52,7 @@ export interface Keyframe<T = any> {
 export interface PropertyTrack<T = any> {
     propertyPath: string;
     keyframes: Keyframe<T>[];
+    enabled?: boolean;
 }
 
 export interface SceneDocumentBase {

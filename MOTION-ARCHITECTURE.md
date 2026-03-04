@@ -1,7 +1,7 @@
 # WOLK Motion Architecture — Phase 2 Redesign
 
 > Last updated: 2026-03-02
-> Status: Design document — awaiting approval before implementation
+> Status: Active implementation document — foundation in progress
 > Context: This supersedes the original PRD Section 4.2 for Motion Mode.
 
 ---
@@ -93,7 +93,7 @@ Motion blocks live on **motion tracks** in the timeline. A motion track:
 
 **Why one block per track:** This is the least error-prone design. Each track represents one visual element on screen. Multiple elements = multiple tracks. This avoids complex within-track block management and makes the timeline immediately readable — each lane is one "thing" on screen. It also matches how users think: "I want words at the top AND a subtitle at the bottom" = two tracks, not two blocks on one track.
 
-**Creating a new motion track:** The user picks a motion block type from a list (like choosing a scene type). This creates a new track with a single block. The block starts at the playhead position with a **default duration of 5 seconds** (clamped to not exceed the audio end). The user then trims/extends it as needed.
+**Creating a new motion track:** The user picks a motion block type from a list (like choosing a scene type). This creates a new track with a single block. The block starts at the playhead position with a **default duration of 10 seconds** (clamped to not exceed the audio end). The user then trims/extends it as needed.
 
 ### 1.3 Motion Block Types
 
@@ -317,9 +317,9 @@ export interface WolkProjectSettings {
 
 ### 2.7 Custom Canvas Resolution
 
-The project already has `renderWidth` and `renderHeight` in `WolkProjectSettings`. These define the canvas size for both preview and export. The OffscreenCanvas render target is sized to these dimensions.
+The project already has `renderWidth` and `renderHeight` in `WolkProjectSettings`. These define the canvas size for both preview and export. The main-thread render canvas is sized to these dimensions.
 
-**The motion renderer uses the same OffscreenCanvas pattern** as the existing preview system (`usePreviewCanvas`). The render canvas is created at `renderWidth × renderHeight` and the preview display scales it to fit the preview panel while maintaining aspect ratio.
+**The motion renderer uses the same dual-canvas preview pattern** as `usePreviewCanvas`. The render canvas is created at `renderWidth × renderHeight` and the preview display scales it to fit the preview panel while maintaining aspect ratio.
 
 **In the Project Inspector**, add width/height controls with common presets:
 - 1920×1080 (HD landscape)

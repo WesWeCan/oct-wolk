@@ -65,7 +65,21 @@ export function resolveActiveItems(
             if (override?.hidden) return null;
             const { text: resolvedText, richText } = resolveOverrideText(item.text, override?.textOverride);
 
-            const { enterProgress, exitProgress } = computeEnterExitProgress(item, currentFrame, fps, enter, exit);
+            const resolvedEnter = {
+                ...enter,
+                ...(override?.enterOverride ?? {}),
+            };
+            const resolvedExit = {
+                ...exit,
+                ...(override?.exitOverride ?? {}),
+            };
+            const { enterProgress, exitProgress } = computeEnterExitProgress(
+                item,
+                currentFrame,
+                fps,
+                resolvedEnter,
+                resolvedExit,
+            );
             return {
                 id: item.id,
                 text: resolvedText,
@@ -83,7 +97,10 @@ export function resolveActiveItems(
                     ...block.transform,
                     ...(override?.transformOverride ?? {}),
                 },
-            } satisfies ResolvedItem;
+                enter: resolvedEnter,
+                exit: resolvedExit,
+                wordStyleMap: override?.wordStyleMap,
+            } as ResolvedItem;
         })
         .filter((item): item is ResolvedItem => item !== null);
 }
@@ -107,7 +124,21 @@ export function resolveBlockItems(
             if (override?.hidden) return null;
             const { text: resolvedText, richText } = resolveOverrideText(item.text, override?.textOverride);
 
-            const { enterProgress, exitProgress } = computeEnterExitProgress(item, currentFrame, fps, enter, exit);
+            const resolvedEnter = {
+                ...enter,
+                ...(override?.enterOverride ?? {}),
+            };
+            const resolvedExit = {
+                ...exit,
+                ...(override?.exitOverride ?? {}),
+            };
+            const { enterProgress, exitProgress } = computeEnterExitProgress(
+                item,
+                currentFrame,
+                fps,
+                resolvedEnter,
+                resolvedExit,
+            );
             return {
                 id: item.id,
                 text: resolvedText,
@@ -125,7 +156,10 @@ export function resolveBlockItems(
                     ...block.transform,
                     ...(override?.transformOverride ?? {}),
                 },
-            } satisfies ResolvedItem;
+                enter: resolvedEnter,
+                exit: resolvedExit,
+                wordStyleMap: override?.wordStyleMap,
+            } as ResolvedItem;
         })
         .filter((item): item is ResolvedItem => item !== null);
 }

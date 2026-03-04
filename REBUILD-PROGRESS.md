@@ -176,7 +176,8 @@
   - Result: needs verification
 - [-] Step 9: Motion canvas compositor (useMotionRenderer)
   - Implemented: multi-track compositing, renderer lifecycle, property-track evaluation, type registration for subtitle/wordReveal/paragraph
-  - Remaining for completion: background image pipeline (Step 14 dependency), export integration hooks (Step 16 dependency)
+  - Implemented: animated property application for subtitle path (`transform.offsetX/offsetY/scale/rotation`, `style.opacity`)
+  - Remaining for completion: broader animated-prop parity for legacy `wordReveal`/`paragraph` compatibility path
   - Manual verification requested: overlapping tracks respect z-order and remain stable while scrubbing
   - Result: needs verification
 - [-] Step 10: Motion track UI — timeline lane
@@ -186,9 +187,16 @@
   - Manual verification requested: drag/trim/snap behavior works across zoom levels
   - Result: needs verification
 - [-] Step 11: Motion inspector
-  - Implemented: block settings, source binding, timing, style, transform, enter/exit controls, basic item overrides, wordReveal param
-  - Remaining for completion: richer per-item style/transform override UX + TipTap editor (Step 15)
-  - Manual verification requested: inspector edits live-update preview without regressions
+  - Implemented: **UX REDESIGN** — tabbed single-column layout (Style, Position, Anim, Items) via 4 sub-components
+  - Implemented: Style tab with font family/size/weight, bold/italic/underline toggles, color/opacity, text case chips, advanced section (letter spacing, line height, BG)
+  - Implemented: Position tab with 3x3 anchor grid, offset X/Y, scale, rotation — each with keyframe diamond icon
+  - Implemented: Animation tab with enter/exit style chips, fraction slider, easing dropdown, opacity start/end controls
+  - Implemented: Items tab with compact word list, search, hide toggle, seek-to-playhead, override indicator dot
+  - Implemented: Context-switch — selecting an item routes Style/Position/Anim edits to that item's overrides
+  - Implemented: Per-word styling — word chips for multi-word items, scoping Style tab to individual words via `wordStyleMap`
+  - Implemented: "Editing: [word]" banner with "Back to block" / "Back to item" navigation
+  - Remaining for completion: final polish for edge cases and testing across block types
+  - Manual verification requested: inspector tab edits live-update preview, item/word context-switch works, per-word styling renders
   - Result: needs verification
 - [-] Step 12: Motion track list panel
   - Implemented: add by block type, select, enable/disable, duplicate, reorder (up/down), delete
@@ -197,8 +205,18 @@
   - Result: needs verification
 - [-] Step 13: Wire into ProjectEditor.vue
   - Implemented: motion sidebar/inspector/lanes, lyric-lane lock in motion mode, orphan cleanup on load/mode switch with non-blocking notice, motion keyboard parity (copy/paste/delete/nudge)
+  - Implemented: **UX REDESIGN** — removed timeline keyframe sublanes (PropertyMiniLane) and expando rows in favor of inspector-integrated keyframe diamonds
+  - Implemented: `useMotionGizmo` composable draws visual bounding-box/handles on overlay canvas (move/scale/rotate)
+  - Implemented: gizmo toggle button (diamond icon) replaces old "Transform Tool" text button in monitor header
+  - Implemented: removed "Keyframes" toggle button (keyframes now managed via Position tab diamonds)
+  - Implemented: cleaned up old expando CSS classes (`.motion-track-stack`, `.motion-row-base`, `.motion-row-expando`, `.motion-keyframe-lane-row`, `.motion-keyframe-label`)
   - Remaining for completion: final polish pass for all motion-mode shortcuts and selection edge cases
-  - Manual verification requested: full mode toggle behavior and shortcut parity
+  - Manual verification requested:
+    - Confirm motion tracks display at normal 42px height (no expando)
+    - Confirm gizmo toggle activates visual bounding box on selected track in monitor
+    - Confirm drag gizmo handles for move/scale/rotate update preview live
+    - Confirm keyframe diamonds in Position tab correctly add/remove keyframes at current frame
+    - Confirm wheel pan/zoom + motion drag/trim still behave correctly
   - Result: needs verification
 - [-] Step 14: Background image support
   - Implemented: project-level `backgroundImageFit` (`cover`/`contain`/`stretch`) in project model/storage defaults
@@ -209,16 +227,20 @@
     - Switch fit mode across `cover`, `contain`, `stretch` and confirm behavior
     - Toggle transparent background and confirm alpha canvas base still works
   - Result: needs verification
-- [-] Step 15: Per-item rich text overrides (TipTap)
-  - Implemented: added `MotionItemOverrideEditor.vue` using TipTap for per-item override authoring (foundation pass: bold/italic editor controls)
-  - Implemented: override storage now accepts TipTap JSON payloads via existing `textOverride` field, preserving backward compatibility with plain-string overrides
-  - Implemented: render pipeline parses per-item TipTap JSON and applies rich spans in `subtitle`, `wordReveal`, and `paragraph` renderers (bold/italic/color/underline/font attrs when present)
-  - Implemented: override fallback semantics stabilized — hidden suppresses rendering, empty override falls back to source lyric text, and reset actions are explicitly available in the inspector/editor
-  - Remaining for completion: richer toolbar UX (underline/color/font-size/font-family controls), paragraph typography polish for complex mixed-style wrapping, manual export-path validation under Step 16
+- [-] Step 15: Per-item overrides + per-word styling
+  - Implemented: **UX REDESIGN** — deleted `MotionItemOverrideEditor.vue` (TipTap editor); replaced with Items tab + context-switch pattern
+  - Implemented: compact scrollable word list with search, eye toggle, seek-to-playhead, override indicator dot
+  - Implemented: selecting an item in Items tab switches Style/Position/Anim tabs to show that item's overrides
+  - Implemented: `ItemOverride.wordStyleMap` for full per-word style parity (color, opacity, bold, italic, underline, fontSize, fontFamily)
+  - Implemented: word chip UI for multi-word items — click a word to scope Style tab to that specific word
+  - Implemented: `SubtitleRenderer` reads `wordStyleMap` and generates `StyledSpan[]` when no TipTap rich text
+  - Implemented: `spansFromWordStyleMap()` utility in `renderTipTapSpans.ts`
+  - Remaining for completion: test per-word styling end-to-end with complex multi-word items
   - Manual verification requested:
-    - Open Motion mode -> Item Overrides -> `Edit Rich Override` and set bold/italic text on at least 2 lyric items
-    - Scrub/play and confirm rich override styling appears in preview for `subtitle`, `wordReveal`, and `paragraph` blocks
-    - Confirm `Reset to Default` restores original source text behavior without stale formatting
+    - Select an item in Items tab -> confirm Style/Position/Anim tabs now edit that item's overrides
+    - For a multi-word item, click word chips -> confirm individual word styling renders in preview
+    - Confirm "Back to block" / "Back to item" navigation works correctly
+    - Confirm hidden items remain hidden, empty overrides fall back to defaults
   - Result: needs verification
 - [-] Step 16: Export integration
   - Implemented: wired `ExportModal` and export controls into `ProjectEditor.vue` monitor UI for Motion mode
@@ -243,5 +265,9 @@
 - **2026-03-02:** Old scene engine (Three.js) deprecated but preserved for future 3D motion block types (Phase 4+).
 - **2026-03-02:** Motion rendering will use main-thread Canvas 2D (not Web Worker) to avoid font-loading issues.
 - **2026-03-02:** Motion UX execution split documented in `MOTION-UX-FOUNDATION.md` (Foundation first, UX pass second, deferred block types explicit).
+- **2026-03-02:** Active UX pass scope confirmed: 2D + keyframe MVP now, 3D deferred; full per-item override parity targeted.
+- **2026-03-04:** Motion UX Redesign completed: tabbed inspector (Style/Position/Anim/Items), visual transform gizmo on monitor overlay, keyframe diamonds in inspector (replacing timeline sublanes), compact item overrides with per-word `wordStyleMap` styling, TipTap override editor deleted.
+- **2026-03-04:** UX fixes: tabs replaced with stacked `<details>` sections; `markDirty()` now called on every motion track mutation (preview auto-updates); keyframe immutability fix (shallow-copy propertyTracks before mutation); start/end fields show frames with time annotation; items inline-expandable with text override input.
+- **2026-03-04:** Keyframe System Redesign: property registry (`keyframeProperties.ts`) with 16 keyframeable properties (10 moving, 6 stationary); step interpolation fix in `evalInterpolatedAtFrame`; `PropertyTrack.enabled` flag; `PropertyKeyframeLane.vue` with diamonds, drag, dblclick-delete, right-click interpolation menu; inspector checkboxes enable/disable keyframing per property with auto-first-keyframe; `SubtitleRenderer` reads ALL animated style+transform props; renderer reports `lastBounds` for gizmo sync; easing expanded with `easeInCubic`/`easeOutCubic`.
 
 ## Phase 3: Export + Polish — IN PROGRESS

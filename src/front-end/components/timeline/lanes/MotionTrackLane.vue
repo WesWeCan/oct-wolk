@@ -25,6 +25,7 @@ let dragMode: DragMode = 'none';
 let dragStartX = 0;
 let originalStartMs = 0;
 let originalEndMs = 0;
+let originalPropertyTracks: any[] = [];
 let dragging = false;
 const containerRef = ref<HTMLDivElement | null>(null);
 
@@ -59,6 +60,7 @@ const onPointerDown = (e: PointerEvent) => {
     dragStartX = e.clientX;
     originalStartMs = props.track.block.startMs;
     originalEndMs = props.track.block.endMs;
+    originalPropertyTracks = JSON.parse(JSON.stringify(props.track.block.propertyTracks || []));
     dragging = true;
     emit('push-undo');
 
@@ -87,12 +89,25 @@ const onPointerDown = (e: PointerEvent) => {
             nextEnd = Math.max(originalStartMs + 100, originalEndMs + deltaMs);
         }
 
+        let propertyTracks = props.track.block.propertyTracks;
+        if (dragMode === 'move' && originalPropertyTracks.length > 0) {
+            const frameDelta = Math.round(((nextStart - originalStartMs) / 1000) * props.fps);
+            propertyTracks = originalPropertyTracks.map((pt: any) => ({
+                ...pt,
+                keyframes: (pt.keyframes || []).map((kf: any) => ({
+                    ...kf,
+                    frame: Math.max(0, kf.frame + frameDelta),
+                })),
+            }));
+        }
+
         emit('update-track', {
             ...props.track,
             block: {
                 ...props.track.block,
                 startMs: nextStart,
                 endMs: nextEnd,
+                propertyTracks,
             },
         });
     };
