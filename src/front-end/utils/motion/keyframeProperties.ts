@@ -23,12 +23,12 @@ function transformGetter(key: string) {
 
 export const KEYFRAMEABLE_PROPERTIES: KeyframePropertyDef[] = [
     // Moving (numeric, interpolated)
-    { path: 'transform.offsetX', label: 'Offset X', shortLabel: 'X', kind: 'moving', defaultInterpolation: 'linear', getValue: transformGetter('offsetX') },
-    { path: 'transform.offsetY', label: 'Offset Y', shortLabel: 'Y', kind: 'moving', defaultInterpolation: 'linear', getValue: transformGetter('offsetY') },
+    { path: 'transform.offsetX', label: 'Transform X', shortLabel: 'X', kind: 'moving', defaultInterpolation: 'linear', getValue: transformGetter('offsetX') },
+    { path: 'transform.offsetY', label: 'Transform Y', shortLabel: 'Y', kind: 'moving', defaultInterpolation: 'linear', getValue: transformGetter('offsetY') },
     { path: 'transform.scale', label: 'Scale', shortLabel: 'Scl', kind: 'moving', defaultInterpolation: 'linear', getValue: transformGetter('scale'), min: 0.05, max: 10, step: 0.01 },
     { path: 'transform.rotation', label: 'Rotation', shortLabel: 'Rot', kind: 'moving', defaultInterpolation: 'linear', getValue: transformGetter('rotation'), min: -360, max: 360, step: 0.5 },
     { path: 'style.opacity', label: 'Text Opacity', shortLabel: 'TOp', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('opacity'), min: 0, max: 1, step: 0.05 },
-    { path: 'style.globalOpacity', label: 'Global Opacity', shortLabel: 'GOp', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('globalOpacity'), min: 0, max: 1, step: 0.05 },
+    { path: 'style.globalOpacity', label: 'Block Opacity', shortLabel: 'BlO', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('globalOpacity'), min: 0, max: 1, step: 0.05 },
     { path: 'style.fontSize', label: 'Font Size', shortLabel: 'Sz', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('fontSize'), min: 8 },
     { path: 'style.fontWeight', label: 'Font Weight', shortLabel: 'Wt', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('fontWeight'), min: 100, max: 900, step: 100 },
     { path: 'style.letterSpacing', label: 'Letter Spacing', shortLabel: 'LS', kind: 'moving', defaultInterpolation: 'linear', getValue: styleGetter('letterSpacing'), min: -20, max: 80, step: 0.5 },

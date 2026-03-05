@@ -5,6 +5,7 @@ export function usePreviewCanvas(
   previewCanvas: Ref<HTMLCanvasElement | null>,
   targetWidth: ComputedRef<number>,
   targetHeight: ComputedRef<number>,
+  onResize?: () => void,
 ) {
   let previewResizeObserver: ResizeObserver | null = null;
   let containerResizeObserver: ResizeObserver | null = null;
@@ -56,6 +57,7 @@ export function usePreviewCanvas(
     if (canvas) {
       previewResizeObserver = new ResizeObserver(() => {
         drawPreview();
+        onResize?.();
       });
       previewResizeObserver.observe(canvas);
 
@@ -64,6 +66,7 @@ export function usePreviewCanvas(
       if (container && !containerResizeObserver) {
         containerResizeObserver = new ResizeObserver(() => {
           drawPreview();
+          onResize?.();
         });
         containerResizeObserver.observe(container);
       }

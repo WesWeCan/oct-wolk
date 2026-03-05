@@ -42,10 +42,13 @@ export function useMotionGizmo(
             let hh = (reported.height * scale) / 2;
 
             const anchorX = reported.anchorX ?? 'center';
+            const anchorY = reported.anchorY ?? 'center';
             let cx = reported.x * scale;
             let cy = reported.y * scale;
             if (anchorX === 'left') cx += hw;
             else if (anchorX === 'right') cx -= hw;
+            if (anchorY === 'top') cy += hh;
+            else if (anchorY === 'bottom') cy -= hh;
 
             const rotation = (reported.rotation * Math.PI) / 180;
             return { cx, cy, hw, hh, rotation };
@@ -83,6 +86,8 @@ export function useMotionGizmo(
 
         const scale = getScaleFactor();
         const padding = (style.safeAreaPadding ?? 40) * scale;
+        const ox = (style.safeAreaOffsetX ?? 0) * scale;
+        const oy = (style.safeAreaOffsetY ?? 0) * scale;
         const w = renderWidth.value * scale;
         const h = renderHeight.value * scale;
 
@@ -90,7 +95,7 @@ export function useMotionGizmo(
         ctx.strokeStyle = 'rgba(255, 200, 50, 0.45)';
         ctx.lineWidth = 1;
         ctx.setLineDash([6, 4]);
-        ctx.strokeRect(padding, padding, w - padding * 2, h - padding * 2);
+        ctx.strokeRect(padding + ox, padding + oy, w - padding * 2, h - padding * 2);
         ctx.setLineDash([]);
         ctx.restore();
     };

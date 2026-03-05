@@ -1,18 +1,22 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { MotionTrack, MotionTransform, AnchorX, AnchorY } from '@/types/project_types';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 
 const props = defineProps<{
     track: MotionTrack;
     currentFrame: number;
+    renderWidth?: number;
+    renderHeight?: number;
 }>();
 
 const emit = defineEmits<{
     (e: 'update-transform', key: keyof MotionTransform, value: any): void;
     (e: 'update-anchor', x: AnchorX, y: AnchorY): void;
-    (e: 'update-style-global-opacity', value: number): void;
     (e: 'toggle-keyframe', path: string, value: any): void;
     (e: 'toggle-property-keyframing', path: string): void;
+    (e: 'reset-to-defaults'): void;
+    (e: 'set-default-keyframe'): void;
 }>();
 
 const t = () => props.track.block.transform;
@@ -45,25 +49,57 @@ const hasAnyKeyframe = (path: string): boolean => {
     return !!(pt && pt.keyframes?.length);
 };
 
-const resetTransform = () => {
-    emit('update-transform', 'offsetX', 0);
-    emit('update-transform', 'offsetY', 0);
-    emit('update-transform', 'scale', 1);
-    emit('update-transform', 'rotation', 0);
+const safeAreaOffsetRange = (
+    anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
+    padding: number,
+    canvasSize: number,
+    safeAreaOff: number = 0,
+): { min: number; max: number } => {
+    const saMin = padding + safeAreaOff;
+    const saMax = canvasSize - padding + safeAreaOff;
+
+    let anchorPos: number;
+    if (anchor === 'left' || anchor === 'top') anchorPos = saMin;
+    else if (anchor === 'right' || anchor === 'bottom') anchorPos = saMax;
+    else anchorPos = (saMin + saMax) / 2;
+    return { min: saMin - anchorPos, max: saMax - anchorPos };
 };
 
-const fields: { label: string; path: string; key: keyof MotionTransform; min?: number; max?: number; step?: number }[] = [
-    { label: 'X', path: 'transform.offsetX', key: 'offsetX' },
-    { label: 'Y', path: 'transform.offsetY', key: 'offsetY' },
-    { label: 'Scale', path: 'transform.scale', key: 'scale', min: 0.05, max: 10, step: 0.01 },
-    { label: 'Rotation', path: 'transform.rotation', key: 'rotation', min: -360, max: 360, step: 0.5 },
-];
+const fields = computed(() => {
+    const inSafeArea = (props.track.block.style.boundsMode ?? 'safeArea') === 'safeArea';
+    const padding = props.track.block.style.safeAreaPadding ?? 40;
+    const saOx = props.track.block.style.safeAreaOffsetX ?? 0;
+    const saOy = props.track.block.style.safeAreaOffsetY ?? 0;
+    const rw = props.renderWidth;
+    const rh = props.renderHeight;
+
+    let xMin: number | undefined;
+    let xMax: number | undefined;
+    let yMin: number | undefined;
+    let yMax: number | undefined;
+
+    if (inSafeArea && rw && rh) {
+        const xRange = safeAreaOffsetRange(t().anchorX, padding, rw, saOx);
+        const yRange = safeAreaOffsetRange(t().anchorY, padding, rh, saOy);
+        xMin = xRange.min;
+        xMax = xRange.max;
+        yMin = yRange.min;
+        yMax = yRange.max;
+    }
+
+    return [
+        { label: 'Transform X', path: 'transform.offsetX', key: 'offsetX' as keyof MotionTransform, min: xMin, max: xMax, step: 1 },
+        { label: 'Transform Y', path: 'transform.offsetY', key: 'offsetY' as keyof MotionTransform, min: yMin, max: yMax, step: 1 },
+        { label: 'Scale', path: 'transform.scale', key: 'scale' as keyof MotionTransform, min: 0.05, max: 10, step: 0.01 },
+        { label: 'Rotation', path: 'transform.rotation', key: 'rotation' as keyof MotionTransform, min: -360, max: 360, step: 0.5 },
+    ];
+});
 </script>
 
 <template>
     <div class="motion-tab">
         <div class="motion-tab__field">
-            <label>Anchor</label>
+            <label>Position Anchor</label>
             <div class="anchor-grid">
                 <div v-for="(row, ri) in anchorGrid" :key="ri" class="anchor-grid__row">
                     <button
@@ -97,26 +133,9 @@ const fields: { label: string; path: string; key: keyof MotionTransform; min?: n
             />
         </div>
 
-        <div class="motion-tab__kf-field">
-            <AnimatableNumberField
-                label="Global Opacity"
-                :model-value="Number(track.block.style.globalOpacity ?? 1)"
-                :min="0"
-                :max="1"
-                :step="0.05"
-                :fallback-value="1"
-                :show-keyframing="true"
-                :keyframing-enabled="isKeyframingEnabled('style.globalOpacity')"
-                :has-key-at-current-frame="hasKeyframeAtFrame('style.globalOpacity')"
-                :has-any-keyframes="hasAnyKeyframe('style.globalOpacity')"
-                @update:model-value="(value:number) => emit('update-style-global-opacity', value)"
-                @remove-keyframes="emit('toggle-property-keyframing', 'style.globalOpacity')"
-                @toggle-keyframe="(value:number) => emit('toggle-keyframe', 'style.globalOpacity', value)"
-            />
-        </div>
-
         <div class="inspector-actions">
-            <button @click="resetTransform">Reset Transform</button>
+            <button @click="emit('reset-to-defaults')">Reset to Defaults</button>
+            <button @click="emit('set-default-keyframe')">Set Default Keyframe</button>
         </div>
     </div>
 </template>

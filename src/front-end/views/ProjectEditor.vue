@@ -221,7 +221,7 @@ const previewCanvas = ref<HTMLCanvasElement | null>(null);
 const previewOverlay = ref<HTMLCanvasElement | null>(null);
 const targetWidth = computed(() => project.value?.settings.renderWidth || 1920);
 const targetHeight = computed(() => project.value?.settings.renderHeight || 1080);
-const previewCanvasComposable = usePreviewCanvas(renderCanvas, previewCanvas, targetWidth, targetHeight);
+const previewCanvasComposable = usePreviewCanvas(renderCanvas, previewCanvas, targetWidth, targetHeight, () => markDirty());
 const motionRenderer = useMotionRenderer(renderCanvas);
 const exportMode = ref<'realtime' | 'frames'>('frames');
 const exportTimeline = computed<TimelineDocument | null>(() => {
@@ -803,13 +803,27 @@ const kfLabel = (path: string): string => {
     return def?.label ?? path.split('.').pop() ?? '?';
 };
 
-const ensureMotionTrackDefaults = (track: MotionTrack): MotionTrack => ({
-    ...track,
-    enabled: track.enabled !== false,
-    muted: !!track.muted,
-    solo: !!track.solo,
-    locked: !!track.locked,
-});
+const ensureMotionTrackDefaults = (track: MotionTrack): MotionTrack => {
+    const block = { ...track.block };
+    const style = block.style;
+    const transform = block.transform;
+
+    if ((style.boundsMode ?? 'safeArea') === 'safeArea' && transform.anchorX === 'center') {
+        const textAlign = style.textAlign ?? 'center';
+        if (textAlign === 'left' || textAlign === 'right') {
+            block.transform = { ...transform, anchorX: textAlign };
+        }
+    }
+
+    return {
+        ...track,
+        enabled: track.enabled !== false,
+        muted: !!track.muted,
+        solo: !!track.solo,
+        locked: !!track.locked,
+        block,
+    };
+};
 
 const toggleLyricMute = (track: LyricTrack) => onUpdateTrack({ ...track, muted: !track.muted });
 const toggleLyricSolo = (track: LyricTrack) => onUpdateTrack({ ...track, solo: !track.solo });
@@ -882,6 +896,26 @@ const gizmoAutoKeyframe = (track: MotionTrack, path: string, value: any) => {
     pts[ptIdx] = upsertKeyframe(pts[ptIdx] as any, frame, value, interp) as any;
 };
 
+const clampOffsetToSafeArea = (
+    offset: number,
+    anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
+    padding: number,
+    canvasSize: number,
+    safeAreaOffset: number = 0,
+): number => {
+    const saMin = padding + safeAreaOffset;
+    const saMax = canvasSize - padding + safeAreaOffset;
+
+    let anchorPos: number;
+    if (anchor === 'left' || anchor === 'top') anchorPos = saMin;
+    else if (anchor === 'right' || anchor === 'bottom') anchorPos = saMax;
+    else anchorPos = (saMin + saMax) / 2;
+
+    const minOffset = saMin - anchorPos;
+    const maxOffset = saMax - anchorPos;
+    return Math.max(minOffset, Math.min(maxOffset, offset));
+};
+
 const motionGizmo = useMotionGizmo(
     previewOverlay,
     previewCanvas,
@@ -894,8 +928,25 @@ const motionGizmo = useMotionGizmo(
             const track = selectedMotionTrack.value;
             if (!track || track.locked) return;
             if (gizmoMode === 'move') {
-                track.block.transform.offsetX = Math.round(track.block.transform.offsetX + dx);
-                track.block.transform.offsetY = Math.round(track.block.transform.offsetY + dy);
+                const rot = -(track.block.transform.rotation * Math.PI) / 180;
+                const cos = Math.cos(rot);
+                const sin = Math.sin(rot);
+                const localDx = dx * cos - dy * sin;
+                const localDy = dx * sin + dy * cos;
+
+                let newOffsetX = Math.round(track.block.transform.offsetX + localDx);
+                let newOffsetY = Math.round(track.block.transform.offsetY + localDy);
+
+                if ((track.block.style.boundsMode ?? 'safeArea') === 'safeArea') {
+                    const padding = track.block.style.safeAreaPadding ?? 40;
+                    const saOx = track.block.style.safeAreaOffsetX ?? 0;
+                    const saOy = track.block.style.safeAreaOffsetY ?? 0;
+                    newOffsetX = clampOffsetToSafeArea(newOffsetX, track.block.transform.anchorX, padding, targetWidth.value, saOx);
+                    newOffsetY = clampOffsetToSafeArea(newOffsetY, track.block.transform.anchorY, padding, targetHeight.value, saOy);
+                }
+
+                track.block.transform.offsetX = newOffsetX;
+                track.block.transform.offsetY = newOffsetY;
                 gizmoAutoKeyframe(track, 'transform.offsetX', track.block.transform.offsetX);
                 gizmoAutoKeyframe(track, 'transform.offsetY', track.block.transform.offsetY);
             } else if (gizmoMode === 'scale') {
@@ -2151,6 +2202,8 @@ onUnmounted(() => {
                     :playhead-ms="playheadMs"
                     :fps="fps"
                     :project-font-family="project.font.family"
+                    :render-width="targetWidth"
+                    :render-height="targetHeight"
                     @update-track="onUpdateMotionTrack"
                     @set-background-color="onSetBackgroundColor"
                     @set-background-fit="onSetBackgroundFit"

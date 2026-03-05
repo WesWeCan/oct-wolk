@@ -41,6 +41,7 @@ export interface RendererBounds {
     rotation: number;
     scale: number;
     anchorX?: 'left' | 'center' | 'right';
+    anchorY?: 'top' | 'center' | 'bottom';
 }
 
 export interface MotionBlockRenderer {

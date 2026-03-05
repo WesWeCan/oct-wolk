@@ -4,6 +4,7 @@ import type { LyricTrack, MotionTrack, MotionStyle, MotionTransform, MotionEnter
 import MotionAppearanceTab from '@/front-end/components/editor/motion/MotionAppearanceTab.vue';
 import MotionPositionTab from '@/front-end/components/editor/motion/MotionPositionTab.vue';
 import MotionAnimationTab from '@/front-end/components/editor/motion/MotionAnimationTab.vue';
+import MotionSafeAreaTab from '@/front-end/components/editor/motion/MotionSafeAreaTab.vue';
 import MotionItemsTab from '@/front-end/components/editor/motion/MotionItemsTab.vue';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import { upsertKeyframe, removeKeyframeAtIndex, evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
@@ -18,7 +19,29 @@ const props = defineProps<{
     playheadMs?: number;
     fps?: number;
     projectFontFamily?: string;
+    renderWidth?: number;
+    renderHeight?: number;
 }>();
+
+const clampOffsetToSafeArea = (
+    offset: number,
+    anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
+    padding: number,
+    canvasSize: number,
+    safeAreaOffset: number = 0,
+): number => {
+    const saMin = padding + safeAreaOffset;
+    const saMax = canvasSize - padding + safeAreaOffset;
+
+    let anchorPos: number;
+    if (anchor === 'left' || anchor === 'top') anchorPos = saMin;
+    else if (anchor === 'right' || anchor === 'bottom') anchorPos = saMax;
+    else anchorPos = (saMin + saMax) / 2;
+
+    const minOffset = saMin - anchorPos;
+    const maxOffset = saMax - anchorPos;
+    return Math.max(minOffset, Math.min(maxOffset, offset));
+};
 
 const emit = defineEmits<{
     (e: 'update-track', track: MotionTrack): void;
@@ -126,6 +149,18 @@ const updateTransform = (key: keyof MotionTransform, value: any) => {
         return;
     }
     const block = { ...props.motionTrack.block };
+
+    if ((key === 'offsetX' || key === 'offsetY') && (block.style.boundsMode ?? 'safeArea') === 'safeArea') {
+        const padding = block.style.safeAreaPadding ?? 40;
+        const saOx = block.style.safeAreaOffsetX ?? 0;
+        const saOy = block.style.safeAreaOffsetY ?? 0;
+        if (key === 'offsetX' && props.renderWidth) {
+            value = clampOffsetToSafeArea(value, block.transform.anchorX, padding, props.renderWidth, saOx);
+        } else if (key === 'offsetY' && props.renderHeight) {
+            value = clampOffsetToSafeArea(value, block.transform.anchorY, padding, props.renderHeight, saOy);
+        }
+    }
+
     block.transform = { ...block.transform, [key]: value };
     block.propertyTracks = autoKeyframe(`transform.${key}`, value, [...(block.propertyTracks || [])]);
     emit('update-track', { ...props.motionTrack, block });
@@ -152,6 +187,37 @@ const updateEnterExit = (which: 'enter' | 'exit', key: keyof MotionEnterExit, va
 };
 
 const updateStyleGlobalOpacity = (value: number) => updateStyle('globalOpacity' as any, value);
+
+// --- Reset / default keyframe ---
+
+const resetToDefaults = () => {
+    if (!props.motionTrack || isLocked.value) return;
+    const block = { ...props.motionTrack.block };
+    block.transform = {
+        ...block.transform,
+        offsetX: 0, offsetY: 0, scale: 1, rotation: 0,
+    };
+    emit('update-track', { ...props.motionTrack, block });
+};
+
+const setDefaultKeyframe = () => {
+    if (!props.motionTrack || isLocked.value) return;
+    const block = { ...props.motionTrack.block };
+    let propertyTracks = [...(block.propertyTracks || [])];
+    const defaults: Record<string, number> = {
+        'transform.offsetX': 0, 'transform.offsetY': 0,
+        'transform.scale': 1, 'transform.rotation': 0,
+    };
+    for (const [path, value] of Object.entries(defaults)) {
+        propertyTracks = autoKeyframe(path, value, propertyTracks);
+    }
+    block.transform = {
+        ...block.transform,
+        offsetX: 0, offsetY: 0, scale: 1, rotation: 0,
+    };
+    block.propertyTracks = propertyTracks;
+    emit('update-track', { ...props.motionTrack, block });
+};
 
 // --- Keyframe toggling ---
 
@@ -400,9 +466,26 @@ const onUploadBackgroundImage = (event: Event) => {
                     <MotionPositionTab
                         :track="motionTrack"
                         :current-frame="currentFrame"
+                        :render-width="props.renderWidth"
+                        :render-height="props.renderHeight"
                         @update-transform="updateTransform"
                         @update-anchor="updateAnchor"
-                        @update-style-global-opacity="updateStyleGlobalOpacity"
+                        @toggle-keyframe="toggleKeyframe"
+                        @toggle-property-keyframing="togglePropertyKeyframing"
+                        @reset-to-defaults="resetToDefaults"
+                        @set-default-keyframe="setDefaultKeyframe"
+                    />
+                </div>
+            </details>
+
+            <!-- Safe Area -->
+            <details class="inspector-section" open>
+                <summary class="inspector-section__title">Safe Area</summary>
+                <div class="inspector-section__content">
+                    <MotionSafeAreaTab
+                        :track="motionTrack"
+                        :current-frame="currentFrame"
+                        @update-style="updateStyle"
                         @toggle-keyframe="toggleKeyframe"
                         @toggle-property-keyframing="togglePropertyKeyframing"
                     />

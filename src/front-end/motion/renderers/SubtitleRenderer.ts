@@ -66,6 +66,8 @@ function applyAnimatedStyle(base: MotionStyle, animatedProps: Record<string, any
         maxLines: Number(base.maxLines ?? 5),
         overflowBehavior: (base.overflowBehavior ?? 'none') as OverflowBehavior,
         safeAreaPadding: Number(animatedProps['style.safeAreaPadding'] ?? base.safeAreaPadding ?? 40),
+        safeAreaOffsetX: Number(animatedProps['style.safeAreaOffsetX'] ?? base.safeAreaOffsetX ?? 0),
+        safeAreaOffsetY: Number(animatedProps['style.safeAreaOffsetY'] ?? base.safeAreaOffsetY ?? 0),
     };
 }
 
@@ -246,41 +248,23 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         const maxLines = resolvedStyle.maxLines ?? 5;
         const overflowBehavior = resolvedStyle.overflowBehavior ?? 'none';
         const safeAreaPadding = resolvedStyle.safeAreaPadding ?? 40;
+        const safeAreaOffsetX = resolvedStyle.safeAreaOffsetX ?? 0;
+        const safeAreaOffsetY = resolvedStyle.safeAreaOffsetY ?? 0;
 
         const cw = context.canvasSize.width;
         const ch = context.canvasSize.height;
 
-        let drawX: number;
-        let drawY: number;
+        const saLeft = safeAreaPadding + safeAreaOffsetX;
+        const saRight = cw - safeAreaPadding + safeAreaOffsetX;
+        const saTop = safeAreaPadding + safeAreaOffsetY;
+        const saBottom = ch - safeAreaPadding + safeAreaOffsetY;
+        const saWidth = saRight - saLeft;
 
-        if (boundsMode === 'safeArea') {
-            if (textAlign === 'left') drawX = safeAreaPadding;
-            else if (textAlign === 'right') drawX = cw - safeAreaPadding;
-            else drawX = cw / 2;
-            drawX += resolvedTransform.offsetX;
-
-            let anchorY = ch / 2;
-            if (resolvedTransform.anchorY === 'top') anchorY = safeAreaPadding;
-            if (resolvedTransform.anchorY === 'bottom') anchorY = ch - safeAreaPadding;
-            drawY = anchorY + resolvedTransform.offsetY;
-        } else {
-            const anchor = resolveAnchorPoint(resolvedTransform, cw, ch);
-            drawX = anchor.x;
-            drawY = anchor.y;
-        }
-
-        ctx.save();
-        ctx.translate(drawX + enterExitTransform.translateX, drawY + enterExitTransform.translateY);
-        ctx.rotate((resolvedTransform.rotation * Math.PI) / 180);
-        ctx.scale(resolvedTransform.scale * enterExitTransform.scale, resolvedTransform.scale * enterExitTransform.scale);
-
-        ctx.textBaseline = resolvedTransform.anchorY === 'top' ? 'top' : resolvedTransform.anchorY === 'bottom' ? 'bottom' : 'middle';
-        ctx.globalAlpha = enterExitAlpha * globalOpacity;
-
+        // --- Phase 1: Measure & wrap text (independent of canvas transform) ---
         const spanMetrics = measureSpans(ctx, spans, resolvedStyle);
 
         const availableWidth = boundsMode === 'safeArea'
-            ? context.canvasSize.width - 2 * safeAreaPadding
+            ? cw
             : Infinity;
 
         let lines = wrapSpans(ctx, spanMetrics, availableWidth, resolvedStyle, wrapMode);
@@ -289,7 +273,6 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             lines = applyOverflow(lines, maxLines, overflowBehavior, ctx, resolvedStyle);
         }
 
-        // Scale down if overflow behavior demands it
         let scaleFactor = 1;
         if (overflowBehavior === 'scaleDown' && wrapMode !== 'none') {
             let reLines = wrapSpans(ctx, spanMetrics, availableWidth, resolvedStyle, wrapMode);
@@ -301,7 +284,6 @@ export class SubtitleRenderer implements MotionBlockRenderer {
                 attempts++;
             }
             if (scaleFactor < 1) {
-                ctx.scale(scaleFactor, scaleFactor);
                 lines = reLines.slice(0, maxLines);
             }
         }
@@ -309,20 +291,57 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         const lineHeightPx = Math.max(fontSize, fontSize * resolvedStyle.lineHeight);
         const totalTextHeight = lines.length * lineHeightPx;
         const pad = Math.max(0, resolvedStyle.backgroundPadding);
-
         const maxLineWidth = Math.max(...lines.map(l => l.width), 0);
+        const isJustify = textAlign === 'justify';
+        const effectiveBlockWidth = isJustify && lines.length > 1 && availableWidth < Infinity
+            ? Math.max(maxLineWidth, availableWidth)
+            : maxLineWidth;
+
+        // --- Phase 2: Compute draw position & clamp within safe area ---
+        let drawX: number;
+        let drawY: number;
+
+        if (boundsMode === 'safeArea') {
+            if (resolvedTransform.anchorX === 'left') drawX = saLeft;
+            else if (resolvedTransform.anchorX === 'right') drawX = saRight;
+            else drawX = (saLeft + saRight) / 2;
+            drawX += resolvedTransform.offsetX;
+
+            if (resolvedTransform.anchorY === 'top') drawY = saTop;
+            else if (resolvedTransform.anchorY === 'bottom') drawY = saBottom;
+            else drawY = (saTop + saBottom) / 2;
+            drawY += resolvedTransform.offsetY;
+
+            drawX = Math.max(saLeft, Math.min(saRight, drawX));
+            drawY = Math.max(saTop, Math.min(saBottom, drawY));
+        } else {
+            const anchor = resolveAnchorPoint(resolvedTransform, cw, ch);
+            drawX = anchor.x;
+            drawY = anchor.y;
+        }
+
+        // --- Phase 3: Render ---
+        ctx.save();
+        ctx.translate(drawX + enterExitTransform.translateX, drawY + enterExitTransform.translateY);
+        ctx.rotate((resolvedTransform.rotation * Math.PI) / 180);
+        ctx.scale(resolvedTransform.scale * enterExitTransform.scale, resolvedTransform.scale * enterExitTransform.scale);
+        if (scaleFactor < 1) ctx.scale(scaleFactor, scaleFactor);
+
+        ctx.textBaseline = resolvedTransform.anchorY === 'top' ? 'top' : resolvedTransform.anchorY === 'bottom' ? 'bottom' : 'middle';
+        ctx.globalAlpha = enterExitAlpha * globalOpacity;
 
         // Background
         const bgOpacity = resolvedStyle.backgroundOpacity ?? 0;
         const bgColor = resolvedStyle.backgroundColor || '#000000';
+        const effectiveAlign = isJustify ? 'left' : textAlign;
         if (bgOpacity > 0 && bgColor) {
             let bgX: number;
-            if (textAlign === 'left') bgX = -pad;
-            else if (textAlign === 'right') bgX = -maxLineWidth - pad;
-            else bgX = -maxLineWidth / 2 - pad;
+            if (effectiveAlign === 'left') bgX = -pad;
+            else if (effectiveAlign === 'right') bgX = -effectiveBlockWidth - pad;
+            else bgX = -effectiveBlockWidth / 2 - pad;
 
             const bgY = -totalTextHeight / 2 - pad;
-            const bgW = maxLineWidth + pad * 2;
+            const bgW = effectiveBlockWidth + pad * 2;
             const bgH = totalTextHeight + pad * 2;
             const bgRadius = Math.max(0, resolvedStyle.backgroundBorderRadius ?? 0);
 
@@ -348,10 +367,21 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             const line = lines[lineIdx];
             const lineY = startY + lineIdx * lineHeightPx;
 
+            const isLastLine = lineIdx === lines.length - 1;
+            const justifyThisLine = isJustify && !isLastLine && lines.length > 1;
+
             let startX: number;
-            if (textAlign === 'left') {
+            let extraWordSpacing = 0;
+
+            if (effectiveAlign === 'left' || justifyThisLine) {
                 startX = 0;
-            } else if (textAlign === 'right') {
+                if (justifyThisLine && availableWidth < Infinity) {
+                    const spaces = line.metrics.filter(m => /^\s+$/.test(m.span.text));
+                    if (spaces.length > 0) {
+                        extraWordSpacing = (availableWidth - line.width) / spaces.length;
+                    }
+                }
+            } else if (effectiveAlign === 'right') {
                 startX = -line.width;
             } else {
                 startX = -line.width / 2;
@@ -363,7 +393,6 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             for (const metric of line.metrics) {
                 ctx.font = buildFont(resolvedStyle, metric.span);
 
-                // Outline (rendered before fill for correct layering)
                 if (outlineWidth > 0) {
                     ctx.globalAlpha = baseAlpha;
                     ctx.strokeStyle = outlineColor;
@@ -392,20 +421,28 @@ export class SubtitleRenderer implements MotionBlockRenderer {
                 }
                 ctx.globalAlpha = baseAlpha;
                 cursorX += metric.width;
+                if (justifyThisLine && /^\s+$/.test(metric.span.text)) {
+                    cursorX += extraWordSpacing;
+                }
             }
         }
 
         ctx.restore();
 
         const totalScale = resolvedTransform.scale * enterExitTransform.scale * scaleFactor;
+        let boundsX = drawX + enterExitTransform.translateX;
+        if (effectiveAlign === 'left') boundsX -= pad * totalScale;
+        else if (effectiveAlign === 'right') boundsX += pad * totalScale;
+
         this.lastBounds = {
-            x: drawX + enterExitTransform.translateX,
+            x: boundsX,
             y: drawY + enterExitTransform.translateY,
-            width: (maxLineWidth + pad * 2) * totalScale,
+            width: (effectiveBlockWidth + pad * 2) * totalScale,
             height: (totalTextHeight + pad * 2) * totalScale,
             rotation: resolvedTransform.rotation,
             scale: totalScale,
-            anchorX: boundsMode === 'safeArea' ? textAlign as any : resolvedTransform.anchorX,
+            anchorX: effectiveAlign === 'left' ? 'left' : effectiveAlign === 'right' ? 'right' : 'center',
+            anchorY: resolvedTransform.anchorY,
         };
     }
 

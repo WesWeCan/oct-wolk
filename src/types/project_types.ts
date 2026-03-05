@@ -79,6 +79,8 @@ export interface MotionStyle {
     maxLines?: number;
     overflowBehavior?: OverflowBehavior;
     safeAreaPadding?: number;
+    safeAreaOffsetX?: number;
+    safeAreaOffsetY?: number;
 }
 
 export type AnchorX = 'left' | 'center' | 'right';
@@ -217,6 +219,8 @@ export const DEFAULT_MOTION_STYLE: MotionStyle = {
     maxLines: 5,
     overflowBehavior: 'none',
     safeAreaPadding: 40,
+    safeAreaOffsetX: 0,
+    safeAreaOffsetY: 0,
 };
 
 export const DEFAULT_MOTION_TRANSFORM: MotionTransform = {
