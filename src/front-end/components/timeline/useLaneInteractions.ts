@@ -13,6 +13,7 @@ export function useLaneInteractions(
     }
 ) {
     let isPointerDown = false;
+    const clampLocalX = (localX: number, width: number) => Math.max(0, Math.min(width, localX));
 
     const onWheel = (e: WheelEvent) => {
         const el = elRef.value; if (!el) return;
@@ -41,8 +42,9 @@ export function useLaneInteractions(
         isPointerDown = true;
         const vp = opts.getViewport();
         const rect = el.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        const sec = vp.startSec + (localX / Math.max(1, el.clientWidth)) * vp.durationSec;
+        const width = Math.max(1, el.clientWidth);
+        const localX = clampLocalX(e.clientX - rect.left, width);
+        const sec = vp.startSec + (localX / width) * vp.durationSec;
         opts.onScrub(Math.max(0, sec), Math.floor(sec * Math.max(1, vp.fps)));
     };
     const onPointerMove = (e: PointerEvent) => {
@@ -50,8 +52,9 @@ export function useLaneInteractions(
         const el = elRef.value; if (!el) return;
         const vp = opts.getViewport();
         const rect = el.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        const sec = vp.startSec + (localX / Math.max(1, el.clientWidth)) * vp.durationSec;
+        const width = Math.max(1, el.clientWidth);
+        const localX = clampLocalX(e.clientX - rect.left, width);
+        const sec = vp.startSec + (localX / width) * vp.durationSec;
         opts.onScrub(Math.max(0, sec), Math.floor(sec * Math.max(1, vp.fps)));
     };
     const onPointerUp = (e: PointerEvent) => {

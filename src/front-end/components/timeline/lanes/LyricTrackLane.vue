@@ -196,7 +196,8 @@ const onPointerDown = (e: PointerEvent) => {
     }
 
     emit('selectItem', null);
-    const sec = xToTime(localX, el.clientWidth);
+    const clampedX = Math.max(0, Math.min(el.clientWidth, localX));
+    const sec = xToTime(clampedX, el.clientWidth);
     emit('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * Math.max(1, props.fps)) });
     props.setInteraction?.('scrub');
 };
@@ -230,7 +231,8 @@ const onPointerMove = (e: PointerEvent) => {
     }
 
     if (!isDraggingItem) {
-        const sec = xToTime(localX, el.clientWidth);
+        const clampedX = Math.max(0, Math.min(el.clientWidth, localX));
+        const sec = xToTime(clampedX, el.clientWidth);
         emit('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * Math.max(1, props.fps)) });
         return;
     }

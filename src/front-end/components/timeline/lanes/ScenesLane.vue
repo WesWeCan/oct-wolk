@@ -90,7 +90,8 @@ const onPointerDown = (e: PointerEvent) => {
         return;
     }
     isScrubbing = true;
-    const sec = xToTime(localX, el.clientWidth);
+    const clampedX = Math.max(0, Math.min(el.clientWidth, localX));
+    const sec = xToTime(clampedX, el.clientWidth);
     emit('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * fps) });
     props.setInteraction?.('scrub');
     dragMode = 'none';
@@ -185,7 +186,8 @@ const onPointerMove = (e: PointerEvent) => {
     }
     if (isScrubbing) {
         const fps = Math.max(1, props.fps);
-        const sec = xToTime(localX, el.clientWidth);
+        const clampedX = Math.max(0, Math.min(el.clientWidth, localX));
+        const sec = xToTime(clampedX, el.clientWidth);
         emit('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * fps) });
         return;
     }

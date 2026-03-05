@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { useLaneInteractions } from '../useLaneInteractions';
 
 const props = defineProps<{
@@ -69,32 +69,6 @@ const redraw = () => {
     const label = mk('text'); label.textContent = formatLabel(curTime, 0.5); label.setAttribute('x', String(px + 6)); label.setAttribute('y', String(h - 12)); label.setAttribute('fill', '#ff8080'); label.setAttribute('font-size', '11'); label.setAttribute('paint-order', 'stroke'); label.setAttribute('stroke', '#000'); label.setAttribute('stroke-width', '2'); label.setAttribute('pointer-events', 'none'); svg.appendChild(label);
 };
 
-let isPointerDown = false;
-const onPointerDown = (e: PointerEvent) => {
-    const svg = svgRef.value; if (!svg) return;
-    svg.setPointerCapture(e.pointerId);
-    isPointerDown = true;
-    const rect = svg.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const sec = props.viewport.startSec + (localX / Math.max(1, svg.clientWidth)) * props.viewport.durationSec;
-    emit('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * Math.max(1, props.viewport.fps)) });
-};
-
-const onPointerMove = (e: PointerEvent) => {
-    if (!isPointerDown) return;
-    const svg = svgRef.value; if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const sec = props.viewport.startSec + (localX / Math.max(1, svg.clientWidth)) * props.viewport.durationSec;
-    emit('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * Math.max(1, props.viewport.fps)) });
-};
-
-const onPointerUp = (e: PointerEvent) => {
-    if (!isPointerDown) return;
-    isPointerDown = false;
-    const svg = svgRef.value; if (svg) { try { svg.releasePointerCapture(e.pointerId); } catch { } }
-};
-
 useLaneInteractions(svgRef as any, {
     getViewport: () => props.viewport as any,
     onPan: (d) => emit('pan', d),
@@ -103,16 +77,8 @@ useLaneInteractions(svgRef as any, {
     enableScrub: true,
 });
 
-onMounted(() => {
-    redraw();
-    const svg = svgRef.value; if (!svg) return;
-    svg.addEventListener('pointerdown', onPointerDown);
-    svg.addEventListener('pointermove', onPointerMove);
-    svg.addEventListener('pointerup', onPointerUp);
-    svg.addEventListener('pointercancel', onPointerUp);
-});
-
 watch(() => [props.viewport.startSec, props.viewport.durationSec, props.viewport.fps, props.playhead.frame], () => redraw());
+watch(svgRef, () => redraw());
 
 </script>
 

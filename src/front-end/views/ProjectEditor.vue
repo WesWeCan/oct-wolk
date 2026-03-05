@@ -422,6 +422,7 @@ const drawCurrentPreview = () => {
 // Playback animation frame loop
 let playbackRaf: number | null = null;
 let previewDirty = true;
+const playbackIntent = ref(false);
 
 const startRafLoop = () => {
     if (playbackRaf !== null) return;
@@ -444,7 +445,7 @@ const startRafLoop = () => {
             previewDirty = false;
         }
 
-        if (audio.isPlaying.value) {
+        if (playbackIntent.value && audio.isPlaying.value) {
             playbackRaf = requestAnimationFrame(tick);
         } else {
             playbackRaf = null;
@@ -474,16 +475,23 @@ const markDirty = () => {
 
 const togglePlay = async () => {
     if (audio.isPlaying.value) {
+        playbackIntent.value = false;
         audio.pause();
         stopRafLoop();
         markDirty();
     } else {
+        playbackIntent.value = true;
         await audio.play();
-        startRafLoop();
+        if (audio.isPlaying.value) {
+            startRafLoop();
+        } else {
+            playbackIntent.value = false;
+        }
     }
 };
 
 const stopPlayback = () => {
+    playbackIntent.value = false;
     audio.stop();
     stopRafLoop();
     vp.setPlayhead(0);
@@ -568,8 +576,14 @@ const onSeekToMs = async (ms: number) => {
     await onScrub({ timeSec, frame });
 };
 
+let scrubSeq = 0;
 const onScrub = async (payload: { timeSec: number; frame: number }) => {
+    scrubSeq += 1;
+    const seq = scrubSeq;
     await audio.seekTo(payload.timeSec);
+    if (seq !== scrubSeq) {
+        return;
+    }
     vp.setPlayhead(payload.frame);
     markDirty();
 };
@@ -613,7 +627,7 @@ const miniItemStyle = (item: TimelineItem, track: LyricTrack) => {
 
 // Auto-scroll viewport to follow playhead during playback
 watch(() => playhead.value.frame, (frame) => {
-    if (!audio.isPlaying.value) return;
+    if (!playbackIntent.value || !audio.isPlaying.value) return;
     const phSec = frame / Math.max(1, fps.value);
     const rightThreshold = viewport.value.startSec + viewport.value.durationSec * 0.8;
     const leftEdge = viewport.value.startSec;
@@ -623,7 +637,9 @@ watch(() => playhead.value.frame, (frame) => {
             viewport.value.totalSec - viewport.value.durationSec,
             phSec - viewport.value.durationSec * 0.6,
         ));
-        if (Math.abs(desired - viewport.value.startSec) > 1e-3) vp.setStart(desired);
+        if (Math.abs(desired - viewport.value.startSec) > 1e-3) {
+            vp.setStart(desired);
+        }
     } else if (phSec < leftEdge) {
         vp.setStart(Math.max(0, phSec - viewport.value.durationSec * 0.4));
     }

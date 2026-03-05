@@ -69,19 +69,23 @@ export function useAutoScroll(opts: AutoScrollOptions) {
         const localX = clientX - rect.left;
         const w = rect.width;
         const hotW = w * hotZone;
+        if (hotW <= 0) {
+            currentSpeed = 0;
+            return clientX;
+        }
         const vp = opts.getViewport();
         const vpDurSec = vp.durationSec;
 
         if (localX < hotW) {
             // Left hot zone
-            const penetration = Math.max(0, hotW - localX) / hotW;
+            const penetration = Math.min(1, Math.max(0, hotW - localX) / hotW);
             const speed = -maxSpeed * vpDurSec * Math.pow(penetration, 2);
             currentSpeed = speed;
             if (!isActive.value) start();
             return rect.left + Math.max(0, localX);
         } else if (localX > w - hotW) {
             // Right hot zone
-            const penetration = Math.max(0, localX - (w - hotW)) / hotW;
+            const penetration = Math.min(1, Math.max(0, localX - (w - hotW)) / hotW);
             const speed = maxSpeed * vpDurSec * Math.pow(penetration, 2);
             currentSpeed = speed;
             if (!isActive.value) start();

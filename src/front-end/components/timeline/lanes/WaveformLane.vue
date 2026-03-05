@@ -17,7 +17,6 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let raf: number | null = null;
-let isPointerDown = false;
 
 const draw = () => {
     const canvas = canvasRef.value; if (!canvas) return;
@@ -55,48 +54,6 @@ const draw = () => {
 };
 
 const requestDraw = () => { if (raf != null) return; raf = requestAnimationFrame(() => { raf = null; draw(); }); };
-
-const onWheel = (e: WheelEvent) => {
-    const el = canvasRef.value; if (!el) return;
-    const w = Math.max(1, el.clientWidth);
-    const rect = el.getBoundingClientRect();
-    const cursorX = (e.clientX - rect.left);
-    const cursorTime = props.viewport.startSec + (cursorX / w) * props.viewport.durationSec;
-    if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const factor = Math.exp(e.deltaY * 0.0015);
-        (emit as any)?.('zoomAround', { timeSec: cursorTime, factor });
-        return;
-    }
-    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        e.preventDefault();
-        const secDelta = e.deltaX * (props.viewport.durationSec / w);
-        (emit as any)?.('pan', secDelta);
-    }
-};
-
-const onPointerDown = (e: PointerEvent) => {
-    const el = canvasRef.value; if (!el) return;
-    el.setPointerCapture(e.pointerId);
-    isPointerDown = true;
-    const rect = el.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const sec = props.viewport.startSec + (localX / Math.max(1, el.clientWidth)) * props.viewport.durationSec;
-    (emit as any)?.('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * Math.max(1, props.fps)) });
-};
-const onPointerMove = (e: PointerEvent) => {
-    if (!isPointerDown) return;
-    const el = canvasRef.value; if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const sec = props.viewport.startSec + (localX / Math.max(1, el.clientWidth)) * props.viewport.durationSec;
-    (emit as any)?.('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * Math.max(1, props.fps)) });
-};
-const onPointerUp = (e: PointerEvent) => {
-    if (!isPointerDown) return;
-    isPointerDown = false;
-    const el = canvasRef.value; if (el) { try { el.releasePointerCapture(e.pointerId); } catch {} }
-};
 
 useLaneInteractions(canvasRef as any, {
     getViewport: () => props.viewport as any,
