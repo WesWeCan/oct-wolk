@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
-import type { LyricTrack, MotionTrack, MotionStyle, MotionTransform, MotionEnterExit, AnchorX, AnchorY, ItemOverride } from '@/types/project_types';
+import type { LyricTrack, MotionTrack, MotionStyle, MotionTransform, MotionEnterExit, AnchorX, AnchorY, ItemOverride, WolkProjectFont } from '@/types/project_types';
 import type { RendererBounds } from '@/front-end/motion/types';
 import MotionAppearanceTab from '@/front-end/components/editor/motion/MotionAppearanceTab.vue';
 import MotionPositionTab from '@/front-end/components/editor/motion/MotionPositionTab.vue';
@@ -10,6 +10,8 @@ import MotionItemsTab from '@/front-end/components/editor/motion/MotionItemsTab.
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import { upsertKeyframe, removeKeyframeAtIndex, evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
+import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
+import { applyFontSelectionToMotionStyle } from '@/front-end/utils/fonts/fontUtils';
 
 const props = defineProps<{
     motionTrack: MotionTrack | null;
@@ -29,7 +31,7 @@ const props = defineProps<{
     backgroundImageOpacity?: number;
     playheadMs?: number;
     fps?: number;
-    projectFontFamily?: string;
+    projectFont?: WolkProjectFont;
     renderWidth?: number;
     renderHeight?: number;
     rendererBounds?: RendererBounds | null;
@@ -256,6 +258,42 @@ const updateStyle = (key: keyof MotionStyle, value: any) => {
     const block = { ...props.motionTrack.block };
     block.style = { ...block.style, [key]: value };
     block.propertyTracks = autoKeyframe(`style.${key}`, value, [...(block.propertyTracks || [])]);
+    emit('update-track', { ...props.motionTrack, block });
+};
+
+const updateFontSelection = (selection: MotionFontSelection) => {
+    if (!props.motionTrack || isLocked.value) return;
+    if (selectedWordIndex.value !== null && selectedItemId.value) {
+        const entries: Array<[keyof MotionStyle, any]> = [
+            ['fontFamily', selection.family],
+            ['fontFallbacks', selection.fallbacks],
+            ['fontStyle', selection.style],
+            ['fontWeight', selection.weight],
+            ['fontName', selection.name],
+            ['fontLocalPath', selection.localPath],
+        ];
+        for (const [key, value] of entries) updateWordStyle(key, value);
+        return;
+    }
+    if (selectedItemId.value) {
+        const nextStyle = applyFontSelectionToMotionStyle(
+            { ...props.motionTrack.block.style, ...(selectedItemOverride.value?.styleOverride || {}) },
+            selection,
+        );
+        const entries = Object.entries({
+            fontFamily: nextStyle.fontFamily,
+            fontFallbacks: nextStyle.fontFallbacks,
+            fontStyle: nextStyle.fontStyle,
+            fontWeight: nextStyle.fontWeight,
+            fontName: nextStyle.fontName,
+            fontLocalPath: nextStyle.fontLocalPath,
+        }) as Array<[keyof MotionStyle, any]>;
+        for (const [key, value] of entries) updateItemStyleOverride(selectedItemId.value, key, value);
+        return;
+    }
+    const block = { ...props.motionTrack.block };
+    block.style = applyFontSelectionToMotionStyle(block.style, selection);
+    block.propertyTracks = autoKeyframe('style.fontFamily', selection.family, [...(block.propertyTracks || [])]);
     emit('update-track', { ...props.motionTrack, block });
 };
 
@@ -767,8 +805,9 @@ const onBackgroundDragLeave = () => {
                     <MotionAppearanceTab
                         :track="motionTrack"
                         :current-frame="currentFrame"
-                        :project-font-family="projectFontFamily"
+                        :project-font="projectFont"
                         @update-style="updateStyle"
+                        @update-font="updateFontSelection"
                         @toggle-keyframe="toggleKeyframe"
                         @toggle-property-keyframing="togglePropertyKeyframing"
                     />

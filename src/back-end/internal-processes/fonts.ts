@@ -121,12 +121,28 @@ export const listSystemFonts = (): SystemFontFile[] => {
     }
     const files = dirs.flatMap(d => safeListDir(d));
     const unique = Array.from(new Set(files));
-    return unique.map(filePath => {
+    const fonts = unique.map(filePath => {
         const fileName = path.basename(filePath);
         const familyGuess = guessFamilyFromFileName(fileName);
         const gw = guessStyleWeightFromFileName(fileName);
         return { filePath, fileName, familyGuess, guessStyle: gw.style, guessWeight: gw.weight };
     });
+    return fonts
+        .filter((font, index, list) => list.findIndex((candidate) => (
+            candidate.familyGuess === font.familyGuess &&
+            candidate.guessStyle === font.guessStyle &&
+            candidate.guessWeight === font.guessWeight &&
+            candidate.fileName.toLowerCase() === font.fileName.toLowerCase()
+        )) === index)
+        .sort((a, b) => {
+            const familyCompare = a.familyGuess.localeCompare(b.familyGuess);
+            if (familyCompare !== 0) return familyCompare;
+            const weightCompare = Number(a.guessWeight ?? 400) - Number(b.guessWeight ?? 400);
+            if (weightCompare !== 0) return weightCompare;
+            const styleCompare = String(a.guessStyle || 'normal').localeCompare(String(b.guessStyle || 'normal'));
+            if (styleCompare !== 0) return styleCompare;
+            return a.fileName.localeCompare(b.fileName);
+        });
 };
 
 

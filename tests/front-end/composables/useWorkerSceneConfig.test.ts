@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { buildFontFamilyChain, computeConfigKeyForFrame } from '@/front-end/composables/editor/useWorkerSceneConfig';
 import type { ProjectSettings } from '@/types/timeline_types';
+import { getFontAlias } from '@/front-end/utils/fonts/fontUtils';
 
 vi.mock('@/front-end/utils/hash/hashWords', () => ({
   hashWords: vi.fn((words: string[]) => words.join(',')),
@@ -28,7 +29,7 @@ describe('buildFontFamilyChain', () => {
 
   it('prepends ProjectFont when fontLocalPath is set', () => {
     const settings = { fontFamily: 'Roboto', fontFallbacks: [], fontLocalPath: '/fonts/custom.woff2' } as any;
-    expect(buildFontFamilyChain(settings)).toBe('ProjectFont, Roboto');
+    expect(buildFontFamilyChain(settings)).toBe(`${getFontAlias('/fonts/custom.woff2', 'Roboto')}, Roboto`);
   });
 });
 

@@ -8,6 +8,7 @@ import { FontsService, FontName } from '@/front-end/services/FontsService';
 import { SongService } from '@/front-end/services/SongService';
 import { SCENE_ANIMATABLES } from '@/front-end/workers/scenes/animatables';
 import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
+import { buildFontFamilyChain as buildSharedFontFamilyChain, fontDescriptorFromTimelineSettings } from '@/front-end/utils/fonts/fontUtils';
 
 interface SystemFontFile { familyGuess: string; filePath: string; fileName: string; guessStyle?: 'normal'|'italic'|'oblique'; guessWeight?: number; }
 
@@ -178,7 +179,17 @@ const setFontFromSystem = async (f: SystemFontFile) => {
     const wolkUrl = await FontsService.addToProject(songId, f.filePath);
     if (wolkUrl) {
         const fontName = FontName.fromFileName(f.fileName);
-        const updated: TimelineDocument = { ...props.timeline, settings: { ...props.timeline.settings, fontLocalPath: wolkUrl, fontFamily: 'ProjectFont', fontName } } as any;
+        const updated: TimelineDocument = {
+            ...props.timeline,
+            settings: {
+                ...props.timeline.settings,
+                fontLocalPath: wolkUrl,
+                fontFamily: f.familyGuess,
+                fontStyle: f.guessStyle || 'normal',
+                fontWeight: f.guessWeight || 400,
+                fontName,
+            },
+        } as any;
         emit('update:timeline', updated);
     } else {
         copyError.value = 'Failed to copy font into project.';
@@ -188,7 +199,7 @@ const setFontFromSystem = async (f: SystemFontFile) => {
 
 const removeProjectFont = async () => {
     if (!props.timeline) return;
-    const updated: TimelineDocument = { ...props.timeline, settings: { ...props.timeline.settings, fontLocalPath: undefined as any } } as any;
+    const updated: TimelineDocument = { ...props.timeline, settings: { ...props.timeline.settings, fontLocalPath: undefined as any, fontName: undefined as any } } as any;
     emit('update:timeline', updated);
 };
 
@@ -203,10 +214,7 @@ const addFallback = (family: string) => {
 // Removed individual fallback editing; replaced by type dropdown
 
 const fontFamilyChain = computed(() => {
-    const names = [primaryFont.value, ...fallbacks.value];
-    if (fontLocalPath.value) names.unshift('ProjectFont');
-    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
-    return names.filter(Boolean).map(quote).join(', ');
+    return buildSharedFontFamilyChain(fontDescriptorFromTimelineSettings(props.timeline?.settings || {}));
 });
 
 onMounted(async () => {

@@ -10,18 +10,20 @@ import {
     mdiFormatAlignRight,
     mdiFormatAlignJustify,
 } from '@mdi/js';
-import type { MotionTrack, MotionStyle, TextAlign } from '@/types/project_types';
+import type { MotionTrack, MotionStyle, TextAlign, WolkProjectFont } from '@/types/project_types';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import MotionFontSelector from '@/front-end/components/editor/motion/MotionFontSelector.vue';
+import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
 
 const props = defineProps<{
     track: MotionTrack;
     currentFrame: number;
-    projectFontFamily?: string;
+    projectFont?: WolkProjectFont;
 }>();
 
 const emit = defineEmits<{
     (e: 'update-style', key: keyof MotionStyle, value: any): void;
+    (e: 'update-font', value: MotionFontSelection): void;
     (e: 'toggle-keyframe', path: string, value: any): void;
     (e: 'toggle-property-keyframing', path: string): void;
 }>();
@@ -93,9 +95,9 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
                     </button>
                 </div>
                 <MotionFontSelector
-                    :model-value="style().fontFamily"
-                    :project-font-family="projectFontFamily"
-                    @update:model-value="(v: string) => emit('update-style', 'fontFamily', v)"
+                    :model-value="style()"
+                    :project-font="projectFont"
+                    @update:model-value="(v: MotionFontSelection) => emit('update-font', v)"
                 />
             </div>
 

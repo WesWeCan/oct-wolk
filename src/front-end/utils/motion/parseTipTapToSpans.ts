@@ -6,6 +6,9 @@ export interface StyledSpan {
     color?: string;
     fontSize?: string;
     fontFamily?: string;
+    fontFallbacks?: string[];
+    fontName?: string;
+    fontLocalPath?: string;
 }
 
 const markToAttrs = (marks: any[] | undefined): Omit<StyledSpan, 'text'> => {

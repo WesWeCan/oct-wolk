@@ -62,6 +62,8 @@ import { cleanOrphanedOverrides } from '@/front-end/utils/motion/resolveMotionIt
 import { upsertKeyframe } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import type { TimelineDocument } from '@/types/timeline_types';
+import { buildFontFamilyChain, fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
+import { primeDocumentFont } from '@/front-end/utils/fonts/fontLoader';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -236,6 +238,8 @@ const exportTimeline = computed<TimelineDocument | null>(() => {
             fontFallbacks: project.value.font.fallbacks,
             fontStyle: project.value.font.style,
             fontWeight: project.value.font.weight,
+            fontName: project.value.font.name,
+            fontLocalPath: project.value.font.localPath,
             includeAudio: project.value.settings.includeAudio ?? true,
             exportBitrateMbps: project.value.settings.exportBitrateMbps || 8,
             exportMode: exportMode.value,
@@ -329,9 +333,9 @@ const drawLyricPreview = () => {
         return;
     }
 
-    const fontFamily = project.value.font?.family || 'system-ui';
-    const fallbacks = project.value.font?.fallbacks?.join(', ') || 'sans-serif';
-    const fontChain = project.value.font?.localPath ? `ProjectFont, ${fontFamily}, ${fallbacks}` : `${fontFamily}, ${fallbacks}`;
+    const projectFontDescriptor = fontDescriptorFromProjectFont(project.value.font);
+    primeDocumentFont(projectFontDescriptor);
+    const fontChain = buildFontFamilyChain(projectFontDescriptor);
     const totalTracks = tracks.length;
     const slotHeight = h / Math.max(1, totalTracks);
 
@@ -399,6 +403,7 @@ const drawLyricPreview = () => {
 
 const drawMotionPreview = () => {
     if (!project.value) return;
+    motionRenderer.primeProjectFonts(project.value);
     const currentMs = (playhead.value.frame / Math.max(1, fps.value)) * 1000;
     motionRenderer.renderMotionFrame(project.value, currentMs);
     previewCanvasComposable.drawPreview();
@@ -499,6 +504,7 @@ const stopPlayback = () => {
 
 const startExportProcess = async () => {
     if (!project.value) return;
+    await motionRenderer.ensureProjectFonts(project.value);
     const fpsValue = Math.max(1, project.value.settings.fps || 60);
     if (exportMode.value === 'frames') {
         const durationSec = Math.max(
@@ -804,14 +810,29 @@ const kfLabel = (path: string): string => {
     return def?.label ?? path.split('.').pop() ?? '?';
 };
 
-const ensureMotionTrackDefaults = (track: MotionTrack): MotionTrack => {
+const ensureMotionTrackDefaults = (track: MotionTrack, projectFont = project.value?.font): MotionTrack => {
+    const style = track.block.style || { ...DEFAULT_MOTION_STYLE };
+    const shouldInheritProjectFont = !style.fontLocalPath && (
+        !style.fontFamily ||
+        style.fontFamily === projectFont?.family ||
+        style.fontFamily === 'ProjectFont'
+    );
     return {
         ...track,
         enabled: track.enabled !== false,
         muted: !!track.muted,
         solo: !!track.solo,
         locked: !!track.locked,
-        block: { ...track.block },
+        block: {
+            ...track.block,
+            style: {
+                ...DEFAULT_MOTION_STYLE,
+                ...style,
+                fontFallbacks: style.fontFallbacks ?? (shouldInheritProjectFont ? projectFont?.fallbacks || [] : []),
+                fontName: style.fontName ?? (shouldInheritProjectFont ? projectFont?.name : undefined),
+                fontLocalPath: style.fontLocalPath ?? (shouldInheritProjectFont ? projectFont?.localPath : undefined),
+            },
+        },
     };
 };
 
@@ -1463,6 +1484,11 @@ const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
             style: {
                 ...DEFAULT_MOTION_STYLE,
                 fontFamily: project.value.font.family || DEFAULT_MOTION_STYLE.fontFamily,
+                fontFallbacks: [...(project.value.font.fallbacks || [])],
+                fontStyle: project.value.font.style || DEFAULT_MOTION_STYLE.fontStyle,
+                fontWeight: project.value.font.weight || DEFAULT_MOTION_STYLE.fontWeight,
+                fontName: project.value.font.name,
+                fontLocalPath: project.value.font.localPath,
             },
             transform: { ...DEFAULT_MOTION_TRANSFORM },
             enter: {
@@ -1754,7 +1780,7 @@ const loadProject = async () => {
         if (removedOnLoad > 0) {
             showNotice(`${removedOnLoad} item override(s) removed because source lyrics changed.`);
         }
-        project.value.motionTracks = project.value.motionTracks.map((track) => ensureMotionTrackDefaults(track));
+        project.value.motionTracks = project.value.motionTracks.map((track) => ensureMotionTrackDefaults(track, project.value?.font));
         selectedMotionTrackId.value = project.value.motionTracks[0]?.id || null;
 
         await nextTick();
@@ -2306,7 +2332,7 @@ onUnmounted(() => {
                     :background-image-opacity="project.backgroundImageOpacity ?? 1"
                     :playhead-ms="playheadMs"
                     :fps="fps"
-                    :project-font-family="project.font.family"
+                    :project-font="project.font"
                     :render-width="targetWidth"
                     :render-height="targetHeight"
                     :renderer-bounds="selectedMotionTrackId ? motionRenderer.getRendererBounds(selectedMotionTrackId) : null"

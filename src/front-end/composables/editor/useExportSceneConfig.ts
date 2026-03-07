@@ -23,6 +23,8 @@ export function useExportSceneConfig(
     const fontFamilyChain = buildFontFamilyChain(timeline.value.settings);
     const style = String(timeline.value.settings.fontStyle || 'normal');
     const weight = timeline.value.settings.fontWeight ?? 400;
+    const fontFamily = String(timeline.value.settings.fontFamily || 'system-ui');
+    const fontName = String(timeline.value.settings.fontName || '');
 
     if (active.a && active.a.id !== 'none') await scenes.ensureSceneDoc(active.a.id);
     if (active.b && active.b.id !== 'none') await scenes.ensureSceneDoc(active.b.id);
@@ -35,8 +37,8 @@ export function useExportSceneConfig(
     const bParamsBase = active.b && active.b.id !== 'none' ? (scenes.sceneDocs.value[active.b.id]?.params || {}) : null;
 
     const localPath = timeline.value.settings.fontLocalPath || null;
-    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
-    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
+    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain, fontFamily, fontName, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
+    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain, fontFamily, fontName, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
 
     renderWorker.configureScene({
       seed,

@@ -90,9 +90,12 @@ export type OverflowBehavior = 'none' | 'scaleDown' | 'ellipsis' | 'clip';
 
 export interface MotionStyle {
     fontFamily: string;
+    fontFallbacks?: string[];
     fontSize: number;
     fontWeight: number;
     fontStyle: 'normal' | 'italic' | 'oblique';
+    fontName?: string;
+    fontLocalPath?: string;
     underline: boolean;
     textCase: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
     letterSpacing: number;
@@ -242,9 +245,12 @@ export const DEFAULT_PROJECT_FONT: WolkProjectFont = {
 
 export const DEFAULT_MOTION_STYLE: MotionStyle = {
     fontFamily: 'system-ui',
+    fontFallbacks: [],
     fontSize: 72,
     fontWeight: 400,
     fontStyle: 'normal',
+    fontName: undefined,
+    fontLocalPath: undefined,
     underline: false,
     textCase: 'none',
     letterSpacing: 0,

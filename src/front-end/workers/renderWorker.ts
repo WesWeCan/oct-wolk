@@ -1,4 +1,5 @@
 // Basic render worker skeleton for OffscreenCanvas-based rendering
+import { buildFontFamilyChain, fontDescriptorFromTimelineSettings, getFontAlias } from '@/front-end/utils/fonts/fontUtils';
 
 export interface RenderInitMessage {
     type: 'init';
@@ -207,7 +208,11 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
                 engine.attachTarget(ctx2d);
                 // Try load project font if provided via params
                 const localUrl = (msg as any)?.a?.params?.fontLocalPath || (msg as any)?.b?.params?.fontLocalPath || '';
-                await ensureWorkerFont(String(localUrl || ''), 'ProjectFont');
+                const familyName = getFontAlias(
+                    String(localUrl || ''),
+                    String((msg as any)?.a?.params?.fontName || (msg as any)?.b?.params?.fontName || (msg as any)?.a?.params?.fontFamily || 'ProjectFont'),
+                ) || 'ProjectFont';
+                await ensureWorkerFont(String(localUrl || ''), familyName);
                 lastConfigA = { type: sceneType as any, params: { words, fontFamilyChain, maskBitmap: currentMaskBitmap } } as any;
                 engine.configure({
                     seed: String(msg.seed || 'seed'),
@@ -226,7 +231,11 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
             if (ctx2d) {
                 engine.attachTarget(ctx2d);
                 const localUrl = (msg as any)?.a?.params?.fontLocalPath || (msg as any)?.b?.params?.fontLocalPath || '';
-                await ensureWorkerFont(String(localUrl || ''), 'ProjectFont');
+                const familyName = getFontAlias(
+                    String(localUrl || ''),
+                    String((msg as any)?.a?.params?.fontName || (msg as any)?.b?.params?.fontName || (msg as any)?.a?.params?.fontFamily || 'ProjectFont'),
+                ) || 'ProjectFont';
+                await ensureWorkerFont(String(localUrl || ''), familyName);
                 // Remember last configs to reapply mask updates
                 const aType = normalizeSceneType((msg as any).a.sceneType);
                 const bType = (msg as any).b ? normalizeSceneType((msg as any).b.sceneType) : null;

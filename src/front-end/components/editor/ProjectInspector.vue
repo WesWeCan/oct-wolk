@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import type { WolkProject, LyricTrack, TimelineItem } from '@/types/project_types';
 import { FontsService, FontName, type SystemFontFile } from '@/front-end/services/FontsService';
 import { ProjectService } from '@/front-end/services/ProjectService';
+import { buildFontFamilyChain, fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
 import ItemInspector from './ItemInspector.vue';
 
 const props = defineProps<{
@@ -43,10 +44,7 @@ const primaryFont = computed(() => props.project.font?.family || 'system-ui');
 const fontLocalPath = computed(() => props.project.font?.localPath || '');
 
 const fontFamilyChain = computed(() => {
-    const names = [primaryFont.value, ...(props.project.font?.fallbacks || [])];
-    if (fontLocalPath.value) names.unshift('ProjectFont');
-    const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
-    return names.filter(Boolean).map(quote).join(', ');
+    return buildFontFamilyChain(fontDescriptorFromProjectFont(props.project.font));
 });
 
 const fallbackType = computed<'sans' | 'serif' | 'mono' | 'display'>(() => {
@@ -96,7 +94,7 @@ const setFontFromSystem = async (f: SystemFontFile) => {
         const fontName = FontName.fromFileName(f.fileName);
         emit('updateProject', {
             ...props.project,
-            font: { ...props.project.font, localPath: wolkUrl, family: 'ProjectFont', name: fontName },
+            font: { ...props.project.font, localPath: wolkUrl, family: f.familyGuess, name: fontName, style: f.guessStyle || 'normal', weight: f.guessWeight || 400 },
         });
     } else {
         copyError.value = 'Failed to copy font into project.';
@@ -107,7 +105,7 @@ const setFontFromSystem = async (f: SystemFontFile) => {
 const removeProjectFont = () => {
     emit('updateProject', {
         ...props.project,
-        font: { ...props.project.font, localPath: undefined as any },
+        font: { ...props.project.font, localPath: undefined as any, name: undefined as any },
     });
 };
 

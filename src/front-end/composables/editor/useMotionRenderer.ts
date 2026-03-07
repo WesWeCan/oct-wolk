@@ -8,6 +8,33 @@ import { resolveActiveItems, resolveBlockItems } from '@/front-end/utils/motion/
 import { SubtitleRenderer } from '@/front-end/motion/renderers/SubtitleRenderer';
 
 import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
+import { ensureDocumentFont, primeDocumentFont } from '@/front-end/utils/fonts/fontLoader';
+import { fontDescriptorFromMotionStyle, fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
+
+const getProjectMotionFonts = (project: WolkProject) => {
+    const fonts = [fontDescriptorFromProjectFont(project.font)];
+
+    for (const track of project.motionTracks) {
+        fonts.push(fontDescriptorFromMotionStyle(track.block.style, project.font));
+        for (const override of track.block.overrides || []) {
+            if (override.styleOverride) {
+                fonts.push(fontDescriptorFromMotionStyle({ ...track.block.style, ...override.styleOverride }, project.font));
+            }
+            for (const wordStyle of Object.values(override.wordStyleMap || {})) {
+                fonts.push(fontDescriptorFromMotionStyle({ ...track.block.style, ...wordStyle }, project.font));
+            }
+        }
+    }
+
+    return fonts.filter((font, index, list) => (
+        list.findIndex((candidate) => (
+            candidate.family === font.family &&
+            candidate.localPath === font.localPath &&
+            candidate.style === font.style &&
+            candidate.weight === font.weight
+        )) === index
+    ));
+};
 
 export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
     const rendererByTrackId = ref<Map<string, { type: MotionBlockType; renderer: MotionBlockRenderer }>>(new Map());
@@ -31,7 +58,16 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
         return renderer;
     };
 
+    const primeProjectFonts = (project: WolkProject): void => {
+        for (const font of getProjectMotionFonts(project)) primeDocumentFont(font);
+    };
+
+    const ensureProjectFonts = async (project: WolkProject): Promise<void> => {
+        await Promise.all(getProjectMotionFonts(project).map((font) => ensureDocumentFont(font)));
+    };
+
     const renderMotionFrame = (project: WolkProject, currentMs: number): void => {
+        primeProjectFonts(project);
         const canvas = renderCanvas.value;
         if (!canvas) return;
 
@@ -188,6 +224,8 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
     };
 
     return {
+        primeProjectFonts,
+        ensureProjectFonts,
         renderMotionFrame,
         getRendererBounds,
         dispose,

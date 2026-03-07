@@ -132,6 +132,9 @@ export function useVideoExport(
         if (!timeline.value) return;
         
         try {
+            if (timeline.value.settings.fontLocalPath) {
+                return true;
+            }
             const primary = String(timeline.value.settings.fontFamily || '');
             const fallbacks = Array.isArray(timeline.value.settings.fontFallbacks)
                 ? timeline.value.settings.fontFallbacks as string[]

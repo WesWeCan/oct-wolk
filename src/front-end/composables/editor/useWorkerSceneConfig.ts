@@ -6,16 +6,10 @@ import type { useRenderWorker } from './useRenderWorker';
 import type { useTimelinePlayback } from './useTimelinePlayback';
 import { hashWords } from '@/front-end/utils/hash/hashWords';
 import { stableStringify } from '@/front-end/utils/hash/stableStringify';
+import { buildFontFamilyChain as buildSharedFontFamilyChain, fontDescriptorFromTimelineSettings } from '@/front-end/utils/fonts/fontUtils';
 
 export function buildFontFamilyChain(settings: TimelineDocument['settings']): string {
-  const primary = String(settings.fontFamily || 'system-ui');
-  const fallbacks = Array.isArray(settings.fontFallbacks)
-    ? settings.fontFallbacks as string[]
-    : [];
-  const names = [primary, ...fallbacks].filter(Boolean);
-  if (settings.fontLocalPath) names.unshift('ProjectFont');
-  const quote = (s: string) => /[^a-zA-Z0-9-]/.test(s) ? '"' + s.replace(/"/g, '\\"') + '"' : s;
-  return names.map(quote).join(', ');
+  return buildSharedFontFamilyChain(fontDescriptorFromTimelineSettings(settings));
 }
 
 export function computeConfigKeyForFrame(
@@ -71,6 +65,8 @@ export function useWorkerSceneConfig(
     const fontFamilyChain = buildFontFamilyChain(timeline.value.settings);
     const style = String(timeline.value.settings.fontStyle || 'normal');
     const weight = timeline.value.settings.fontWeight ?? 400;
+    const fontFamily = String(timeline.value.settings.fontFamily || 'system-ui');
+    const fontName = String(timeline.value.settings.fontName || '');
 
     const frame = playback.frame.value;
     const active = frameEval.getActiveScenesAtFrame(frame);
@@ -86,8 +82,8 @@ export function useWorkerSceneConfig(
     const bParamsBase = active.b && active.b.id !== 'none' ? (scenes.sceneDocs.value[active.b.id]?.params || {}) : null;
 
     const localPath = timeline.value.settings.fontLocalPath || null;
-    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
-    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
+    const aParams = aParamsBase ? { ...aParamsBase, words: wordsA, fontFamilyChain, fontFamily, fontName, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
+    const bParams = bParamsBase ? { ...bParamsBase, words: wordsB, fontFamilyChain, fontFamily, fontName, fontStyle: style, fontWeight: weight, fontLocalPath: localPath } : null;
 
     const configKey = getConfigKey(frame);
 

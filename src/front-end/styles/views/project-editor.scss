@@ -1219,7 +1219,12 @@ body:has(.project-editor) {
     }
 
     &__search {
-        margin: 4px;
+        display: block;
+        width: calc(100% - 16px);
+        // margin: 8px 8px 6px;
+        // border-left: none
+        // border-right: none;
+        box-sizing: border-box;
         flex-shrink: 0;
     }
 
@@ -1234,7 +1239,7 @@ body:has(.project-editor) {
         align-items: center;
         gap: 8px;
         width: 100%;
-        padding: 5px 8px;
+        padding: 25px 8px;
         background: none;
         border: none;
         border-bottom: 1px solid #222;
@@ -1255,6 +1260,14 @@ body:has(.project-editor) {
         }
     }
 
+    &__option-copy {
+        display: flex;
+        flex: 1;
+        min-width: 0;
+        flex-direction: column;
+        gap: 2px;
+    }
+
     &__option-preview {
         font-size: 14px;
         line-height: 1;
@@ -1270,6 +1283,64 @@ body:has(.project-editor) {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    &__option-meta {
+        color: #7f8a94;
+        font-size: 10px;
+        line-height: 1.2;
+    }
+
+    &__group {
+        border-bottom: 1px solid #222;
+        padding: 6px 0;
+    }
+
+    &__group-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 8px 6px;
+    }
+
+    &__variants {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 0 8px;
+    }
+
+    &__variant {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 100%;
+        padding: 4px 8px;
+        border: 1px solid #2f3a42;
+        border-radius: 999px;
+        background: #20262b;
+        color: #d4dde5;
+        cursor: pointer;
+        font-size: 10px;
+
+        &:hover {
+            background: rgba(0, 212, 255, 0.12);
+            border-color: rgba(0, 212, 255, 0.45);
+            color: #fff;
+        }
+
+        &:disabled {
+            opacity: 0.55;
+            cursor: progress;
+        }
+    }
+
+    &__variant-file {
+        color: #7f8a94;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 180px;
     }
 }
 
