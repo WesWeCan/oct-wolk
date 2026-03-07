@@ -45,11 +45,50 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
         if (!ctx) return;
 
         ctx.clearRect(0, 0, width, height);
-        if (project.backgroundColor && project.backgroundColor !== 'transparent') {
-            ctx.fillStyle = project.backgroundColor;
+        const backgroundVisible = project.backgroundVisible !== false;
+        const backgroundImageVisible = project.backgroundImageVisible !== false;
+        const backgroundColorOpacity = Number.isFinite(project.backgroundColorOpacity as number)
+            ? Math.max(0, Math.min(1, project.backgroundColorOpacity as number))
+            : 1;
+        const backgroundUseGradient = !!project.backgroundUseGradient;
+        const backgroundGradientColor = typeof project.backgroundGradientColor === 'string'
+            ? project.backgroundGradientColor
+            : '#222222';
+        const backgroundGradientAngle = Number.isFinite(project.backgroundGradientAngle as number)
+            ? Number(project.backgroundGradientAngle)
+            : 90;
+        const backgroundImageX = Number.isFinite(project.backgroundImageX as number) ? (project.backgroundImageX as number) : 0;
+        const backgroundImageY = Number.isFinite(project.backgroundImageY as number) ? (project.backgroundImageY as number) : 0;
+        const backgroundImageScale = Number.isFinite(project.backgroundImageScale as number)
+            ? Math.max(0.05, project.backgroundImageScale as number)
+            : 1;
+        const backgroundImageOpacity = Number.isFinite(project.backgroundImageOpacity as number)
+            ? Math.max(0, Math.min(1, project.backgroundImageOpacity as number))
+            : 1;
+
+        if (backgroundVisible && project.backgroundColor && project.backgroundColor !== 'transparent' && backgroundColorOpacity > 0) {
+            ctx.save();
+            ctx.globalAlpha = backgroundColorOpacity;
+            if (backgroundUseGradient) {
+                const angleRad = (backgroundGradientAngle * Math.PI) / 180;
+                const halfDiag = Math.sqrt(width * width + height * height) / 2;
+                const cx = width / 2;
+                const cy = height / 2;
+                const x0 = cx - Math.cos(angleRad) * halfDiag;
+                const y0 = cy - Math.sin(angleRad) * halfDiag;
+                const x1 = cx + Math.cos(angleRad) * halfDiag;
+                const y1 = cy + Math.sin(angleRad) * halfDiag;
+                const gradient = ctx.createLinearGradient(x0, y0, x1, y1);
+                gradient.addColorStop(0, project.backgroundColor);
+                gradient.addColorStop(1, backgroundGradientColor);
+                ctx.fillStyle = gradient;
+            } else {
+                ctx.fillStyle = project.backgroundColor;
+            }
             ctx.fillRect(0, 0, width, height);
+            ctx.restore();
         }
-        if (project.backgroundImage) {
+        if (backgroundVisible && backgroundImageVisible && project.backgroundImage) {
             const src = project.backgroundImage;
             let img = bgImageCache.get(src);
             if (!img && !bgImageFailed.has(src)) {
@@ -59,19 +98,27 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
                 img.onerror = () => bgImageFailed.add(src);
             }
             if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                ctx.save();
+                ctx.globalAlpha = backgroundImageOpacity;
                 const fit = project.backgroundImageFit || 'cover';
                 if (fit === 'stretch') {
-                    ctx.drawImage(img, 0, 0, width, height);
+                    const drawWidth = width * backgroundImageScale;
+                    const drawHeight = height * backgroundImageScale;
+                    const dx = ((width - drawWidth) / 2) + backgroundImageX;
+                    const dy = ((height - drawHeight) / 2) + backgroundImageY;
+                    ctx.drawImage(img, dx, dy, drawWidth, drawHeight);
                 } else {
                     const scale = fit === 'contain'
                         ? Math.min(width / img.naturalWidth, height / img.naturalHeight)
                         : Math.max(width / img.naturalWidth, height / img.naturalHeight);
-                    const drawWidth = img.naturalWidth * scale;
-                    const drawHeight = img.naturalHeight * scale;
-                    const dx = (width - drawWidth) / 2;
-                    const dy = (height - drawHeight) / 2;
+                    const finalScale = scale * backgroundImageScale;
+                    const drawWidth = img.naturalWidth * finalScale;
+                    const drawHeight = img.naturalHeight * finalScale;
+                    const dx = ((width - drawWidth) / 2) + backgroundImageX;
+                    const dy = ((height - drawHeight) / 2) + backgroundImageY;
                     ctx.drawImage(img, dx, dy, drawWidth, drawHeight);
                 }
+                ctx.restore();
             }
         }
 

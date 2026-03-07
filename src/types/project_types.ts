@@ -206,9 +206,19 @@ export interface WolkProject {
     rawLyrics: string;
     lyricTracks: LyricTrack[];
     motionTracks: MotionTrack[];
+    backgroundVisible?: boolean;
+    backgroundImageVisible?: boolean;
     backgroundImage?: string;
     backgroundColor: string;
+    backgroundColorOpacity?: number;
+    backgroundUseGradient?: boolean;
+    backgroundGradientColor?: string;
+    backgroundGradientAngle?: number;
     backgroundImageFit: 'cover' | 'contain' | 'stretch';
+    backgroundImageX?: number;
+    backgroundImageY?: number;
+    backgroundImageScale?: number;
+    backgroundImageOpacity?: number;
     createdAt: number;
     updatedAt: number;
 }

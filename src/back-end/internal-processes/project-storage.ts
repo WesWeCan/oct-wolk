@@ -20,6 +20,12 @@ const getProjectJsonPath = (projectId: string): string => {
 
 const normalizeProject = (raw: WolkProject): WolkProject => {
     const anyRaw = raw as any;
+    const colorOpacity = Number(anyRaw.backgroundColorOpacity);
+    const gradientAngle = Number(anyRaw.backgroundGradientAngle);
+    const imageOffsetX = Number(anyRaw.backgroundImageX);
+    const imageOffsetY = Number(anyRaw.backgroundImageY);
+    const imageScale = Number(anyRaw.backgroundImageScale);
+    const imageOpacity = Number(anyRaw.backgroundImageOpacity);
     return {
         ...raw,
         settings: {
@@ -34,11 +40,21 @@ const normalizeProject = (raw: WolkProject): WolkProject => {
         motionTracks: Array.isArray(anyRaw.motionTracks)
             ? anyRaw.motionTracks
             : (Array.isArray(anyRaw.motionLayers) ? anyRaw.motionLayers : []),
+        backgroundVisible: anyRaw.backgroundVisible !== false,
+        backgroundImageVisible: anyRaw.backgroundImageVisible !== false,
         backgroundImage: typeof anyRaw.backgroundImage === 'string' ? anyRaw.backgroundImage : undefined,
         backgroundColor: typeof anyRaw.backgroundColor === 'string' ? anyRaw.backgroundColor : '#000000',
+        backgroundColorOpacity: Number.isFinite(colorOpacity) ? Math.max(0, Math.min(1, colorOpacity)) : 1,
+        backgroundUseGradient: !!anyRaw.backgroundUseGradient,
+        backgroundGradientColor: typeof anyRaw.backgroundGradientColor === 'string' ? anyRaw.backgroundGradientColor : '#222222',
+        backgroundGradientAngle: Number.isFinite(gradientAngle) ? gradientAngle : 90,
         backgroundImageFit: anyRaw.backgroundImageFit === 'contain' || anyRaw.backgroundImageFit === 'stretch'
             ? anyRaw.backgroundImageFit
             : 'cover',
+        backgroundImageX: Number.isFinite(imageOffsetX) ? imageOffsetX : 0,
+        backgroundImageY: Number.isFinite(imageOffsetY) ? imageOffsetY : 0,
+        backgroundImageScale: Number.isFinite(imageScale) ? Math.max(0.05, imageScale) : 1,
+        backgroundImageOpacity: Number.isFinite(imageOpacity) ? Math.max(0, Math.min(1, imageOpacity)) : 1,
     };
 };
 
@@ -107,8 +123,18 @@ export const createProject = (initial?: { title?: string; audioSrc?: string; cov
         rawLyrics: '',
         lyricTracks: [],
         motionTracks: [],
+        backgroundVisible: true,
+        backgroundImageVisible: true,
         backgroundColor: '#000000',
+        backgroundColorOpacity: 1,
+        backgroundUseGradient: false,
+        backgroundGradientColor: '#222222',
+        backgroundGradientAngle: 90,
         backgroundImageFit: 'cover',
+        backgroundImageX: 0,
+        backgroundImageY: 0,
+        backgroundImageScale: 1,
+        backgroundImageOpacity: 1,
         createdAt: now,
         updatedAt: now,
     };

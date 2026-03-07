@@ -1541,9 +1541,79 @@ const onSetBackgroundColor = (color: string) => {
     scheduleSave();
 };
 
+const onSetBackgroundVisibility = (visible: boolean) => {
+    if (!project.value) return;
+    project.value.backgroundVisible = visible;
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundImageVisibility = (visible: boolean) => {
+    if (!project.value) return;
+    project.value.backgroundImageVisible = visible;
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundOpacity = (opacity: number) => {
+    if (!project.value) return;
+    project.value.backgroundColorOpacity = Math.max(0, Math.min(1, opacity));
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundUseGradient = (enabled: boolean) => {
+    if (!project.value) return;
+    project.value.backgroundUseGradient = enabled;
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundGradientColor = (color: string) => {
+    if (!project.value) return;
+    project.value.backgroundGradientColor = color;
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundGradientAngle = (angle: number) => {
+    if (!project.value) return;
+    project.value.backgroundGradientAngle = angle;
+    markDirty();
+    scheduleSave();
+};
+
 const onSetBackgroundFit = (fit: 'cover' | 'contain' | 'stretch') => {
     if (!project.value) return;
     project.value.backgroundImageFit = fit;
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundImageOffsetX = (offset: number) => {
+    if (!project.value) return;
+    project.value.backgroundImageX = Number.isFinite(offset) ? offset : 0;
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundImageOffsetY = (offset: number) => {
+    if (!project.value) return;
+    project.value.backgroundImageY = Number.isFinite(offset) ? offset : 0;
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundImageScale = (scale: number) => {
+    if (!project.value) return;
+    project.value.backgroundImageScale = Math.max(0.05, Number.isFinite(scale) ? scale : 1);
+    markDirty();
+    scheduleSave();
+};
+
+const onSetBackgroundImageOpacity = (opacity: number) => {
+    if (!project.value) return;
+    project.value.backgroundImageOpacity = Math.max(0, Math.min(1, Number.isFinite(opacity) ? opacity : 1));
     markDirty();
     scheduleSave();
 };
@@ -1559,6 +1629,36 @@ const onUploadBackgroundImage = async (file: File) => {
 const onClearBackgroundImage = () => {
     if (!project.value) return;
     project.value.backgroundImage = undefined;
+    markDirty();
+    scheduleSave();
+};
+
+const onResetBackgroundImageControls = () => {
+    if (!project.value) return;
+    project.value.backgroundImageX = 0;
+    project.value.backgroundImageY = 0;
+    project.value.backgroundImageScale = 1;
+    project.value.backgroundImageOpacity = 1;
+    project.value.backgroundImageFit = 'cover';
+    markDirty();
+    scheduleSave();
+};
+
+const onResetBackground = () => {
+    if (!project.value) return;
+    project.value.backgroundVisible = true;
+    project.value.backgroundImageVisible = true;
+    project.value.backgroundColor = '#000000';
+    project.value.backgroundColorOpacity = 1;
+    project.value.backgroundUseGradient = false;
+    project.value.backgroundGradientColor = '#222222';
+    project.value.backgroundGradientAngle = 90;
+    project.value.backgroundImage = undefined;
+    project.value.backgroundImageFit = 'cover';
+    project.value.backgroundImageX = 0;
+    project.value.backgroundImageY = 0;
+    project.value.backgroundImageScale = 1;
+    project.value.backgroundImageOpacity = 1;
     markDirty();
     scheduleSave();
 };
@@ -2193,7 +2293,17 @@ onUnmounted(() => {
                     :lyric-tracks="project.lyricTracks"
                     :background-image="project.backgroundImage"
                     :background-color="project.backgroundColor"
+                    :background-visible="project.backgroundVisible !== false"
+                    :background-image-visible="project.backgroundImageVisible !== false"
+                    :background-opacity="project.backgroundColorOpacity ?? 1"
+                    :background-use-gradient="!!project.backgroundUseGradient"
+                    :background-gradient-color="project.backgroundGradientColor || '#222222'"
+                    :background-gradient-angle="project.backgroundGradientAngle ?? 90"
                     :background-image-fit="project.backgroundImageFit || 'cover'"
+                    :background-image-offset-x="project.backgroundImageX ?? 0"
+                    :background-image-offset-y="project.backgroundImageY ?? 0"
+                    :background-image-scale="project.backgroundImageScale ?? 1"
+                    :background-image-opacity="project.backgroundImageOpacity ?? 1"
                     :playhead-ms="playheadMs"
                     :fps="fps"
                     :project-font-family="project.font.family"
@@ -2202,9 +2312,21 @@ onUnmounted(() => {
                     :renderer-bounds="selectedMotionTrackId ? motionRenderer.getRendererBounds(selectedMotionTrackId) : null"
                     @update-track="onUpdateMotionTrack"
                     @set-background-color="onSetBackgroundColor"
+                    @set-background-visible="onSetBackgroundVisibility"
+                    @set-background-image-visible="onSetBackgroundImageVisibility"
+                    @set-background-opacity="onSetBackgroundOpacity"
+                    @set-background-use-gradient="onSetBackgroundUseGradient"
+                    @set-background-gradient-color="onSetBackgroundGradientColor"
+                    @set-background-gradient-angle="onSetBackgroundGradientAngle"
                     @set-background-fit="onSetBackgroundFit"
+                    @set-background-image-offset-x="onSetBackgroundImageOffsetX"
+                    @set-background-image-offset-y="onSetBackgroundImageOffsetY"
+                    @set-background-image-scale="onSetBackgroundImageScale"
+                    @set-background-image-opacity="onSetBackgroundImageOpacity"
                     @upload-background-image="onUploadBackgroundImage"
                     @clear-background-image="onClearBackgroundImage"
+                    @reset-background-image-controls="onResetBackgroundImageControls"
+                    @reset-background="onResetBackground"
                     @seek-to-ms="onSeekToMs"
                 />
             </template>

@@ -1864,6 +1864,82 @@ body:has(.project-editor) {
     }
 }
 
+.background-preview {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 1px solid #333;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 10px;
+    background:
+        linear-gradient(45deg, #1f1f1f 25%, transparent 25%),
+        linear-gradient(-45deg, #1f1f1f 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1f1f1f 75%),
+        linear-gradient(-45deg, transparent 75%, #1f1f1f 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    background-color: #151515;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &__fill {
+        position: absolute;
+        inset: 0;
+    }
+
+    &__image {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    &__overlay {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 6px 8px;
+        font-size: 10px;
+        color: #cdd6dd;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+        text-align: center;
+        pointer-events: none;
+        z-index: 2;
+    }
+
+    &.is-empty::before {
+        content: 'No image';
+        position: absolute;
+        color: #7f8b94;
+        font-size: 12px;
+        letter-spacing: 0.02em;
+    }
+
+    &.is-drag-active {
+        border-color: #00d4ff;
+        box-shadow: inset 0 0 0 2px rgba(0, 212, 255, 0.35);
+    }
+}
+
+.inspector-note {
+    font-size: 11px;
+    color: #f5c16c;
+    background: rgba(245, 193, 108, 0.12);
+    border: 1px solid rgba(245, 193, 108, 0.28);
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 10px;
+}
+
+.background-hidden-file-input {
+    display: none;
+}
+
 // ===== Item inspector =====
 
 .item-inspector {
