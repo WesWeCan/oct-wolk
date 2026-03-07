@@ -62,7 +62,7 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
             <span class="style-v2__field-label">Bounds</span>
             <div class="segmented-control">
                 <button :class="{ active: resolveStyle('boundsMode', 'safeArea') === 'free' }" @click="emit('update-style', 'boundsMode' as any, 'free' as BoundsMode)">Free</button>
-                <button :class="{ active: resolveStyle('boundsMode', 'safeArea') === 'safeArea' }" @click="emit('update-style', 'boundsMode' as any, 'safeArea' as BoundsMode)">Safe Area</button>
+                <button :class="{ active: resolveStyle('boundsMode', 'safeArea') === 'safeArea' }" @click="emit('update-style', 'boundsMode' as any, 'safeArea' as BoundsMode)">Constraint Region</button>
             </div>
         </div>
 
@@ -105,10 +105,10 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
             </div>
         </div>
 
-        <!-- Safe Area Padding (only if safeArea) -->
+        <!-- Constraint Region Padding (only if safeArea) -->
         <AnimatableNumberField
             v-if="resolveStyle('boundsMode', 'safeArea') === 'safeArea'"
-            label="Padding"
+            label="Inset"
             :model-value="Number(resolveStyle('safeAreaPadding', 40))"
             :min="0"
             :step="1"
@@ -122,10 +122,10 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
             @toggle-keyframe="(v: number) => diamondClick('style.safeAreaPadding', v)"
         />
 
-        <!-- Safe Area Offset X (only if safeArea) -->
+        <!-- Constraint Region Offset X (only if safeArea) -->
         <AnimatableNumberField
             v-if="resolveStyle('boundsMode', 'safeArea') === 'safeArea'"
-            label="Offset X"
+            label="Region Offset X"
             :model-value="Number(resolveStyle('safeAreaOffsetX', 0))"
             :step="1"
             :fallback-value="0"
@@ -138,10 +138,10 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
             @toggle-keyframe="(v: number) => diamondClick('style.safeAreaOffsetX', v)"
         />
 
-        <!-- Safe Area Offset Y (only if safeArea) -->
+        <!-- Constraint Region Offset Y (only if safeArea) -->
         <AnimatableNumberField
             v-if="resolveStyle('boundsMode', 'safeArea') === 'safeArea'"
-            label="Offset Y"
+            label="Region Offset Y"
             :model-value="Number(resolveStyle('safeAreaOffsetY', 0))"
             :step="1"
             :fallback-value="0"

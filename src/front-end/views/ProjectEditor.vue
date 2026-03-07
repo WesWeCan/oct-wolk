@@ -8,7 +8,6 @@ import {
     mdiArrowUp,
     mdiCheck,
     mdiContentCopy,
-    mdiCropFree,
     mdiCrosshairs,
     mdiDiamond,
     mdiDiamondOutline,
@@ -790,13 +789,15 @@ const allSelectedItems = computed(() => {
 
 const playheadMs = computed(() => (playhead.value.frame / Math.max(1, fps.value)) * 1000);
 const selectedMotionTrackId = ref<string | null>(null);
+watch(() => selectedMotionTrackId.value, () => {
+    markDirty();
+});
 const motionClipboard = ref<MotionTrack | null>(null);
 const selectedMotionTrack = computed<MotionTrack | null>(() => {
     if (!project.value || !selectedMotionTrackId.value) return null;
     return project.value.motionTracks.find((track) => track.id === selectedMotionTrackId.value) || null;
 });
-const monitorManipulationEnabled = ref(false);
-const showSafeAreaGuide = ref(true);
+const monitorManipulationEnabled = ref(true);
 
 const kfLabel = (path: string): string => {
     const def = getPropertyDef(path);
@@ -804,24 +805,13 @@ const kfLabel = (path: string): string => {
 };
 
 const ensureMotionTrackDefaults = (track: MotionTrack): MotionTrack => {
-    const block = { ...track.block };
-    const style = block.style;
-    const transform = block.transform;
-
-    if ((style.boundsMode ?? 'safeArea') === 'safeArea' && transform.anchorX === 'center') {
-        const textAlign = style.textAlign ?? 'center';
-        if (textAlign === 'left' || textAlign === 'right') {
-            block.transform = { ...transform, anchorX: textAlign };
-        }
-    }
-
     return {
         ...track,
         enabled: track.enabled !== false,
         muted: !!track.muted,
         solo: !!track.solo,
         locked: !!track.locked,
-        block,
+        block: { ...track.block },
     };
 };
 
@@ -896,24 +886,22 @@ const gizmoAutoKeyframe = (track: MotionTrack, path: string, value: any) => {
     pts[ptIdx] = upsertKeyframe(pts[ptIdx] as any, frame, value, interp) as any;
 };
 
-const clampOffsetToSafeArea = (
+const clampOffsetToConstraintRegion = (
     offset: number,
     anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
     padding: number,
     canvasSize: number,
-    safeAreaOffset: number = 0,
+    regionOffset: number = 0,
 ): number => {
-    const saMin = padding + safeAreaOffset;
-    const saMax = canvasSize - padding + safeAreaOffset;
+    const min = padding + regionOffset;
+    const max = canvasSize - padding + regionOffset;
 
     let anchorPos: number;
-    if (anchor === 'left' || anchor === 'top') anchorPos = saMin;
-    else if (anchor === 'right' || anchor === 'bottom') anchorPos = saMax;
-    else anchorPos = (saMin + saMax) / 2;
+    if (anchor === 'left' || anchor === 'top') anchorPos = min;
+    else if (anchor === 'right' || anchor === 'bottom') anchorPos = max;
+    else anchorPos = (min + max) / 2;
 
-    const minOffset = saMin - anchorPos;
-    const maxOffset = saMax - anchorPos;
-    return Math.max(minOffset, Math.min(maxOffset, offset));
+    return Math.max(min - anchorPos, Math.min(max - anchorPos, offset));
 };
 
 const motionGizmo = useMotionGizmo(
@@ -939,10 +927,10 @@ const motionGizmo = useMotionGizmo(
 
                 if ((track.block.style.boundsMode ?? 'safeArea') === 'safeArea') {
                     const padding = track.block.style.safeAreaPadding ?? 40;
-                    const saOx = track.block.style.safeAreaOffsetX ?? 0;
-                    const saOy = track.block.style.safeAreaOffsetY ?? 0;
-                    newOffsetX = clampOffsetToSafeArea(newOffsetX, track.block.transform.anchorX, padding, targetWidth.value, saOx);
-                    newOffsetY = clampOffsetToSafeArea(newOffsetY, track.block.transform.anchorY, padding, targetHeight.value, saOy);
+                    const regionOffsetX = track.block.style.safeAreaOffsetX ?? 0;
+                    const regionOffsetY = track.block.style.safeAreaOffsetY ?? 0;
+                    newOffsetX = clampOffsetToConstraintRegion(newOffsetX, track.block.transform.anchorX, padding, targetWidth.value, regionOffsetX);
+                    newOffsetY = clampOffsetToConstraintRegion(newOffsetY, track.block.transform.anchorY, padding, targetHeight.value, regionOffsetY);
                 }
 
                 track.block.transform.offsetX = newOffsetX;
@@ -953,7 +941,7 @@ const motionGizmo = useMotionGizmo(
                 track.block.transform.scale = Math.max(0.05, Math.min(10, track.block.transform.scale + dx * 0.005));
                 gizmoAutoKeyframe(track, 'transform.scale', track.block.transform.scale);
             } else if (gizmoMode === 'rotate') {
-                track.block.transform.rotation += dx * 0.5;
+                track.block.transform.rotation += dx;
                 gizmoAutoKeyframe(track, 'transform.rotation', track.block.transform.rotation);
             }
             markDirty();
@@ -962,7 +950,7 @@ const motionGizmo = useMotionGizmo(
         onDragEnd() { scheduleSave(); },
     },
     (trackId) => motionRenderer.getRendererBounds(trackId),
-    showSafeAreaGuide,
+    monitorManipulationEnabled,
 );
 
 const selectedTrack = computed<LyricTrack | null>(() => {
@@ -1488,6 +1476,7 @@ const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
     pushUndo();
     project.value.motionTracks.push(track);
     selectedMotionTrackId.value = track.id;
+    markDirty();
     scheduleSave();
 };
 
@@ -1498,6 +1487,7 @@ const onDeleteMotionTrack = (trackId: string) => {
     if (selectedMotionTrackId.value === trackId) {
         selectedMotionTrackId.value = project.value.motionTracks[0]?.id || null;
     }
+    markDirty();
     scheduleSave();
 };
 
@@ -1552,12 +1542,14 @@ const onUploadBackgroundImage = async (file: File) => {
     if (!project.value) return;
     const uploaded = await ProjectService.uploadAsset(project.value.id, file, 'background');
     project.value.backgroundImage = uploaded.url;
+    markDirty();
     scheduleSave();
 };
 
 const onClearBackgroundImage = () => {
     if (!project.value) return;
     project.value.backgroundImage = undefined;
+    markDirty();
     scheduleSave();
 };
 
@@ -1577,6 +1569,7 @@ const onDuplicateMotionTrack = (trackId: string) => {
     };
     project.value.motionTracks.push(dup);
     selectedMotionTrackId.value = dup.id;
+    markDirty();
     scheduleSave();
 };
 
@@ -1587,6 +1580,7 @@ const onReorderMotionTracks = (orderedIds: string[]) => {
     if (reordered.length !== project.value.motionTracks.length) return;
     pushUndo();
     project.value.motionTracks = reordered;
+    markDirty();
     scheduleSave();
 };
 
@@ -1604,6 +1598,7 @@ const nudgeSelectedMotionTrack = (deltaMs: number) => {
     const nextStart = Math.max(0, track.block.startMs + deltaMs);
     track.block.startMs = nextStart;
     track.block.endMs = nextStart + duration;
+    markDirty();
     scheduleSave();
 };
 
@@ -1629,6 +1624,7 @@ const pasteMotionTrack = () => {
     pushUndo();
     project.value.motionTracks.push(pasted);
     selectedMotionTrackId.value = pasted.id;
+    markDirty();
     scheduleSave();
 };
 
@@ -1957,7 +1953,6 @@ const onKeyDown = (e: KeyboardEvent) => {
         const multiplier = e.shiftKey ? 10 : 1;
         if (mode.value === 'motion' && selectedMotionTrackId.value) {
             nudgeSelectedMotionTrack(dir * NUDGE_MS * multiplier);
-            markDirty();
         } else if (selection.hasSelection.value) {
             nudgeSelectedItem(dir * NUDGE_MS * multiplier);
             markDirty();
@@ -2102,21 +2097,11 @@ onUnmounted(() => {
                         <span class="monitor-frame">Frame: {{ currentFrame }}</span>
                     </div>
                     <div class="monitor-export-controls">
-                        
-                        <button
-                            v-if="mode === 'motion'"
-                            class="toolbar-toggle gizmo-toggle"
-                            :class="{ active: showSafeAreaGuide }"
-                            title="Toggle safe area guide"
-                            @click="showSafeAreaGuide = !showSafeAreaGuide"
-                        >
-                            <SvgIcon type="mdi" :path="mdiCropFree" :size="16" />
-                        </button>
                         <button
                             v-if="mode === 'motion'"
                             class="toolbar-toggle gizmo-toggle"
                             :class="{ active: monitorManipulationEnabled }"
-                            title="Toggle transform gizmo"
+                            title="Toggle transform overlay"
                             @click="monitorManipulationEnabled = !monitorManipulationEnabled"
                         >
                             <SvgIcon type="mdi" :path="mdiCrosshairs" :size="16" />
@@ -2204,6 +2189,7 @@ onUnmounted(() => {
                     :project-font-family="project.font.family"
                     :render-width="targetWidth"
                     :render-height="targetHeight"
+                    :renderer-bounds="selectedMotionTrackId ? motionRenderer.getRendererBounds(selectedMotionTrackId) : null"
                     @update-track="onUpdateMotionTrack"
                     @set-background-color="onSetBackgroundColor"
                     @set-background-fit="onSetBackgroundFit"

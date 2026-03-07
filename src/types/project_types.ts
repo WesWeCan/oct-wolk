@@ -74,10 +74,12 @@ export interface MotionStyle {
     writingMode?: WritingMode;
     outlineWidth?: number;
     outlineColor?: string;
+    // `safeArea` remains the persisted backing name for the user-facing Constraint Region mode.
     boundsMode?: BoundsMode;
     wrapMode?: WrapMode;
     maxLines?: number;
     overflowBehavior?: OverflowBehavior;
+    // Persisted backing fields for the user-facing Constraint Region controls.
     safeAreaPadding?: number;
     safeAreaOffsetX?: number;
     safeAreaOffsetY?: number;

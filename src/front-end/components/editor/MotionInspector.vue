@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { LyricTrack, MotionTrack, MotionStyle, MotionTransform, MotionEnterExit, AnchorX, AnchorY } from '@/types/project_types';
+import type { LyricTrack, MotionTrack, MotionStyle, MotionTransform, MotionEnterExit, AnchorX, AnchorY, ItemOverride } from '@/types/project_types';
+import type { RendererBounds } from '@/front-end/motion/types';
 import MotionAppearanceTab from '@/front-end/components/editor/motion/MotionAppearanceTab.vue';
 import MotionPositionTab from '@/front-end/components/editor/motion/MotionPositionTab.vue';
 import MotionAnimationTab from '@/front-end/components/editor/motion/MotionAnimationTab.vue';
@@ -21,27 +22,8 @@ const props = defineProps<{
     projectFontFamily?: string;
     renderWidth?: number;
     renderHeight?: number;
+    rendererBounds?: RendererBounds | null;
 }>();
-
-const clampOffsetToSafeArea = (
-    offset: number,
-    anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
-    padding: number,
-    canvasSize: number,
-    safeAreaOffset: number = 0,
-): number => {
-    const saMin = padding + safeAreaOffset;
-    const saMax = canvasSize - padding + safeAreaOffset;
-
-    let anchorPos: number;
-    if (anchor === 'left' || anchor === 'top') anchorPos = saMin;
-    else if (anchor === 'right' || anchor === 'bottom') anchorPos = saMax;
-    else anchorPos = (saMin + saMax) / 2;
-
-    const minOffset = saMin - anchorPos;
-    const maxOffset = saMax - anchorPos;
-    return Math.max(minOffset, Math.min(maxOffset, offset));
-};
 
 const emit = defineEmits<{
     (e: 'update-track', track: MotionTrack): void;
@@ -51,6 +33,56 @@ const emit = defineEmits<{
     (e: 'clear-background-image'): void;
     (e: 'seek-to-ms', ms: number): void;
 }>();
+
+const clampOffsetToConstraintRegion = (
+    offset: number,
+    anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
+    padding: number,
+    canvasSize: number,
+    regionOffset: number = 0,
+): number => {
+    const min = padding + regionOffset;
+    const max = canvasSize - padding + regionOffset;
+
+    let anchorPos: number;
+    if (anchor === 'left' || anchor === 'top') anchorPos = min;
+    else if (anchor === 'right' || anchor === 'bottom') anchorPos = max;
+    else anchorPos = (min + max) / 2;
+
+    return Math.max(min - anchorPos, Math.min(max - anchorPos, offset));
+};
+
+const resolveReferenceBasePoint = (
+    anchorX: AnchorX,
+    anchorY: AnchorY,
+    track: MotionTrack,
+    renderWidth?: number,
+    renderHeight?: number,
+): { x: number; y: number } => {
+    const width = renderWidth ?? 0;
+    const height = renderHeight ?? 0;
+    const style = track.block.style;
+    const inConstraintRegion = (style.boundsMode ?? 'safeArea') === 'safeArea';
+    const left = inConstraintRegion ? (style.safeAreaPadding ?? 40) + (style.safeAreaOffsetX ?? 0) : 0;
+    const right = inConstraintRegion ? width - (style.safeAreaPadding ?? 40) + (style.safeAreaOffsetX ?? 0) : width;
+    const top = inConstraintRegion ? (style.safeAreaPadding ?? 40) + (style.safeAreaOffsetY ?? 0) : 0;
+    const bottom = inConstraintRegion ? height - (style.safeAreaPadding ?? 40) + (style.safeAreaOffsetY ?? 0) : height;
+
+    return {
+        x: anchorX === 'left' ? left : anchorX === 'right' ? right : (left + right) / 2,
+        y: anchorY === 'top' ? top : anchorY === 'bottom' ? bottom : (top + bottom) / 2,
+    };
+};
+
+const rotateScalePoint = (x: number, y: number, rotationDeg: number, scale: number) => {
+    const rad = (rotationDeg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return {
+        x: (x * cos - y * sin) * scale,
+        y: (x * sin + y * cos) * scale,
+    };
+};
 
 const selectedItemId = ref<string | null>(null);
 const selectedWordIndex = ref<number | null>(null);
@@ -98,6 +130,11 @@ const selectedItemWords = computed<string[]>(() => {
 const updateSourceTrack = (sourceTrackId: string) => {
     if (!props.motionTrack || isLocked.value) return;
     emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, sourceTrackId } });
+};
+
+const updateBlockType = (type: MotionTrack['block']['type']) => {
+    if (!props.motionTrack || isLocked.value) return;
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, type } });
 };
 
 const updateStartFrame = (frame: number) => {
@@ -149,18 +186,17 @@ const updateTransform = (key: keyof MotionTransform, value: any) => {
         return;
     }
     const block = { ...props.motionTrack.block };
-
     if ((key === 'offsetX' || key === 'offsetY') && (block.style.boundsMode ?? 'safeArea') === 'safeArea') {
         const padding = block.style.safeAreaPadding ?? 40;
-        const saOx = block.style.safeAreaOffsetX ?? 0;
-        const saOy = block.style.safeAreaOffsetY ?? 0;
+        const regionOffsetX = block.style.safeAreaOffsetX ?? 0;
+        const regionOffsetY = block.style.safeAreaOffsetY ?? 0;
         if (key === 'offsetX' && props.renderWidth) {
-            value = clampOffsetToSafeArea(value, block.transform.anchorX, padding, props.renderWidth, saOx);
-        } else if (key === 'offsetY' && props.renderHeight) {
-            value = clampOffsetToSafeArea(value, block.transform.anchorY, padding, props.renderHeight, saOy);
+            value = clampOffsetToConstraintRegion(value, block.transform.anchorX, padding, props.renderWidth, regionOffsetX);
+        }
+        if (key === 'offsetY' && props.renderHeight) {
+            value = clampOffsetToConstraintRegion(value, block.transform.anchorY, padding, props.renderHeight, regionOffsetY);
         }
     }
-
     block.transform = { ...block.transform, [key]: value };
     block.propertyTracks = autoKeyframe(`transform.${key}`, value, [...(block.propertyTracks || [])]);
     emit('update-track', { ...props.motionTrack, block });
@@ -168,9 +204,40 @@ const updateTransform = (key: keyof MotionTransform, value: any) => {
 
 const updateAnchor = (x: AnchorX, y: AnchorY) => {
     if (!props.motionTrack || isLocked.value) return;
+    const nextTransform = { ...props.motionTrack.block.transform, anchorX: x, anchorY: y };
+
+    if (props.rendererBounds && props.renderWidth && props.renderHeight) {
+        const bounds = props.rendererBounds;
+        const targetLocalX = x === 'left'
+            ? bounds.localBoxX
+            : x === 'right'
+                ? bounds.localBoxX + bounds.localBoxWidth
+                : bounds.localBoxX + (bounds.localBoxWidth / 2);
+        const targetLocalY = y === 'top'
+            ? bounds.localBoxY
+            : y === 'bottom'
+                ? bounds.localBoxY + bounds.localBoxHeight
+                : bounds.localBoxY + (bounds.localBoxHeight / 2);
+        const targetDelta = rotateScalePoint(targetLocalX, targetLocalY, bounds.rotation, bounds.scale);
+        const desiredReferenceX = bounds.referenceX + targetDelta.x;
+        const desiredReferenceY = bounds.referenceY + targetDelta.y;
+        const basePoint = resolveReferenceBasePoint(x, y, props.motionTrack, props.renderWidth, props.renderHeight);
+
+        nextTransform.offsetX = Math.round(desiredReferenceX - basePoint.x);
+        nextTransform.offsetY = Math.round(desiredReferenceY - basePoint.y);
+
+        if ((props.motionTrack.block.style.boundsMode ?? 'safeArea') === 'safeArea') {
+            const padding = props.motionTrack.block.style.safeAreaPadding ?? 40;
+            const regionOffsetX = props.motionTrack.block.style.safeAreaOffsetX ?? 0;
+            const regionOffsetY = props.motionTrack.block.style.safeAreaOffsetY ?? 0;
+            nextTransform.offsetX = clampOffsetToConstraintRegion(nextTransform.offsetX, x, padding, props.renderWidth, regionOffsetX);
+            nextTransform.offsetY = clampOffsetToConstraintRegion(nextTransform.offsetY, y, padding, props.renderHeight, regionOffsetY);
+        }
+    }
+
     emit('update-track', {
         ...props.motionTrack,
-        block: { ...props.motionTrack.block, transform: { ...props.motionTrack.block.transform, anchorX: x, anchorY: y } },
+        block: { ...props.motionTrack.block, transform: nextTransform },
     });
 };
 
@@ -304,8 +371,8 @@ const togglePropertyKeyframing = (path: string) => {
 // --- Item override helpers ---
 
 const getOrCreateOverride = (itemId: string) => {
-    if (!props.motionTrack || isLocked.value) return { overrides: [], idx: -1, override: null as any };
-    const overrides = [...props.motionTrack.block.overrides];
+    if (!props.motionTrack || isLocked.value) return { overrides: [] as ItemOverride[], idx: -1, override: null as ItemOverride | null };
+    const overrides: ItemOverride[] = [...props.motionTrack.block.overrides];
     let idx = overrides.findIndex((o) => o.sourceItemId === itemId);
     if (idx < 0) {
         overrides.push({ sourceItemId: itemId, hidden: false });
@@ -408,8 +475,10 @@ const onUploadBackgroundImage = (event: Event) => {
                 >{{ word }}</button>
             </div>
 
+           
+
             <!-- Source + timing -->
-            <details class="inspector-section" open>
+            <details class="inspector-section" >
                 <summary class="inspector-section__title">Source &amp; Timing</summary>
                 <div class="inspector-section__content">
                     <div class="inspector-field">
@@ -445,7 +514,7 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Style -->
-            <details class="inspector-section" open>
+            <details class="inspector-section" >
                 <summary class="inspector-section__title">Style</summary>
                 <div class="inspector-section__content">
                     <MotionAppearanceTab
@@ -460,7 +529,7 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Position -->
-            <details class="inspector-section" open>
+            <details class="inspector-section" >
                 <summary class="inspector-section__title">Position</summary>
                 <div class="inspector-section__content">
                     <MotionPositionTab
@@ -478,9 +547,9 @@ const onUploadBackgroundImage = (event: Event) => {
                 </div>
             </details>
 
-            <!-- Safe Area -->
-            <details class="inspector-section" open>
-                <summary class="inspector-section__title">Safe Area</summary>
+            <!-- Constraint Region -->
+            <details class="inspector-section" >
+                <summary class="inspector-section__title">Constraint Region</summary>
                 <div class="inspector-section__content">
                     <MotionSafeAreaTab
                         :track="motionTrack"
@@ -493,7 +562,7 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Animation -->
-            <details class="inspector-section" open>
+            <details class="inspector-section" >
                 <summary class="inspector-section__title">Animation</summary>
                 <div class="inspector-section__content">
                     <MotionAnimationTab
@@ -504,7 +573,7 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Items -->
-            <details class="inspector-section" open>
+            <details class="inspector-section" >
                 <summary class="inspector-section__title">Items</summary>
                 <div class="inspector-section__content">
                     <MotionItemsTab

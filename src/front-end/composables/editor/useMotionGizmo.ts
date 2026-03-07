@@ -24,6 +24,17 @@ export function useMotionGizmo(
     let activeHandle: 'move' | 'scale-tl' | 'scale-tr' | 'scale-bl' | 'scale-br' | 'rotate' | null = null;
     let dragStartX = 0;
     let dragStartY = 0;
+    let dragStartAngle = 0;
+
+    const rotateScalePoint = (x: number, y: number, rotationDeg: number, scale: number) => {
+        const rad = (rotationDeg * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        return {
+            x: (x * cos - y * sin) * scale,
+            y: (x * sin + y * cos) * scale,
+        };
+    };
 
     const getScaleFactor = (): number => {
         const canvas = previewCanvas.value;
@@ -34,24 +45,24 @@ export function useMotionGizmo(
     const getBoundingBox = () => {
         const track = selectedTrack.value;
         if (!track) return null;
-        const scale = getScaleFactor();
+        const previewScale = getScaleFactor();
 
         const reported = getBoundsForTrack?.(track.id);
         if (reported) {
-            let hw = (reported.width * scale) / 2;
-            let hh = (reported.height * scale) / 2;
-
-            const anchorX = reported.anchorX ?? 'center';
-            const anchorY = reported.anchorY ?? 'center';
-            let cx = reported.x * scale;
-            let cy = reported.y * scale;
-            if (anchorX === 'left') cx += hw;
-            else if (anchorX === 'right') cx -= hw;
-            if (anchorY === 'top') cy += hh;
-            else if (anchorY === 'bottom') cy -= hh;
-
-            const rotation = (reported.rotation * Math.PI) / 180;
-            return { cx, cy, hw, hh, rotation };
+            return {
+                referenceX: reported.referenceX * previewScale,
+                referenceY: reported.referenceY * previewScale,
+                localBoxX: reported.localBoxX,
+                localBoxY: reported.localBoxY,
+                localBoxWidth: reported.localBoxWidth,
+                localBoxHeight: reported.localBoxHeight,
+                rotationDeg: reported.rotation,
+                totalScale: reported.scale * previewScale,
+                aabbX: reported.x * previewScale,
+                aabbY: reported.y * previewScale,
+                aabbWidth: reported.width * previewScale,
+                aabbHeight: reported.height * previewScale,
+            };
         }
 
         const t = track.block.transform;
@@ -59,22 +70,78 @@ export function useMotionGizmo(
         const rw = renderWidth.value;
         const rh = renderHeight.value;
 
-        let ax = rw / 2;
-        let ay = rh / 2;
-        if (t.anchorX === 'left') ax = 0;
-        if (t.anchorX === 'right') ax = rw;
-        if (t.anchorY === 'top') ay = 0;
-        if (t.anchorY === 'bottom') ay = rh;
+        const left = (s.boundsMode ?? 'safeArea') === 'safeArea' ? (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetX ?? 0) : 0;
+        const right = (s.boundsMode ?? 'safeArea') === 'safeArea' ? rw - (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetX ?? 0) : rw;
+        const top = (s.boundsMode ?? 'safeArea') === 'safeArea' ? (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetY ?? 0) : 0;
+        const bottom = (s.boundsMode ?? 'safeArea') === 'safeArea' ? rh - (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetY ?? 0) : rh;
 
-        const cx = (ax + t.offsetX) * scale;
-        const cy = (ay + t.offsetY) * scale;
-        const textWidth = s.fontSize * 8 * t.scale;
-        const textHeight = s.fontSize * s.lineHeight * t.scale;
-        const hw = (textWidth * scale) / 2;
-        const hh = (textHeight * scale) / 2;
-        const rotation = (t.rotation * Math.PI) / 180;
+        let referenceX = (left + right) / 2;
+        let referenceY = (top + bottom) / 2;
+        if (t.anchorX === 'left') referenceX = left;
+        if (t.anchorX === 'right') referenceX = right;
+        if (t.anchorY === 'top') referenceY = top;
+        if (t.anchorY === 'bottom') referenceY = bottom;
+        referenceX += t.offsetX;
+        referenceY += t.offsetY;
 
-        return { cx, cy, hw, hh, rotation };
+        const approxWidth = Math.max(40, s.fontSize * 8);
+        const approxHeight = Math.max(s.fontSize, s.fontSize * s.lineHeight);
+        const pad = Math.max(0, s.backgroundPadding ?? 0);
+        const localBoxX = t.anchorX === 'left' ? 0 : t.anchorX === 'right' ? -approxWidth - pad * 2 : -((approxWidth + pad * 2) / 2);
+        const localBoxY = t.anchorY === 'top' ? 0 : t.anchorY === 'bottom' ? -approxHeight - pad * 2 : -((approxHeight + pad * 2) / 2);
+
+        return {
+            referenceX: referenceX * previewScale,
+            referenceY: referenceY * previewScale,
+            localBoxX,
+            localBoxY,
+            localBoxWidth: approxWidth + pad * 2,
+            localBoxHeight: approxHeight + pad * 2,
+            rotationDeg: t.rotation,
+            totalScale: t.scale * previewScale,
+            aabbX: (referenceX + localBoxX * t.scale) * previewScale,
+            aabbY: (referenceY + localBoxY * t.scale) * previewScale,
+            aabbWidth: (approxWidth + pad * 2) * t.scale * previewScale,
+            aabbHeight: (approxHeight + pad * 2) * t.scale * previewScale,
+        };
+    };
+
+    const getBoxCorners = (bb: NonNullable<ReturnType<typeof getBoundingBox>>) => {
+        const corners = [
+            { x: bb.localBoxX, y: bb.localBoxY },
+            { x: bb.localBoxX + bb.localBoxWidth, y: bb.localBoxY },
+            { x: bb.localBoxX + bb.localBoxWidth, y: bb.localBoxY + bb.localBoxHeight },
+            { x: bb.localBoxX, y: bb.localBoxY + bb.localBoxHeight },
+        ];
+        return corners.map((corner) => {
+            const p = rotateScalePoint(corner.x, corner.y, bb.rotationDeg, bb.totalScale);
+            return { x: bb.referenceX + p.x, y: bb.referenceY + p.y };
+        });
+    };
+
+    const localToScreen = (
+        bb: NonNullable<ReturnType<typeof getBoundingBox>>,
+        x: number,
+        y: number,
+    ) => {
+        const p = rotateScalePoint(x, y, bb.rotationDeg, bb.totalScale);
+        return { x: bb.referenceX + p.x, y: bb.referenceY + p.y };
+    };
+
+    const screenToLocal = (
+        bb: NonNullable<ReturnType<typeof getBoundingBox>>,
+        x: number,
+        y: number,
+    ) => {
+        const rad = (-bb.rotationDeg * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const dx = x - bb.referenceX;
+        const dy = y - bb.referenceY;
+        const rx = dx * cos - dy * sin;
+        const ry = dx * sin + dy * cos;
+        const safeScale = Math.abs(bb.totalScale) > 0.000001 ? bb.totalScale : 0.000001;
+        return { x: rx / safeScale, y: ry / safeScale };
     };
 
     const drawSafeAreaGuide = (ctx: CanvasRenderingContext2D) => {
@@ -119,40 +186,59 @@ export function useMotionGizmo(
 
         const bb = getBoundingBox();
         if (!bb) return;
+        const corners = getBoxCorners(bb);
+        const topCenter = localToScreen(bb, bb.localBoxX + (bb.localBoxWidth / 2), bb.localBoxY);
+        const rotationHandle = localToScreen(
+            bb,
+            bb.localBoxX + (bb.localBoxWidth / 2),
+            bb.localBoxY - (ROTATION_OFFSET / Math.max(bb.totalScale, 0.000001)),
+        );
 
         ctx.save();
-        ctx.translate(bb.cx, bb.cy);
-        ctx.rotate(bb.rotation);
+        ctx.strokeStyle = 'rgba(0, 212, 255, 0.35)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.strokeRect(bb.aabbX, bb.aabbY, bb.aabbWidth, bb.aabbHeight);
+        ctx.setLineDash([]);
 
         ctx.strokeStyle = '#00d4ff';
         ctx.lineWidth = 1.5;
         ctx.setLineDash([4, 4]);
-        ctx.strokeRect(-bb.hw, -bb.hh, bb.hw * 2, bb.hh * 2);
+        ctx.beginPath();
+        ctx.moveTo(corners[0].x, corners[0].y);
+        for (let i = 1; i < corners.length; i++) ctx.lineTo(corners[i].x, corners[i].y);
+        ctx.closePath();
+        ctx.stroke();
         ctx.setLineDash([]);
 
-        const corners = [
-            { x: -bb.hw, y: -bb.hh },
-            { x: bb.hw, y: -bb.hh },
-            { x: -bb.hw, y: bb.hh },
-            { x: bb.hw, y: bb.hh },
-        ];
         ctx.fillStyle = '#00d4ff';
-        for (const c of corners) {
-            ctx.fillRect(c.x - HANDLE_SIZE / 2, c.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
+        for (const corner of corners) {
+            ctx.fillRect(corner.x - HANDLE_SIZE / 2, corner.y - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
         }
 
         ctx.beginPath();
-        ctx.moveTo(0, -bb.hh);
-        ctx.lineTo(0, -bb.hh - ROTATION_OFFSET);
-        ctx.strokeStyle = '#00d4ff';
-        ctx.lineWidth = 1.5;
+        ctx.moveTo(topCenter.x, topCenter.y);
+        ctx.lineTo(rotationHandle.x, rotationHandle.y);
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.arc(0, -bb.hh - ROTATION_OFFSET, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#00d4ff';
+        ctx.arc(rotationHandle.x, rotationHandle.y, 5, 0, Math.PI * 2);
         ctx.fill();
 
+        ctx.beginPath();
+        ctx.arc(bb.referenceX, bb.referenceY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffd166';
+        ctx.fill();
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(bb.referenceX - 8, bb.referenceY);
+        ctx.lineTo(bb.referenceX + 8, bb.referenceY);
+        ctx.moveTo(bb.referenceX, bb.referenceY - 8);
+        ctx.lineTo(bb.referenceX, bb.referenceY + 8);
+        ctx.strokeStyle = '#ffd166';
+        ctx.stroke();
         ctx.restore();
     };
 
@@ -160,23 +246,30 @@ export function useMotionGizmo(
         const bb = getBoundingBox();
         if (!bb) return null;
 
-        const cos = Math.cos(-bb.rotation);
-        const sin = Math.sin(-bb.rotation);
-        const dx = px - bb.cx;
-        const dy = py - bb.cy;
-        const lx = dx * cos - dy * sin;
-        const ly = dx * sin + dy * cos;
-
-        const rotDist = Math.sqrt(lx * lx + (ly + bb.hh + ROTATION_OFFSET) ** 2);
+        const corners = getBoxCorners(bb);
+        const rotationHandle = localToScreen(
+            bb,
+            bb.localBoxX + (bb.localBoxWidth / 2),
+            bb.localBoxY - (ROTATION_OFFSET / Math.max(bb.totalScale, 0.000001)),
+        );
+        const rotDist = Math.hypot(px - rotationHandle.x, py - rotationHandle.y);
         if (rotDist < 12) return 'rotate';
 
         const hs = HANDLE_SIZE + 4;
-        if (Math.abs(lx + bb.hw) < hs && Math.abs(ly + bb.hh) < hs) return 'scale-tl';
-        if (Math.abs(lx - bb.hw) < hs && Math.abs(ly + bb.hh) < hs) return 'scale-tr';
-        if (Math.abs(lx + bb.hw) < hs && Math.abs(ly - bb.hh) < hs) return 'scale-bl';
-        if (Math.abs(lx - bb.hw) < hs && Math.abs(ly - bb.hh) < hs) return 'scale-br';
+        if (Math.hypot(px - corners[0].x, py - corners[0].y) < hs) return 'scale-tl';
+        if (Math.hypot(px - corners[1].x, py - corners[1].y) < hs) return 'scale-tr';
+        if (Math.hypot(px - corners[3].x, py - corners[3].y) < hs) return 'scale-bl';
+        if (Math.hypot(px - corners[2].x, py - corners[2].y) < hs) return 'scale-br';
 
-        if (Math.abs(lx) <= bb.hw && Math.abs(ly) <= bb.hh) return 'move';
+        const local = screenToLocal(bb, px, py);
+        if (
+            local.x >= bb.localBoxX
+            && local.x <= bb.localBoxX + bb.localBoxWidth
+            && local.y >= bb.localBoxY
+            && local.y <= bb.localBoxY + bb.localBoxHeight
+        ) {
+            return 'move';
+        }
 
         return null;
     };
@@ -197,6 +290,12 @@ export function useMotionGizmo(
         activeHandle = handle;
         dragStartX = e.clientX;
         dragStartY = e.clientY;
+        if (handle === 'rotate') {
+            const bb = getBoundingBox();
+            if (bb) {
+                dragStartAngle = Math.atan2(py - bb.referenceY, px - bb.referenceX);
+            }
+        }
         callbacks.onDragStart();
 
         const onMove = (ev: PointerEvent) => {
@@ -211,7 +310,17 @@ export function useMotionGizmo(
             } else if (activeHandle?.startsWith('scale')) {
                 callbacks.onTransformDelta('scale', dx, dy);
             } else if (activeHandle === 'rotate') {
-                callbacks.onTransformDelta('rotate', dx, dy);
+                const canvasRect = canvas.getBoundingClientRect();
+                const currentPx = ev.clientX - canvasRect.left;
+                const currentPy = ev.clientY - canvasRect.top;
+                const bb = getBoundingBox();
+                if (!bb) return;
+                const nextAngle = Math.atan2(currentPy - bb.referenceY, currentPx - bb.referenceX);
+                let angleDeltaDeg = ((nextAngle - dragStartAngle) * 180) / Math.PI;
+                if (angleDeltaDeg > 180) angleDeltaDeg -= 360;
+                if (angleDeltaDeg < -180) angleDeltaDeg += 360;
+                dragStartAngle = nextAngle;
+                callbacks.onTransformDelta('rotate', angleDeltaDeg, 0);
             }
         };
 
@@ -244,6 +353,7 @@ export function useMotionGizmo(
     const attach = () => {
         const canvas = overlayCanvas.value;
         if (!canvas) return;
+        canvas.style.pointerEvents = enabled.value ? 'auto' : 'none';
         canvas.addEventListener('pointerdown', onPointerDown);
         canvas.addEventListener('pointermove', onPointerMove);
     };

@@ -38,10 +38,14 @@ export interface RendererBounds {
     y: number;
     width: number;
     height: number;
+    referenceX: number;
+    referenceY: number;
+    localBoxX: number;
+    localBoxY: number;
+    localBoxWidth: number;
+    localBoxHeight: number;
     rotation: number;
     scale: number;
-    anchorX?: 'left' | 'center' | 'right';
-    anchorY?: 'top' | 'center' | 'bottom';
 }
 
 export interface MotionBlockRenderer {

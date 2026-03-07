@@ -23,20 +23,114 @@ const applyTextCase = (text: string, textCase: MotionStyle['textCase']): string 
     }
 };
 
-const resolveAnchorPoint = (
+const resolveReferencePoint = (
     transform: MotionTransform,
+    boundsMode: BoundsMode,
     width: number,
     height: number,
+    safeBounds: { left: number; right: number; top: number; bottom: number },
 ): { x: number; y: number } => {
-    let x = width / 2;
-    let y = height / 2;
+    const left = boundsMode === 'safeArea' ? safeBounds.left : 0;
+    const right = boundsMode === 'safeArea' ? safeBounds.right : width;
+    const top = boundsMode === 'safeArea' ? safeBounds.top : 0;
+    const bottom = boundsMode === 'safeArea' ? safeBounds.bottom : height;
 
-    if (transform.anchorX === 'left') x = 0;
-    if (transform.anchorX === 'right') x = width;
-    if (transform.anchorY === 'top') y = 0;
-    if (transform.anchorY === 'bottom') y = height;
+    let x = (left + right) / 2;
+    let y = (top + bottom) / 2;
 
-    return { x: x + transform.offsetX, y: y + transform.offsetY };
+    if (transform.anchorX === 'left') x = left;
+    if (transform.anchorX === 'right') x = right;
+    if (transform.anchorY === 'top') y = top;
+    if (transform.anchorY === 'bottom') y = bottom;
+
+    x += transform.offsetX;
+    y += transform.offsetY;
+
+    if (boundsMode === 'safeArea') {
+        x = Math.max(left, Math.min(right, x));
+        y = Math.max(top, Math.min(bottom, y));
+    }
+
+    return { x, y };
+};
+
+interface LocalRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+const rotateScalePoint = (x: number, y: number, rotationDeg: number, scale: number): { x: number; y: number } => {
+    const rad = (rotationDeg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return {
+        x: (x * cos - y * sin) * scale,
+        y: (x * sin + y * cos) * scale,
+    };
+};
+
+const screenDeltaToLocal = (
+    x: number,
+    y: number,
+    rotationDeg: number,
+    scale: number,
+): { x: number; y: number } => {
+    const rad = (rotationDeg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const safeScale = Math.abs(scale) > 0.000001 ? scale : 0.000001;
+    return {
+        x: ((x * cos) + (y * sin)) / safeScale,
+        y: ((-x * sin) + (y * cos)) / safeScale,
+    };
+};
+
+const computeRectAabb = (
+    rect: LocalRect,
+    rotationDeg: number,
+    scale: number,
+    originX: number,
+    originY: number,
+): { x: number; y: number; width: number; height: number } => {
+    const corners = [
+        rotateScalePoint(rect.x, rect.y, rotationDeg, scale),
+        rotateScalePoint(rect.x + rect.width, rect.y, rotationDeg, scale),
+        rotateScalePoint(rect.x, rect.y + rect.height, rotationDeg, scale),
+        rotateScalePoint(rect.x + rect.width, rect.y + rect.height, rotationDeg, scale),
+    ];
+    const xs = corners.map((corner) => originX + corner.x);
+    const ys = corners.map((corner) => originY + corner.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return {
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+    };
+};
+
+const fitRange = (
+    min: number,
+    max: number,
+    targetMin: number,
+    targetMax: number,
+): number => {
+    const size = max - min;
+    const targetSize = targetMax - targetMin;
+
+    if (size >= targetSize) {
+        return ((targetMin + targetMax) / 2) - ((min + max) / 2);
+    }
+
+    let delta = 0;
+    if (min < targetMin) delta = targetMin - min;
+    if (max + delta > targetMax) delta = targetMax - max;
+    return delta;
 };
 
 function applyAnimatedStyle(base: MotionStyle, animatedProps: Record<string, any>): MotionStyle {
@@ -91,6 +185,16 @@ interface WrappedLine {
     width: number;
 }
 
+function trimTrailingWhitespace(metrics: SpanMetric[], width: number): WrappedLine {
+    const trimmed = [...metrics];
+    let nextWidth = width;
+    while (trimmed.length > 0 && /^\s+$/.test(trimmed[trimmed.length - 1].span.text)) {
+        nextWidth -= trimmed[trimmed.length - 1].width;
+        trimmed.pop();
+    }
+    return { metrics: trimmed, width: Math.max(0, nextWidth) };
+}
+
 function measureSpans(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     spans: StyledSpan[],
@@ -133,15 +237,19 @@ function wrapSpans(
     for (const word of words) {
         const isSpace = /^\s+$/.test(word.text);
         if (currentWidth + word.width > maxWidth && currentWidth > 0 && !isSpace) {
-            lines.push({ metrics: currentLine, width: currentWidth });
+            const trimmed = trimTrailingWhitespace(currentLine, currentWidth);
+            if (trimmed.metrics.length > 0) {
+                lines.push(trimmed);
+            }
             currentLine = [];
             currentWidth = 0;
         }
+        if (currentLine.length === 0 && isSpace) continue;
         currentLine.push({ span: { ...word.span, text: word.text }, width: word.width });
         currentWidth += word.width;
     }
     if (currentLine.length > 0) {
-        lines.push({ metrics: currentLine, width: currentWidth });
+        lines.push(trimTrailingWhitespace(currentLine, currentWidth));
     }
 
     if (wrapMode === 'balanced' && lines.length > 1) {
@@ -250,6 +358,7 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         const safeAreaPadding = resolvedStyle.safeAreaPadding ?? 40;
         const safeAreaOffsetX = resolvedStyle.safeAreaOffsetX ?? 0;
         const safeAreaOffsetY = resolvedStyle.safeAreaOffsetY ?? 0;
+        const pad = Math.max(0, resolvedStyle.backgroundPadding);
 
         const cw = context.canvasSize.width;
         const ch = context.canvasSize.height;
@@ -259,12 +368,12 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         const saTop = safeAreaPadding + safeAreaOffsetY;
         const saBottom = ch - safeAreaPadding + safeAreaOffsetY;
         const saWidth = saRight - saLeft;
+        const saHeight = saBottom - saTop;
 
-        // --- Phase 1: Measure & wrap text (independent of canvas transform) ---
+        // Phase 1: measure and wrap inside the constraint region.
         const spanMetrics = measureSpans(ctx, spans, resolvedStyle);
-
         const availableWidth = boundsMode === 'safeArea'
-            ? cw
+            ? Math.max(0, saWidth - pad * 2)
             : Infinity;
 
         let lines = wrapSpans(ctx, spanMetrics, availableWidth, resolvedStyle, wrapMode);
@@ -290,59 +399,81 @@ export class SubtitleRenderer implements MotionBlockRenderer {
 
         const lineHeightPx = Math.max(fontSize, fontSize * resolvedStyle.lineHeight);
         const totalTextHeight = lines.length * lineHeightPx;
-        const pad = Math.max(0, resolvedStyle.backgroundPadding);
         const maxLineWidth = Math.max(...lines.map(l => l.width), 0);
         const isJustify = textAlign === 'justify';
         const effectiveBlockWidth = isJustify && lines.length > 1 && availableWidth < Infinity
             ? Math.max(maxLineWidth, availableWidth)
             : maxLineWidth;
+        const effectiveAlign = isJustify ? 'left' : textAlign;
+        const boxWidth = effectiveBlockWidth + pad * 2;
+        const boxHeight = totalTextHeight + pad * 2;
+        const boxLeft = resolvedTransform.anchorX === 'left'
+            ? 0
+            : resolvedTransform.anchorX === 'right'
+                ? -boxWidth
+                : -(boxWidth / 2);
+        const boxTop = resolvedTransform.anchorY === 'top'
+            ? 0
+            : resolvedTransform.anchorY === 'bottom'
+                ? -boxHeight
+                : -(boxHeight / 2);
+        const contentLeft = boxLeft + pad;
+        const contentTop = boxTop + pad;
 
-        // --- Phase 2: Compute draw position & clamp within safe area ---
-        let drawX: number;
-        let drawY: number;
+        const referencePoint = resolveReferencePoint(
+            resolvedTransform,
+            boundsMode,
+            cw,
+            ch,
+            { left: saLeft, right: saRight, top: saTop, bottom: saBottom },
+        );
+        const drawReferenceX = referencePoint.x + enterExitTransform.translateX;
+        const drawReferenceY = referencePoint.y + enterExitTransform.translateY;
+        const totalScale = resolvedTransform.scale * enterExitTransform.scale * scaleFactor;
 
-        if (boundsMode === 'safeArea') {
-            if (resolvedTransform.anchorX === 'left') drawX = saLeft;
-            else if (resolvedTransform.anchorX === 'right') drawX = saRight;
-            else drawX = (saLeft + saRight) / 2;
-            drawX += resolvedTransform.offsetX;
+        const baseLocalBox: LocalRect = {
+            x: boxLeft,
+            y: boxTop,
+            width: boxWidth,
+            height: boxHeight,
+        };
 
-            if (resolvedTransform.anchorY === 'top') drawY = saTop;
-            else if (resolvedTransform.anchorY === 'bottom') drawY = saBottom;
-            else drawY = (saTop + saBottom) / 2;
-            drawY += resolvedTransform.offsetY;
-
-            drawX = Math.max(saLeft, Math.min(saRight, drawX));
-            drawY = Math.max(saTop, Math.min(saBottom, drawY));
-        } else {
-            const anchor = resolveAnchorPoint(resolvedTransform, cw, ch);
-            drawX = anchor.x;
-            drawY = anchor.y;
+        let containShiftScreenX = 0;
+        let containShiftScreenY = 0;
+        if (boundsMode === 'safeArea' && saWidth > 0 && saHeight > 0) {
+            const baseAabb = computeRectAabb(baseLocalBox, resolvedTransform.rotation, totalScale, drawReferenceX, drawReferenceY);
+            containShiftScreenX = fitRange(baseAabb.x, baseAabb.x + baseAabb.width, saLeft, saRight);
+            containShiftScreenY = fitRange(baseAabb.y, baseAabb.y + baseAabb.height, saTop, saBottom);
         }
+        const containShiftLocal = screenDeltaToLocal(
+            containShiftScreenX,
+            containShiftScreenY,
+            resolvedTransform.rotation,
+            totalScale,
+        );
 
-        // --- Phase 3: Render ---
+        const shiftedContentLeft = contentLeft + containShiftLocal.x;
+        const shiftedContentTop = contentTop + containShiftLocal.y;
+        const shiftedLocalBox: LocalRect = {
+            x: baseLocalBox.x + containShiftLocal.x,
+            y: baseLocalBox.y + containShiftLocal.y,
+            width: baseLocalBox.width,
+            height: baseLocalBox.height,
+        };
+
+        // Phase 2: render from the stable reference point.
         ctx.save();
-        ctx.translate(drawX + enterExitTransform.translateX, drawY + enterExitTransform.translateY);
+        ctx.translate(drawReferenceX, drawReferenceY);
         ctx.rotate((resolvedTransform.rotation * Math.PI) / 180);
-        ctx.scale(resolvedTransform.scale * enterExitTransform.scale, resolvedTransform.scale * enterExitTransform.scale);
-        if (scaleFactor < 1) ctx.scale(scaleFactor, scaleFactor);
+        ctx.scale(totalScale, totalScale);
 
-        ctx.textBaseline = resolvedTransform.anchorY === 'top' ? 'top' : resolvedTransform.anchorY === 'bottom' ? 'bottom' : 'middle';
+        ctx.textBaseline = 'top';
         ctx.globalAlpha = enterExitAlpha * globalOpacity;
 
         // Background
         const bgOpacity = resolvedStyle.backgroundOpacity ?? 0;
         const bgColor = resolvedStyle.backgroundColor || '#000000';
-        const effectiveAlign = isJustify ? 'left' : textAlign;
         if (bgOpacity > 0 && bgColor) {
-            let bgX: number;
-            if (effectiveAlign === 'left') bgX = -pad;
-            else if (effectiveAlign === 'right') bgX = -effectiveBlockWidth - pad;
-            else bgX = -effectiveBlockWidth / 2 - pad;
-
-            const bgY = -totalTextHeight / 2 - pad;
-            const bgW = effectiveBlockWidth + pad * 2;
-            const bgH = totalTextHeight + pad * 2;
             const bgRadius = Math.max(0, resolvedStyle.backgroundBorderRadius ?? 0);
 
             const prevAlpha = ctx.globalAlpha;
@@ -351,21 +482,30 @@ export class SubtitleRenderer implements MotionBlockRenderer {
 
             if (bgRadius > 0) {
                 ctx.beginPath();
-                (ctx as any).roundRect(bgX, bgY, bgW, bgH, bgRadius);
+                (ctx as any).roundRect(
+                    shiftedLocalBox.x,
+                    shiftedLocalBox.y,
+                    shiftedLocalBox.width,
+                    shiftedLocalBox.height,
+                    bgRadius,
+                );
                 ctx.fill();
             } else {
-                ctx.fillRect(bgX, bgY, bgW, bgH);
+                ctx.fillRect(
+                    shiftedLocalBox.x,
+                    shiftedLocalBox.y,
+                    shiftedLocalBox.width,
+                    shiftedLocalBox.height,
+                );
             }
             ctx.globalAlpha = prevAlpha;
         }
 
         // Render lines
-        const startY = -((lines.length - 1) * lineHeightPx) / 2;
-
         const baseAlpha = ctx.globalAlpha;
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
             const line = lines[lineIdx];
-            const lineY = startY + lineIdx * lineHeightPx;
+            const lineY = shiftedContentTop + lineIdx * lineHeightPx;
 
             const isLastLine = lineIdx === lines.length - 1;
             const justifyThisLine = isJustify && !isLastLine && lines.length > 1;
@@ -374,17 +514,17 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             let extraWordSpacing = 0;
 
             if (effectiveAlign === 'left' || justifyThisLine) {
-                startX = 0;
+                startX = shiftedContentLeft;
                 if (justifyThisLine && availableWidth < Infinity) {
                     const spaces = line.metrics.filter(m => /^\s+$/.test(m.span.text));
                     if (spaces.length > 0) {
-                        extraWordSpacing = (availableWidth - line.width) / spaces.length;
+                        extraWordSpacing = (effectiveBlockWidth - line.width) / spaces.length;
                     }
                 }
             } else if (effectiveAlign === 'right') {
-                startX = -line.width;
+                startX = shiftedContentLeft + (effectiveBlockWidth - line.width);
             } else {
-                startX = -line.width / 2;
+                startX = shiftedContentLeft + ((effectiveBlockWidth - line.width) / 2);
             }
 
             ctx.textAlign = 'left';
@@ -428,21 +568,26 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         }
 
         ctx.restore();
-
-        const totalScale = resolvedTransform.scale * enterExitTransform.scale * scaleFactor;
-        let boundsX = drawX + enterExitTransform.translateX;
-        if (effectiveAlign === 'left') boundsX -= pad * totalScale;
-        else if (effectiveAlign === 'right') boundsX += pad * totalScale;
-
+        const finalAabb = computeRectAabb(
+            shiftedLocalBox,
+            resolvedTransform.rotation,
+            totalScale,
+            drawReferenceX,
+            drawReferenceY,
+        );
         this.lastBounds = {
-            x: boundsX,
-            y: drawY + enterExitTransform.translateY,
-            width: (effectiveBlockWidth + pad * 2) * totalScale,
-            height: (totalTextHeight + pad * 2) * totalScale,
+            x: finalAabb.x,
+            y: finalAabb.y,
+            width: finalAabb.width,
+            height: finalAabb.height,
+            referenceX: drawReferenceX,
+            referenceY: drawReferenceY,
+            localBoxX: shiftedLocalBox.x,
+            localBoxY: shiftedLocalBox.y,
+            localBoxWidth: shiftedLocalBox.width,
+            localBoxHeight: shiftedLocalBox.height,
             rotation: resolvedTransform.rotation,
             scale: totalScale,
-            anchorX: effectiveAlign === 'left' ? 'left' : effectiveAlign === 'right' ? 'right' : 'center',
-            anchorY: resolvedTransform.anchorY,
         };
     }
 

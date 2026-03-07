@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SubtitleRenderer } from '@/front-end/motion/renderers/SubtitleRenderer';
 import type { ResolvedItem, MotionRenderContext } from '@/front-end/motion/types';
-import type { MotionBlock, MotionStyle, MotionTransform, MotionEnterExit, MotionTrack, WolkProject } from '@/types/project_types';
+import type { MotionBlock, MotionTrack, WolkProject } from '@/types/project_types';
 import { DEFAULT_MOTION_STYLE, DEFAULT_MOTION_TRANSFORM, DEFAULT_MOTION_ENTER_EXIT } from '@/types/project_types';
 
 function createMockCtx(): CanvasRenderingContext2D {
@@ -17,11 +17,13 @@ function createMockCtx(): CanvasRenderingContext2D {
         fillRect: vi.fn(),
         strokeRect: vi.fn(),
         beginPath: vi.fn(),
+        closePath: vi.fn(),
         moveTo: vi.fn(),
         lineTo: vi.fn(),
         arc: vi.fn(),
         fill: vi.fn(),
         stroke: vi.fn(),
+        roundRect: vi.fn(),
         measureText: vi.fn(() => ({ width: 100 })),
         set textAlign(_v: string) {},
         set textBaseline(_v: string) {},
@@ -65,335 +67,154 @@ function makeContext(canvasWidth = 1920, canvasHeight = 1080): MotionRenderConte
     };
 }
 
-// With mock measureText returning 100, text "Hello" → maxLineWidth=100, pad=0
-// fontSize=72, lineHeight=1.2 → lineHeightPx=86.4, totalTextHeight=86.4 (1 line)
-// scale=1, so textAlign='center' → leftExtent=50, rightExtent=50, vertExtent=43.2
+function renderBounds(item: ResolvedItem, canvasWidth = 1920, canvasHeight = 1080) {
+    const renderer = new SubtitleRenderer();
+    const ctx = createMockCtx();
+    renderer.render(ctx, [item], makeContext(canvasWidth, canvasHeight), {});
+    const bounds = renderer.getLastBounds();
+    expect(bounds).not.toBeNull();
+    return bounds!;
+}
+
+function expectContained(bounds: { x: number; y: number; width: number; height: number }, left: number, top: number, right: number, bottom: number) {
+    expect(bounds.x).toBeGreaterThanOrEqual(left - 0.001);
+    expect(bounds.y).toBeGreaterThanOrEqual(top - 0.001);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(right + 0.001);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(bottom + 0.001);
+}
 
 describe('SubtitleRenderer position resolution', () => {
-    describe('safeArea mode — basic positioning', () => {
-        it('center anchor + center textAlign → draw at canvas center', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            expect(bounds!.x).toBe(1920 / 2);
-            expect(bounds!.anchorX).toBe('center');
-            expect(bounds!.anchorY).toBe('center');
-        });
+    it('keeps the reference point stable across text alignment changes', () => {
+        const leftBounds = renderBounds(makeItem({
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'left' },
+        }));
+        const rightBounds = renderBounds(makeItem({
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'right' },
+        }));
 
-        it('left anchor + left textAlign → draw at left safe area edge', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, textAlign: 'left' },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // textAlign='left': leftExtent=0, so drawX=40 is valid (minX=40)
-            expect(bounds!.x).toBe(40);
-            expect(bounds!.anchorX).toBe('left');
-        });
-
-        it('right anchor + right textAlign → draw at right safe area edge', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'right', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, textAlign: 'right' },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // textAlign='right': rightExtent=0, so drawX=1880 is valid (maxX=1880)
-            expect(bounds!.x).toBe(1920 - 40);
-            expect(bounds!.anchorX).toBe('right');
-        });
-
-        it('anchorY=top → draw at top safe area edge', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'top' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            expect(bounds!.y).toBe(40);
-            expect(bounds!.anchorY).toBe('top');
-        });
-
-        it('anchorY=bottom → draw at bottom safe area edge', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'bottom' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            expect(bounds!.y).toBe(1080 - 40);
-            expect(bounds!.anchorY).toBe('bottom');
-        });
-
-        it('applies offsetX/offsetY (center anchor, within bounds)', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center', offsetX: 10, offsetY: 20 },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // center anchor: drawX=960+10=970, drawY=540+20=560, both well within bounds
-            expect(bounds!.x).toBe(960 + 10);
-            expect(bounds!.y).toBe(540 + 20);
-        });
-
-        it('textAlign does NOT affect horizontal position (decoupled)', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const itemLeft = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'left' },
-            });
-            const itemRight = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'right' },
-            });
-
-            renderer.render(ctx, [itemLeft], makeContext(), {});
-            const boundsLeft = renderer.getLastBounds();
-
-            renderer.render(ctx, [itemRight], makeContext(), {});
-            const boundsRight = renderer.getLastBounds();
-
-            expect(boundsLeft!.x).toBe(boundsRight!.x);
-            expect(boundsLeft!.x).toBe(1920 / 2);
-        });
+        expect(leftBounds.referenceX).toBe(960);
+        expect(leftBounds.referenceY).toBe(540);
+        expect(rightBounds.referenceX).toBe(960);
+        expect(rightBounds.referenceY).toBe(540);
+        expect('anchorX' in leftBounds).toBe(false);
     });
 
-    describe('safeArea mode — anchor point clamping', () => {
-        it('clamps extreme positive offsetX to safe area right edge', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', offsetX: 9999 },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // saRight = 1920 - 40 = 1880
-            expect(bounds!.x).toBe(1880);
-        });
+    it('uses the constraint region width for wrapping long text', () => {
+        const bounds = renderBounds(makeItem({
+            text: 'alpha beta gamma',
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 150, wrapMode: 'word' },
+        }), 600, 1200);
 
-        it('clamps extreme negative offsetX to safe area left edge', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', offsetX: -9999 },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // saLeft = 40
-            expect(bounds!.x).toBe(40);
-        });
-
-        it('clamps extreme offsetY to safe area bottom edge', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center', offsetY: 9999 },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // saBottom = 1080 - 40 = 1040
-            expect(bounds!.y).toBe(1040);
-        });
-
-        it('left anchor with center textAlign: drawX at left safe area edge (no text-dimension shift)', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // Anchor point clamped to saLeft=40, text may overflow but anchor stays at edge
-            expect(bounds!.x).toBe(40);
-        });
+        expect(bounds.localBoxWidth).toBeLessThanOrEqual(320);
+        expect(bounds.localBoxHeight).toBeGreaterThan(86.4);
+        expectContained(bounds, 150, 150, 450, 1050);
     });
 
-    describe('free mode', () => {
-        it('uses anchorX and anchorY for position (no clamping)', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'top' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'free' },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            expect(bounds!.x).toBe(0);
-            expect(bounds!.y).toBe(0);
-            expect(bounds!.anchorX).toBe('center');
-            expect(bounds!.anchorY).toBe('top');
-        });
+    it('keeps short, sentence, and verse sized content contained with the same reference point', () => {
+        const shortBounds = renderBounds(makeItem({
+            text: 'Word',
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'top' },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, textAlign: 'left' },
+        }));
+        const sentenceBounds = renderBounds(makeItem({
+            text: 'alpha beta gamma delta',
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'top' },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, textAlign: 'left' },
+        }));
+        const verseBounds = renderBounds(makeItem({
+            text: 'alpha beta gamma delta epsilon zeta eta theta iota',
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'top' },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, textAlign: 'left', wrapMode: 'word', maxLines: 5 },
+        }));
+
+        expect(shortBounds.referenceX).toBe(40);
+        expect(sentenceBounds.referenceX).toBe(40);
+        expect(verseBounds.referenceX).toBe(40);
+        expectContained(shortBounds, 40, 40, 1880, 1040);
+        expectContained(sentenceBounds, 40, 40, 1880, 1040);
+        expectContained(verseBounds, 40, 40, 1880, 1040);
     });
 
-    describe('lastBounds anchorX follows textAlign for gizmo alignment', () => {
-        it('sets anchorX=left when textAlign=left', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'right' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'left' },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds!.anchorX).toBe('left');
-        });
+    it('shifts the text box to preserve containment without moving the reference point', () => {
+        const bounds = renderBounds(makeItem({
+            text: 'alpha beta gamma delta epsilon zeta',
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'center' },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, textAlign: 'center' },
+        }));
 
-        it('sets anchorX=right when textAlign=right', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'right' },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds!.anchorX).toBe('right');
-        });
-
-        it('sets anchorX=center when textAlign=center', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'center' },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds!.anchorX).toBe('center');
-        });
-
-        it('sets anchorX=left when textAlign=justify (justify acts like left)', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'right' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'justify' },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds!.anchorX).toBe('left');
-        });
+        expect(bounds.referenceX).toBe(40);
+        expectContained(bounds, 40, 40, 1880, 1040);
+        expect(bounds.localBoxX).toBeGreaterThan(-bounds.localBoxWidth / 2);
     });
 
-    describe('lastBounds.x accounts for background padding', () => {
-        it('textAlign=left: boundsX shifts left by pad', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'left', backgroundPadding: 20 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // drawX=960 (center), boundsX = drawX - pad*totalScale = 960 - 20 = 940
-            expect(bounds!.x).toBe(960 - 20);
-            expect(bounds!.anchorX).toBe('left');
-        });
+    it('keeps scaled content inside the constraint region', () => {
+        const bounds = renderBounds(makeItem({
+            text: 'Hello',
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'right', anchorY: 'center', scale: 3 },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, textAlign: 'center' },
+        }));
 
-        it('textAlign=right: boundsX shifts right by pad', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'right', backgroundPadding: 20 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // drawX=960, boundsX = drawX + pad*totalScale = 960 + 20 = 980
-            expect(bounds!.x).toBe(960 + 20);
-            expect(bounds!.anchorX).toBe('right');
-        });
-
-        it('textAlign=center: boundsX stays at drawX (no pad shift)', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', textAlign: 'center', backgroundPadding: 20 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            expect(bounds!.x).toBe(960);
-        });
+        expect(bounds.referenceX).toBe(1880);
+        expectContained(bounds, 40, 40, 1880, 1040);
     });
 
-    describe('safe area offsets', () => {
-        it('safeAreaOffsetX shifts anchor position', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, safeAreaOffsetX: 100 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // saLeft=140, saRight=1980, center = (140+1980)/2 = 1060
-            expect(bounds!.x).toBe(1060);
-        });
+    it('clamps an extreme reference point offset back into the constraint region', () => {
+        const bounds = renderBounds(makeItem({
+            text: 'Hello',
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center', offsetX: 9999, offsetY: -9999 },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, textAlign: 'center' },
+        }));
 
-        it('safeAreaOffsetY shifts anchor position', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, safeAreaOffsetY: -50 },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // saTop=-10, saBottom=990, center = (-10+990)/2 = 490
-            expect(bounds!.y).toBe(490);
-        });
+        expect(bounds.referenceX).toBe(1880);
+        expect(bounds.referenceY).toBe(40);
+        expectContained(bounds, 40, 40, 1880, 1040);
+    });
 
-        it('left anchor respects safeAreaOffsetX', () => {
-            const renderer = new SubtitleRenderer();
-            const ctx = createMockCtx();
-            const item = makeItem({
-                transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'center' },
-                style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, safeAreaOffsetX: 50, textAlign: 'left' },
-            });
-            renderer.render(ctx, [item], makeContext(), {});
-            const bounds = renderer.getLastBounds();
-            expect(bounds).not.toBeNull();
-            // saLeft = 40 + 50 = 90, anchorX=left → drawX=90
-            expect(bounds!.x).toBe(90);
-        });
+    it('keeps rotated content inside the constraint region using the final visible AABB', () => {
+        const bounds = renderBounds(makeItem({
+            text: 'Hello',
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'top', rotation: 45 },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, backgroundPadding: 20, textAlign: 'left' },
+        }));
+
+        expect(bounds.referenceX).toBe(40);
+        expect(bounds.referenceY).toBe(40);
+        expectContained(bounds, 40, 40, 1880, 1040);
+    });
+
+    it('still contains scaled and rotated content when the requested reference point is off-region', () => {
+        const bounds = renderBounds(makeItem({
+            text: 'Hello',
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'right', anchorY: 'bottom', offsetX: 500, offsetY: 500, scale: 2.5, rotation: 30 },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, backgroundPadding: 20, textAlign: 'right' },
+        }));
+
+        expect(bounds.referenceX).toBe(1880);
+        expect(bounds.referenceY).toBe(1040);
+        expectContained(bounds, 40, 40, 1880, 1040);
+    });
+
+    it('applies constraint region offsets to the stable reference point', () => {
+        const bounds = renderBounds(makeItem({
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'center', anchorY: 'center' },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'safeArea', safeAreaPadding: 40, safeAreaOffsetX: 100, safeAreaOffsetY: -50 },
+        }));
+
+        expect(bounds.referenceX).toBe(1060);
+        expect(bounds.referenceY).toBe(490);
+    });
+
+    it('does not clamp the reference point in free mode', () => {
+        const bounds = renderBounds(makeItem({
+            transform: { ...DEFAULT_MOTION_TRANSFORM, anchorX: 'left', anchorY: 'top', offsetX: 400, offsetY: 300 },
+            style: { ...DEFAULT_MOTION_STYLE, boundsMode: 'free', textAlign: 'left' },
+        }));
+
+        expect(bounds.referenceX).toBe(400);
+        expect(bounds.referenceY).toBe(300);
+        expect(bounds.x).toBe(400);
+        expect(bounds.y).toBe(300);
     });
 });

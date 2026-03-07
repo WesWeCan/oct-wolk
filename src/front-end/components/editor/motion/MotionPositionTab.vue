@@ -49,47 +49,10 @@ const hasAnyKeyframe = (path: string): boolean => {
     return !!(pt && pt.keyframes?.length);
 };
 
-const safeAreaOffsetRange = (
-    anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
-    padding: number,
-    canvasSize: number,
-    safeAreaOff: number = 0,
-): { min: number; max: number } => {
-    const saMin = padding + safeAreaOff;
-    const saMax = canvasSize - padding + safeAreaOff;
-
-    let anchorPos: number;
-    if (anchor === 'left' || anchor === 'top') anchorPos = saMin;
-    else if (anchor === 'right' || anchor === 'bottom') anchorPos = saMax;
-    else anchorPos = (saMin + saMax) / 2;
-    return { min: saMin - anchorPos, max: saMax - anchorPos };
-};
-
 const fields = computed(() => {
-    const inSafeArea = (props.track.block.style.boundsMode ?? 'safeArea') === 'safeArea';
-    const padding = props.track.block.style.safeAreaPadding ?? 40;
-    const saOx = props.track.block.style.safeAreaOffsetX ?? 0;
-    const saOy = props.track.block.style.safeAreaOffsetY ?? 0;
-    const rw = props.renderWidth;
-    const rh = props.renderHeight;
-
-    let xMin: number | undefined;
-    let xMax: number | undefined;
-    let yMin: number | undefined;
-    let yMax: number | undefined;
-
-    if (inSafeArea && rw && rh) {
-        const xRange = safeAreaOffsetRange(t().anchorX, padding, rw, saOx);
-        const yRange = safeAreaOffsetRange(t().anchorY, padding, rh, saOy);
-        xMin = xRange.min;
-        xMax = xRange.max;
-        yMin = yRange.min;
-        yMax = yRange.max;
-    }
-
     return [
-        { label: 'Transform X', path: 'transform.offsetX', key: 'offsetX' as keyof MotionTransform, min: xMin, max: xMax, step: 1 },
-        { label: 'Transform Y', path: 'transform.offsetY', key: 'offsetY' as keyof MotionTransform, min: yMin, max: yMax, step: 1 },
+        { label: 'Reference X', path: 'transform.offsetX', key: 'offsetX' as keyof MotionTransform, step: 1 },
+        { label: 'Reference Y', path: 'transform.offsetY', key: 'offsetY' as keyof MotionTransform, step: 1 },
         { label: 'Scale', path: 'transform.scale', key: 'scale' as keyof MotionTransform, min: 0.05, max: 10, step: 0.01 },
         { label: 'Rotation', path: 'transform.rotation', key: 'rotation' as keyof MotionTransform, min: -360, max: 360, step: 0.5 },
     ];
@@ -99,7 +62,7 @@ const fields = computed(() => {
 <template>
     <div class="motion-tab">
         <div class="motion-tab__field">
-            <label>Position Anchor</label>
+            <label>Reference Point</label>
             <div class="anchor-grid">
                 <div v-for="(row, ri) in anchorGrid" :key="ri" class="anchor-grid__row">
                     <button
