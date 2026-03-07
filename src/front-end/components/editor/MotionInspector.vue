@@ -241,15 +241,25 @@ const updateAnchor = (x: AnchorX, y: AnchorY) => {
     });
 };
 
-const updateEnterExit = (which: 'enter' | 'exit', key: keyof MotionEnterExit, value: any) => {
+const cloneEnterExit = (value: MotionEnterExit): MotionEnterExit => ({
+    ...value,
+    fade: value.fade ? { ...value.fade } : value.fade,
+    move: value.move ? { ...value.move } : value.move,
+    scale: value.scale ? { ...value.scale } : value.scale,
+});
+
+const updateEnterExit = (which: 'enter' | 'exit', value: MotionEnterExit) => {
     if (!props.motionTrack || isLocked.value) return;
     if (selectedItemId.value) {
-        updateItemEnterExitOverride(selectedItemId.value, which, key, value);
+        const overrideKey = which === 'enter' ? 'enterOverride' : 'exitOverride';
+        const { overrides, idx } = getOrCreateOverride(selectedItemId.value);
+        overrides[idx] = { ...overrides[idx], [overrideKey]: cloneEnterExit(value) };
+        emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
         return;
     }
     emit('update-track', {
         ...props.motionTrack,
-        block: { ...props.motionTrack.block, [which]: { ...props.motionTrack.block[which], [key]: value } },
+        block: { ...props.motionTrack.block, [which]: cloneEnterExit(value) },
     });
 };
 

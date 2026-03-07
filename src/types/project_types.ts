@@ -38,14 +38,48 @@ export type MotionAnimationStyle =
     | 'scale'
     | 'none';
 
+export type MotionAnimationDirection = 'up' | 'down' | 'left' | 'right';
+export type MotionAnimationEasing =
+    | 'linear'
+    | 'easeIn'
+    | 'easeOut'
+    | 'easeInOut'
+    | 'easeInCubic'
+    | 'easeOutCubic'
+    | 'easeOutBack'
+    | 'easeInBack'
+    | 'easeOutBounce'
+    | 'easeInBounce';
+
+export interface MotionFadeAnimation {
+    enabled: boolean;
+    opacityStart: number;
+    opacityEnd: number;
+}
+
+export interface MotionMoveAnimation {
+    enabled: boolean;
+    direction: MotionAnimationDirection;
+    distancePx: number;
+}
+
+export interface MotionScaleAnimation {
+    enabled: boolean;
+    amount: number;
+}
+
 export interface MotionEnterExit {
     fraction: number;
     minFrames: number;
     maxFrames: number;
-    easing: string;
-    style: MotionAnimationStyle;
-    opacityStart: number;
-    opacityEnd: number;
+    easing: MotionAnimationEasing;
+    fade: MotionFadeAnimation;
+    move: MotionMoveAnimation;
+    scale: MotionScaleAnimation;
+    // Legacy fields kept for backwards compatibility with saved projects.
+    style?: MotionAnimationStyle;
+    opacityStart?: number;
+    opacityEnd?: number;
 }
 
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
@@ -239,6 +273,21 @@ export const DEFAULT_MOTION_ENTER_EXIT: MotionEnterExit = {
     minFrames: 3,
     maxFrames: 30,
     easing: 'easeOut',
+    fade: {
+        enabled: true,
+        opacityStart: 0,
+        opacityEnd: 1,
+    },
+    move: {
+        enabled: false,
+        direction: 'up',
+        distancePx: 24,
+    },
+    scale: {
+        enabled: false,
+        amount: 0.12,
+    },
+    // Legacy fallback defaults.
     style: 'fade',
     opacityStart: 0,
     opacityEnd: 1,

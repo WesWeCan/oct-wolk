@@ -1579,6 +1579,22 @@ body:has(.project-editor) {
     }
 }
 
+.motion-animation-v2 {
+    .style-sub-section {
+        margin-bottom: 12px;
+    }
+
+    .motion-tab__chips {
+        gap: 6px;
+    }
+
+    .chip {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+}
+
 .style-toggle {
     width: 28px;
     height: 28px;

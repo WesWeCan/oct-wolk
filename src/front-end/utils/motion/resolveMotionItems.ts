@@ -2,6 +2,7 @@ import {
     DEFAULT_MOTION_ENTER_EXIT,
     type LyricTrack,
     type MotionBlock,
+    type MotionEnterExit,
     type TimelineItem,
     type WolkProject,
 } from '@/types/project_types';
@@ -45,6 +46,29 @@ const resolveOverrideText = (
     return { text: textOverride };
 };
 
+const mergeEnterExit = (
+    base: MotionEnterExit,
+    override?: Partial<MotionEnterExit>,
+): MotionEnterExit => {
+    if (!override) return base;
+    return {
+        ...base,
+        ...override,
+        fade: {
+            ...(base.fade ?? {}),
+            ...(override.fade ?? {}),
+        },
+        move: {
+            ...(base.move ?? {}),
+            ...(override.move ?? {}),
+        },
+        scale: {
+            ...(base.scale ?? {}),
+            ...(override.scale ?? {}),
+        },
+    };
+};
+
 export function resolveActiveItems(
     block: MotionBlock,
     sourceTrack: LyricTrack | null | undefined,
@@ -65,14 +89,8 @@ export function resolveActiveItems(
             if (override?.hidden) return null;
             const { text: resolvedText, richText } = resolveOverrideText(item.text, override?.textOverride);
 
-            const resolvedEnter = {
-                ...enter,
-                ...(override?.enterOverride ?? {}),
-            };
-            const resolvedExit = {
-                ...exit,
-                ...(override?.exitOverride ?? {}),
-            };
+            const resolvedEnter = mergeEnterExit(enter, override?.enterOverride);
+            const resolvedExit = mergeEnterExit(exit, override?.exitOverride);
             const { enterProgress, exitProgress } = computeEnterExitProgress(
                 item,
                 currentFrame,
@@ -124,14 +142,8 @@ export function resolveBlockItems(
             if (override?.hidden) return null;
             const { text: resolvedText, richText } = resolveOverrideText(item.text, override?.textOverride);
 
-            const resolvedEnter = {
-                ...enter,
-                ...(override?.enterOverride ?? {}),
-            };
-            const resolvedExit = {
-                ...exit,
-                ...(override?.exitOverride ?? {}),
-            };
+            const resolvedEnter = mergeEnterExit(enter, override?.enterOverride);
+            const resolvedExit = mergeEnterExit(exit, override?.exitOverride);
             const { enterProgress, exitProgress } = computeEnterExitProgress(
                 item,
                 currentFrame,

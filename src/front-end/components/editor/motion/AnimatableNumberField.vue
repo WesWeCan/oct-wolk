@@ -17,6 +17,7 @@ const props = withDefaults(defineProps<{
     hasKeyAtCurrentFrame?: boolean;
     hasAnyKeyframes?: boolean;
     scrubPerPx?: number;
+    displayDecimals?: number;
 }>(), {
     step: 1,
     fallbackValue: 0,
@@ -107,6 +108,10 @@ const onStartScrub = (event: PointerEvent) => {
 
 const displayValue = computed(() => {
     const v = safeNumber(props.modelValue, props.fallbackValue);
+    if (Number.isFinite(props.displayDecimals)) {
+        const decimals = Math.max(0, Math.round(props.displayDecimals as number));
+        return v.toFixed(decimals);
+    }
     return Number.isInteger(v) ? v : parseFloat(v.toFixed(3));
 });
 

@@ -343,8 +343,8 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         const enterExitTransform = applyEnterExitToTransform(
             item.enterProgress,
             item.exitProgress,
-            item.enter.style,
-            item.exit.style,
+            item.enter,
+            item.exit,
         );
 
         const fontSize = Math.max(8, resolvedStyle.fontSize);
