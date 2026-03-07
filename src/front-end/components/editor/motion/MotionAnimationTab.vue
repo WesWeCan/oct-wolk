@@ -10,6 +10,8 @@ import AnimatableNumberField from '@/front-end/components/editor/motion/Animatab
 
 const props = defineProps<{
     track: MotionTrack;
+    enterValue?: MotionEnterExit | null;
+    exitValue?: MotionEnterExit | null;
 }>();
 
 const emit = defineEmits<{
@@ -103,7 +105,12 @@ const deriveLegacyStyle = (config: MotionEnterExit): MotionAnimationStyle => {
     return 'none';
 };
 
-const sectionState = (which: 'enter' | 'exit'): MotionEnterExit => toComposer(which, props.track.block[which]);
+const sectionState = (which: 'enter' | 'exit'): MotionEnterExit => {
+    const source = which === 'enter'
+        ? (props.enterValue ?? props.track.block.enter)
+        : (props.exitValue ?? props.track.block.exit);
+    return toComposer(which, source);
+};
 
 const emitSection = (which: 'enter' | 'exit', next: MotionEnterExit) => {
     const withLegacy = {

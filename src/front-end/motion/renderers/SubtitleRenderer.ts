@@ -541,7 +541,7 @@ export class SubtitleRenderer implements MotionBlockRenderer {
                     ctx.strokeText(metric.span.text, cursorX, lineY);
                 }
 
-                const spanColor = metric.span.color || resolvedStyle.color;
+                const spanColor = item.forceStyleColor ? resolvedStyle.color : (metric.span.color || resolvedStyle.color);
                 if (textOpacity > 0) {
                     ctx.globalAlpha = baseAlpha * textOpacity;
                     ctx.fillStyle = spanColor;

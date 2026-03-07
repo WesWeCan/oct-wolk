@@ -21,6 +21,7 @@ export interface ResolvedItem {
     enter: MotionEnterExit;
     exit: MotionEnterExit;
     wordStyleMap?: Record<number, Partial<MotionStyle>>;
+    forceStyleColor?: boolean;
 }
 
 export interface MotionRenderContext {

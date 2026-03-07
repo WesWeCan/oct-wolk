@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import type { LyricTrack, MotionTrack, MotionStyle, MotionTransform, MotionEnterExit, AnchorX, AnchorY, ItemOverride } from '@/types/project_types';
 import type { RendererBounds } from '@/front-end/motion/types';
 import MotionAppearanceTab from '@/front-end/components/editor/motion/MotionAppearanceTab.vue';
@@ -86,6 +86,7 @@ const rotateScalePoint = (x: number, y: number, rotationDeg: number, scale: numb
 
 const selectedItemId = ref<string | null>(null);
 const selectedWordIndex = ref<number | null>(null);
+const inspectorRoot = ref<HTMLElement | null>(null);
 
 const sourceMissing = computed(() => {
     if (!props.motionTrack) return false;
@@ -123,6 +124,63 @@ const editingItemLabel = computed(() => {
 const selectedItemWords = computed<string[]>(() => {
     if (!editingItemLabel.value) return [];
     return editingItemLabel.value.split(/\s+/).filter(Boolean);
+});
+
+const selectedItem = computed(() => {
+    if (!selectedItemId.value || !props.motionTrack) return null;
+    const src = props.lyricTracks.find((t) => t.id === props.motionTrack!.block.sourceTrackId);
+    return src?.items.find((i) => i.id === selectedItemId.value) ?? null;
+});
+
+const selectedItemOverride = computed(() => {
+    if (!selectedItemId.value || !props.motionTrack) return null;
+    return props.motionTrack.block.overrides.find((o) => o.sourceItemId === selectedItemId.value) ?? null;
+});
+
+const selectedItemTextOverride = computed(() => selectedItemOverride.value?.textOverride ?? '');
+const selectedItemStyleOverride = computed(() => !!selectedItemOverride.value?.styleOverride);
+const selectedItemTransformOverride = computed(() => !!selectedItemOverride.value?.transformOverride);
+const selectedItemAnimationOverride = computed(() => !!(selectedItemOverride.value?.enterOverride || selectedItemOverride.value?.exitOverride));
+const selectedItemTextHasOverride = computed(() => !!selectedItemOverride.value?.textOverride);
+
+const mergeEnterExitForEditor = (
+    base: MotionEnterExit,
+    override?: Partial<MotionEnterExit>,
+): MotionEnterExit => {
+    if (!override) return base;
+    const mergedFade = {
+        enabled: override.fade?.enabled ?? base.fade.enabled,
+        opacityStart: override.fade?.opacityStart ?? base.fade.opacityStart,
+        opacityEnd: override.fade?.opacityEnd ?? base.fade.opacityEnd,
+    };
+    const mergedMove = {
+        enabled: override.move?.enabled ?? base.move.enabled,
+        direction: override.move?.direction ?? base.move.direction,
+        distancePx: override.move?.distancePx ?? base.move.distancePx,
+    };
+    const mergedScale = {
+        enabled: override.scale?.enabled ?? base.scale.enabled,
+        amount: override.scale?.amount ?? base.scale.amount,
+    };
+    return {
+        ...base,
+        ...override,
+        fade: mergedFade,
+        move: mergedMove,
+        scale: mergedScale,
+    };
+};
+
+const selectedItemEnterValue = computed<MotionEnterExit | null>(() => {
+    if (!props.motionTrack || !selectedItemId.value) return null;
+    const override = selectedItemOverride.value?.enterOverride;
+    return mergeEnterExitForEditor(props.motionTrack.block.enter, override);
+});
+
+const selectedItemExitValue = computed<MotionEnterExit | null>(() => {
+    if (!props.motionTrack || !selectedItemId.value) return null;
+    const override = selectedItemOverride.value?.exitOverride;
+    return mergeEnterExitForEditor(props.motionTrack.block.exit, override);
 });
 
 // --- Mutators ---
@@ -421,6 +479,11 @@ const clearItemSelection = () => {
 const onSelectItem = (itemId: string | null) => {
     selectedItemId.value = itemId;
     selectedWordIndex.value = null;
+    if (itemId) {
+        nextTick(() => {
+            inspectorRoot.value?.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
 };
 
 const onSelectWord = (idx: number) => {
@@ -447,6 +510,60 @@ const hasWordOverride = (wordIdx: number): boolean => {
     return !!(o?.wordStyleMap && o.wordStyleMap[wordIdx]);
 };
 
+const updateSelectedItemTextOverride = (text: string) => {
+    if (!props.motionTrack || isLocked.value || !selectedItemId.value) return;
+    const overrides = [...props.motionTrack.block.overrides];
+    let idx = overrides.findIndex((o) => o.sourceItemId === selectedItemId.value);
+    if (idx < 0) {
+        overrides.push({ sourceItemId: selectedItemId.value, hidden: false });
+        idx = overrides.length - 1;
+    }
+    overrides[idx] = { ...overrides[idx], textOverride: text || undefined };
+    if (!text && !overrides[idx].hidden && !overrides[idx].styleOverride && !overrides[idx].transformOverride && !overrides[idx].enterOverride && !overrides[idx].exitOverride && !overrides[idx].wordStyleMap) {
+        overrides.splice(idx, 1);
+    }
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
+};
+
+const clearSelectedItemOverrides = () => {
+    if (!props.motionTrack || isLocked.value || !selectedItemId.value) return;
+    const overrides = props.motionTrack.block.overrides.filter((o) => o.sourceItemId !== selectedItemId.value);
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
+    clearItemSelection();
+};
+
+const updateSelectedItemOverride = (updater: (current: ItemOverride) => ItemOverride) => {
+    if (!props.motionTrack || isLocked.value || !selectedItemId.value) return;
+    const overrides = [...props.motionTrack.block.overrides];
+    let idx = overrides.findIndex((o) => o.sourceItemId === selectedItemId.value);
+    if (idx < 0) {
+        overrides.push({ sourceItemId: selectedItemId.value, hidden: false });
+        idx = overrides.length - 1;
+    }
+    overrides[idx] = updater(overrides[idx]);
+    const next = overrides[idx];
+    if (!next.hidden && !next.textOverride && !next.styleOverride && !next.transformOverride && !next.enterOverride && !next.exitOverride && !next.wordStyleMap) {
+        overrides.splice(idx, 1);
+    }
+    emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
+};
+
+const resetSelectedItemTextOverride = () => {
+    updateSelectedItemOverride((current) => ({ ...current, textOverride: undefined }));
+};
+
+const resetSelectedItemStyleOverride = () => {
+    updateSelectedItemOverride((current) => ({ ...current, styleOverride: undefined, wordStyleMap: undefined }));
+};
+
+const resetSelectedItemTransformOverride = () => {
+    updateSelectedItemOverride((current) => ({ ...current, transformOverride: undefined }));
+};
+
+const resetSelectedItemAnimationOverride = () => {
+    updateSelectedItemOverride((current) => ({ ...current, enterOverride: undefined, exitOverride: undefined }));
+};
+
 const backgroundFitValue = computed(() => props.backgroundImageFit || 'cover');
 const onUploadBackgroundImage = (event: Event) => {
     const input = event.target as HTMLInputElement;
@@ -458,7 +575,7 @@ const onUploadBackgroundImage = (event: Event) => {
 </script>
 
 <template>
-    <div class="project-inspector motion-inspector">
+    <div ref="inspectorRoot" class="project-inspector motion-inspector">
         <div v-if="!motionTrack" class="inspector-empty">
             Select a motion track to edit.
         </div>
@@ -487,8 +604,38 @@ const onUploadBackgroundImage = (event: Event) => {
 
            
 
+            <!-- Text (item override mode) -->
+            <details
+                v-if="selectedItemId && selectedWordIndex === null"
+                class="inspector-section"
+                :class="{ 'inspector-section--item-override': selectedItemTextHasOverride }"
+                open
+            >
+                <summary class="inspector-section__title">Text</summary>
+                <div class="inspector-section__content">
+                    <div class="inspector-section__utility">
+                        <button class="btn-sm" @click="resetSelectedItemTextOverride">Reset to block text</button>
+                    </div>
+                    <div class="inspector-field">
+                        <label>Text Override</label>
+                        <input
+                            type="text"
+                            class="inspector-input"
+                            :value="selectedItemTextOverride"
+                            :placeholder="selectedItem?.text ?? ''"
+                            @input="updateSelectedItemTextOverride(($event.target as HTMLInputElement).value)"
+                        />
+                        <span class="inspector-hint">Empty = use source text.</span>
+                    </div>
+                    <div class="inspector-actions">
+                        <button class="btn-sm" @click="selectedItem && emit('seek-to-ms', selectedItem.startMs)">Seek to item</button>
+                        <button v-if="selectedItemOverride" class="btn-sm danger" @click="clearSelectedItemOverrides">Clear Item Overrides</button>
+                    </div>
+                </div>
+            </details>
+
             <!-- Source + timing -->
-            <details class="inspector-section" >
+            <details v-if="!selectedItemId" class="inspector-section" >
                 <summary class="inspector-section__title">Source &amp; Timing</summary>
                 <div class="inspector-section__content">
                     <div class="inspector-field">
@@ -524,9 +671,12 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Style -->
-            <details class="inspector-section" >
+            <details class="inspector-section" :class="{ 'inspector-section--item-override': selectedItemStyleOverride }" >
                 <summary class="inspector-section__title">Style</summary>
                 <div class="inspector-section__content">
+                    <div v-if="selectedItemId" class="inspector-section__utility">
+                        <button class="btn-sm" @click="resetSelectedItemStyleOverride">Reset to block style</button>
+                    </div>
                     <MotionAppearanceTab
                         :track="motionTrack"
                         :current-frame="currentFrame"
@@ -539,9 +689,12 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Position -->
-            <details class="inspector-section" >
+            <details class="inspector-section" :class="{ 'inspector-section--item-override': selectedItemTransformOverride }" >
                 <summary class="inspector-section__title">Position</summary>
                 <div class="inspector-section__content">
+                    <div v-if="selectedItemId" class="inspector-section__utility">
+                        <button class="btn-sm" @click="resetSelectedItemTransformOverride">Reset to block position</button>
+                    </div>
                     <MotionPositionTab
                         :track="motionTrack"
                         :current-frame="currentFrame"
@@ -558,7 +711,7 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Constraint Region -->
-            <details class="inspector-section" >
+            <details class="inspector-section" :class="{ 'inspector-section--item-override': selectedItemStyleOverride }" >
                 <summary class="inspector-section__title">Constraint Region</summary>
                 <div class="inspector-section__content">
                     <MotionSafeAreaTab
@@ -572,11 +725,16 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Animation -->
-            <details class="inspector-section" >
+            <details class="inspector-section" :class="{ 'inspector-section--item-override': selectedItemAnimationOverride }" >
                 <summary class="inspector-section__title">Animation</summary>
                 <div class="inspector-section__content">
+                    <div v-if="selectedItemId" class="inspector-section__utility">
+                        <button class="btn-sm" @click="resetSelectedItemAnimationOverride">Reset to block animation</button>
+                    </div>
                     <MotionAnimationTab
                         :track="motionTrack"
+                        :enter-value="selectedItemEnterValue"
+                        :exit-value="selectedItemExitValue"
                         @update-enter-exit="updateEnterExit"
                     />
                 </div>
@@ -591,6 +749,7 @@ const onUploadBackgroundImage = (event: Event) => {
                         :lyric-tracks="lyricTracks"
                         :playhead-ms="playheadMs ?? 0"
                         :fps="fps ?? 60"
+                        :selected-item-id="selectedItemId"
                         @update-track="$emit('update-track', $event)"
                         @seek-to-ms="$emit('seek-to-ms', $event)"
                         @select-item="onSelectItem"
@@ -599,7 +758,7 @@ const onUploadBackgroundImage = (event: Event) => {
             </details>
 
             <!-- Background -->
-            <details class="inspector-section">
+            <details v-if="!selectedItemId" class="inspector-section">
                 <summary class="inspector-section__title">Background</summary>
                 <div class="inspector-section__content">
                     <div class="motion-tab__row">

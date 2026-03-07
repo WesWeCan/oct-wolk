@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiCrosshairs, mdiEye, mdiEyeOff, mdiPencilOutline } from '@mdi/js';
 import type { LyricTrack, MotionTrack, TimelineItem, ItemOverride } from '@/types/project_types';
 
 const props = defineProps<{
@@ -7,6 +9,7 @@ const props = defineProps<{
     lyricTracks: LyricTrack[];
     playheadMs: number;
     fps: number;
+    selectedItemId?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -16,7 +19,6 @@ const emit = defineEmits<{
 }>();
 
 const search = ref('');
-const expandedItemId = ref<string | null>(null);
 
 const rangeItems = computed<TimelineItem[]>(() => {
     const source = props.lyricTracks.find((t) => t.id === props.track.block.sourceTrackId);
@@ -50,20 +52,7 @@ const isHidden = (itemId: string): boolean => !!overrideMap.value.get(itemId)?.h
 
 const frameAt = (ms: number) => Math.round((ms / 1000) * Math.max(1, props.fps));
 
-const getTextOverride = (itemId: string): string => {
-    const o = overrideMap.value.get(itemId);
-    return o?.textOverride ?? '';
-};
-
-const toggleExpand = (itemId: string) => {
-    if (expandedItemId.value === itemId) {
-        expandedItemId.value = null;
-        emit('select-item', null);
-    } else {
-        expandedItemId.value = itemId;
-        emit('select-item', itemId);
-    }
-};
+const toggleEditItem = (itemId: string) => emit('select-item', props.selectedItemId === itemId ? null : itemId);
 
 const emitOverrides = (overrides: ItemOverride[]) => {
     if (props.track.locked) return;
@@ -93,34 +82,13 @@ const toggleHidden = (itemId: string) => {
     emitOverrides(overrides);
 };
 
-const updateTextOverride = (itemId: string, text: string) => {
-    if (props.track.locked) return;
-    const overrides = [...props.track.block.overrides];
-    let idx = overrides.findIndex((o) => o.sourceItemId === itemId);
-    if (idx < 0) {
-        overrides.push({ sourceItemId: itemId, hidden: false });
-        idx = overrides.length - 1;
-    }
-    overrides[idx] = { ...overrides[idx], textOverride: text || undefined };
-    if (!text && !overrides[idx].hidden && !overrides[idx].styleOverride && !overrides[idx].transformOverride && !overrides[idx].enterOverride && !overrides[idx].exitOverride && !overrides[idx].wordStyleMap) {
-        overrides.splice(idx, 1);
-    }
-    emitOverrides(overrides);
-};
-
-const clearOverride = (itemId: string) => {
-    if (props.track.locked) return;
-    const overrides = props.track.block.overrides.filter((o) => o.sourceItemId !== itemId);
-    emitOverrides(overrides);
-    expandedItemId.value = null;
-    emit('select-item', null);
-};
 </script>
 
 <template>
     <div class="motion-tab">
         <div class="motion-tab__field">
             <input v-model="search" class="inspector-input" placeholder="Search items..." />
+            <span class="inspector-hint">Text seeks. Pencil edits. Eye toggles visibility.</span>
         </div>
 
         <div v-if="filteredItems.length === 0" class="inspector-empty">
@@ -131,34 +99,41 @@ const clearOverride = (itemId: string) => {
             <div v-for="item in filteredItems" :key="item.id">
                 <div
                     class="item-row"
-                    :class="{ 'at-playhead': isAtPlayhead(item), hidden: isHidden(item.id), expanded: expandedItemId === item.id }"
-                    @click="toggleExpand(item.id)"
+                    :class="{
+                        'at-playhead': isAtPlayhead(item),
+                        hidden: isHidden(item.id),
+                        selected: selectedItemId === item.id,
+                    }"
                 >
-                    <button class="item-row__eye" :class="{ off: isHidden(item.id) }" title="Toggle visibility" @click.stop="toggleHidden(item.id)">
-                        {{ isHidden(item.id) ? '&#8212;' : '&#9673;' }}
+                    
+                    <button
+                        class="item-row__action item-row__edit"
+                        :class="{ active: selectedItemId === item.id, altered: hasOverride(item.id) }"
+                        data-tooltip="Edit overrides"
+                        aria-label="Edit overrides"
+                        @click.stop="toggleEditItem(item.id)"
+                    >
+                        <SvgIcon type="mdi" :path="mdiPencilOutline" :size="14" />
                     </button>
-                    <span class="item-row__text" @click.stop="emit('seek-to-ms', item.startMs)">{{ item.text }}</span>
+                    <button
+                        class="item-row__action item-row__eye"
+                        :class="{ off: isHidden(item.id) }"
+                        :data-tooltip="isHidden(item.id) ? 'Show item' : 'Hide item'"
+                        :aria-label="isHidden(item.id) ? 'Show item' : 'Hide item'"
+                        @click.stop="toggleHidden(item.id)"
+                    >
+                        <SvgIcon type="mdi" :path="isHidden(item.id) ? mdiEyeOff : mdiEye" :size="14" />
+                    </button>
+                    <button
+                        class="item-row__action item-row__seek"
+                        data-tooltip="Seek to item start"
+                        aria-label="Seek to item start"
+                        @click.stop="emit('seek-to-ms', item.startMs)"
+                    >
+                        <SvgIcon type="mdi" :path="mdiCrosshairs" :size="14" />
+                    </button>
+                    <span class="item-row__text">{{ item.text }}</span>
                     <span class="item-row__time">f{{ frameAt(item.startMs) }}</span>
-                    <span v-if="hasOverride(item.id)" class="item-row__dot"></span>
-                </div>
-
-                <!-- Expanded inline editor -->
-                <div v-if="expandedItemId === item.id" class="item-expand">
-                    <div class="motion-tab__field">
-                        <label>Text Override</label>
-                        <input
-                            type="text"
-                            class="inspector-input"
-                            :value="getTextOverride(item.id)"
-                            :placeholder="item.text"
-                            @change="updateTextOverride(item.id, ($event.target as HTMLInputElement).value)"
-                        />
-                        <span class="inspector-hint">Empty = use source text</span>
-                    </div>
-                    <div class="item-expand__actions">
-                        <button class="btn-sm" @click.stop="emit('select-item', item.id)">Edit Style Override</button>
-                        <button v-if="hasOverride(item.id)" class="btn-sm danger" @click.stop="clearOverride(item.id)">Clear All</button>
-                    </div>
                 </div>
             </div>
         </div>

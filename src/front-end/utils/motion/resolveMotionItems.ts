@@ -118,6 +118,7 @@ export function resolveActiveItems(
                 enter: resolvedEnter,
                 exit: resolvedExit,
                 wordStyleMap: override?.wordStyleMap,
+                forceStyleColor: !!override?.styleOverride?.color,
             } as ResolvedItem;
         })
         .filter((item): item is ResolvedItem => item !== null);
@@ -171,6 +172,7 @@ export function resolveBlockItems(
                 enter: resolvedEnter,
                 exit: resolvedExit,
                 wordStyleMap: override?.wordStyleMap,
+                forceStyleColor: !!override?.styleOverride?.color,
             } as ResolvedItem;
         })
         .filter((item): item is ResolvedItem => item !== null);

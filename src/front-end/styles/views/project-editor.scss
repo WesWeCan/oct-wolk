@@ -1732,32 +1732,95 @@ body:has(.project-editor) {
 .item-row {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 2px;
+    gap: 6px;
+    padding: 6px 4px;
     border-bottom: 1px solid #1a1a1a;
-    cursor: pointer;
     transition: background 100ms;
 
     &:hover { background: rgba(255, 255, 255, 0.03); }
     &.at-playhead { background: rgba(0, 212, 255, 0.08); }
     &.hidden { opacity: 0.4; }
+    &.selected {
+        background: rgba(0, 212, 255, 0.16);
+        border-left: 2px solid #00d4ff;
+        padding-left: 2px;
+    }
+    &.has-override {
+        background: rgba(255, 167, 38, 0.1);
+        border-left: 2px solid rgba(255, 167, 38, 0.5);
+        padding-left: 2px;
+    }
+    &.has-override.selected {
+        background: linear-gradient(90deg, rgba(255, 167, 38, 0.16), rgba(0, 212, 255, 0.14));
+    }
 
-    &__eye {
-        width: 18px;
-        height: 18px;
+    &__action {
+        position: relative;
+        width: 20px;
+        height: 20px;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: none;
-        border: none;
-        color: #666;
+        background: #1f1f1f;
+        border: 1px solid #3a3a3a;
+        border-radius: 3px;
+        color: #7f8b94;
         cursor: pointer;
-        font-size: 10px;
         padding: 0;
         flex-shrink: 0;
+        transition: all 120ms;
 
-        &:hover { color: #ccc; }
-        &.off { color: #e57373; }
+        &:hover {
+            border-color: #00d4ff66;
+            color: #d9e1e8;
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        &::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #111;
+            border: 1px solid #333;
+            color: #d9e1e8;
+            font-size: 10px;
+            line-height: 1.2;
+            white-space: nowrap;
+            padding: 4px 6px;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 100ms ease;
+            z-index: 20;
+        }
+
+        &:hover::after {
+            opacity: 1;
+        }
+    }
+
+    &__edit {
+        &.active {
+            color: #00d4ff;
+            border-color: rgba(0, 212, 255, 0.65);
+            background: rgba(0, 212, 255, 0.16);
+        }
+
+        &.altered:not(.active) {
+            color: #ffb86b;
+            border-color: rgba(255, 184, 107, 0.45);
+            background: rgba(255, 184, 107, 0.08);
+        }
+    }
+
+    &__eye {
+        &.off {
+            color: #f28b82;
+            border-color: rgba(242, 139, 130, 0.4);
+            background: rgba(229, 115, 115, 0.12);
+        }
     }
 
     &__text {
@@ -1766,36 +1829,27 @@ body:has(.project-editor) {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: 11px;
+        font-size: 12px;
         color: #ccc;
-        background: none;
-        border: none;
-        cursor: pointer;
-        text-align: left;
-        padding: 0;
+        padding: 0 2px;
+        line-height: 1.35;
+    }
 
-        &:hover { color: #fff; }
+    &__seek {
+        color: #8aa7bb;
     }
 
     &__time {
-        font-size: 9px;
-        color: #555;
+        font-size: 11px;
+        color: #98a3ab;
         font-variant-numeric: tabular-nums;
         flex-shrink: 0;
+        background: #1d1d1d;
+        border: 1px solid #333;
+        border-radius: 3px;
+        padding: 1px 5px;
     }
 
-    &__dot {
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: #00d4ff;
-        flex-shrink: 0;
-    }
-
-    &.expanded {
-        background: rgba(0, 212, 255, 0.05);
-        border-bottom-color: transparent;
-    }
 }
 
 .item-expand {
@@ -1981,8 +2035,9 @@ body:has(.project-editor) {
         }
 
         &.danger {
-            color: #e57373;
+            color: #fff;
             border-color: #633;
+            background: rgba(229, 115, 115, 0.2);
 
             &:hover:not(:disabled) {
                 background: #633;
@@ -2045,6 +2100,16 @@ body:has(.project-editor) {
         transform: rotate(90deg);
     }
 
+    &--item-override > .inspector-section__title {
+        color: #ffb86b;
+    }
+
+    &__utility {
+        display: flex;
+        justify-content: flex-end;
+        margin: 0 0 8px;
+    }
+
     &__content {
         padding: 0 12px 12px;
     }
@@ -2097,8 +2162,9 @@ body:has(.project-editor) {
     }
 
     &.danger {
-        color: #e57373;
+        color: #fff;
         border-color: #633;
+        background: rgba(229, 115, 115, 0.2);
 
         &:hover:not(:disabled) {
             background: #633;
