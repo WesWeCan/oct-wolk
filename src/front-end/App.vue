@@ -46,8 +46,7 @@ const getLuckyNumber = async () => {
 <template>
     <header>
         <router-link to="/" exact>Home</router-link>
-        <router-link to="/song-bank">Song Bank</router-link>
-        <router-link to="/editor">Editor</router-link>
+        <router-link to="/projects">Projects</router-link>
         <div class="spacer"></div>
         <button @click="openStorageFolder" class="open-folder-btn" title="Open storage folder">
             📁 Open Folder

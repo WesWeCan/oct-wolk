@@ -61,9 +61,10 @@ import { enforceNoOverlap, generateLineTrackFromVerseTrack, generateWordTrackFro
 import { cleanOrphanedOverrides } from '@/front-end/utils/motion/resolveMotionItems';
 import { upsertKeyframe } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
-import type { TimelineDocument } from '@/types/timeline_types';
+import type { ExportDocument } from '@/types/export_types';
 import { buildFontFamilyChain, fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
 import { primeDocumentFont } from '@/front-end/utils/fonts/fontLoader';
+import { buildLegacyAudioModulationFrame } from '@/front-end/motion/legacy/legacy_audio_modulation_scaffold';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -225,15 +226,16 @@ const targetHeight = computed(() => project.value?.settings.renderHeight || 1080
 const previewCanvasComposable = usePreviewCanvas(renderCanvas, previewCanvas, targetWidth, targetHeight, () => markDirty());
 const motionRenderer = useMotionRenderer(renderCanvas);
 const exportMode = ref<'realtime' | 'frames'>('frames');
-const exportTimeline = computed<TimelineDocument | null>(() => {
+const exportDocument = computed<ExportDocument | null>(() => {
     if (!project.value) return null;
     return {
+        id: project.value.id,
+        title: project.value.song.title || 'Untitled',
+        audioSrc: project.value.song.audioSrc || null,
         settings: {
-            version: 1,
             fps: project.value.settings.fps || 60,
             renderWidth: project.value.settings.renderWidth || 1920,
             renderHeight: project.value.settings.renderHeight || 1080,
-            seed: project.value.settings.seed || 'wolk-default',
             fontFamily: project.value.font.family,
             fontFallbacks: project.value.font.fallbacks,
             fontStyle: project.value.font.style,
@@ -244,13 +246,12 @@ const exportTimeline = computed<TimelineDocument | null>(() => {
             exportBitrateMbps: project.value.settings.exportBitrateMbps || 8,
             exportMode: exportMode.value,
         },
-        scenes: [],
     };
 });
 const videoExport = useVideoExport(
     renderCanvas,
     audio.audioEl,
-    exportTimeline as any,
+    exportDocument,
     computed(() => project.value?.id || ''),
     ref(false),
     ref(true),
@@ -405,7 +406,18 @@ const drawMotionPreview = () => {
     if (!project.value) return;
     motionRenderer.primeProjectFonts(project.value);
     const currentMs = (playhead.value.frame / Math.max(1, fps.value)) * 1000;
-    motionRenderer.renderMotionFrame(project.value, currentMs);
+    motionRenderer.renderMotionFrame(project.value, currentMs, {
+        legacyModulation: buildLegacyAudioModulationFrame({
+            frame: playhead.value.frame,
+            fps: fps.value,
+            energyPerFrame: analysis.analysisCache.value?.energyPerFrame,
+            beatStrengthPerFrame: analysis.beatStrengthPerFrame.value,
+            bandsLowPerFrame: analysis.bandsLowPerFrame.value,
+            bandsMidPerFrame: analysis.bandsMidPerFrame.value,
+            bandsHighPerFrame: analysis.bandsHighPerFrame.value,
+            beatTimesSec: analysis.beatTimesSec.value,
+        }),
+    });
     previewCanvasComposable.drawPreview();
     if (videoExport.showExportModal.value) {
         const oc = previewOverlay.value;
@@ -519,7 +531,18 @@ const startExportProcess = async () => {
             audioPath: project.value.song.audioSrc || null,
             drawFrame: (frame: number) => {
                 const currentMs = (frame * 1000) / fpsValue;
-                motionRenderer.renderMotionFrame(project.value!, currentMs);
+                motionRenderer.renderMotionFrame(project.value!, currentMs, {
+                    legacyModulation: buildLegacyAudioModulationFrame({
+                        frame,
+                        fps: fpsValue,
+                        energyPerFrame: analysis.analysisCache.value?.energyPerFrame,
+                        beatStrengthPerFrame: analysis.beatStrengthPerFrame.value,
+                        bandsLowPerFrame: analysis.bandsLowPerFrame.value,
+                        bandsMidPerFrame: analysis.bandsMidPerFrame.value,
+                        bandsHighPerFrame: analysis.bandsHighPerFrame.value,
+                        beatTimesSec: analysis.beatTimesSec.value,
+                    }),
+                });
                 previewCanvasComposable.drawPreview();
             },
         });
@@ -1796,7 +1819,7 @@ const loadProject = async () => {
 };
 
 // ===== TIMELINE LANE MANAGEMENT =====
-// Dynamic lane heights + collapse — same pattern as TimelineRoot.vue
+// Dynamic lane heights + collapse for the project timeline lanes.
 
 const laneHeights = ref<Record<string, number>>({
     ruler: 48,
@@ -1844,8 +1867,7 @@ const startResize = (key: string, e: PointerEvent) => {
 };
 
 // ===== PANEL RESIZE =====
-// Sidebar + inspector resize (same pattern as Editor.vue)
-// Timeline top-edge resize (same pattern as TimelineRoot.vue)
+// Sidebar, inspector, and timeline resize behavior for the project editor.
 
 let timelineWidthObserver: ResizeObserver | null = null;
 
@@ -2224,7 +2246,7 @@ onUnmounted(() => {
             </template>
         </div>
 
-        <!-- Monitor / Preview — matches Editor.vue monitor pattern -->
+        <!-- Monitor / Preview -->
         <div class="editor__preview">
             <div class="monitor-container">
                 <div class="monitor-header">
@@ -2375,7 +2397,7 @@ onUnmounted(() => {
             </template>
         </div>
 
-        <!-- Timeline — same grid/lane/playhead pattern as TimelineRoot.vue -->
+        <!-- Timeline -->
         <div class="editor__timeline">
             <div class="timeline-root" :style="{ '--playhead-x': playheadX } as any">
                 <div class="timeline">

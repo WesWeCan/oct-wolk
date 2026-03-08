@@ -2,7 +2,7 @@
 // WolkProject v2 — Lyric-timeline-first data model
 // See PRD-lyrics-motion-rebuild.md for full specification
 // ---------------------------------------------------------------------------
-import type { PropertyTrack } from '@/types/timeline_types';
+import type { PropertyTrack } from '@/types/keyframe_types';
 
 // ---- Layer A: Lyric Mode --------------------------------------------------
 

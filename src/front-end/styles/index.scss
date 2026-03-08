@@ -3,28 +3,21 @@
 @use 'base/global';
 @use 'base/inputs';
 
-// Legacy SCSS files
+// Shared project flow styles
 @use 'splash-screen';
-@use 'song-bank';
-@use 'lyric-analyzer';
-@use 'tip-tap-lyric-analyzer';
-@use 'word-bank';
 @use 'editor';
 @use 'timeline';
 
 // New organized SCSS files
 @use 'app/navigation';
 @use 'components/buttons';
-@use 'components/song-data';
 @use 'editor/toolbar';
 @use 'editor/modal';
-@use 'editor/sidebar';
 @use 'editor/monitor';
 @use 'inspector/main';
 @use 'inspector/fonts';
-@use 'inspector/words';
 @use 'timeline/root';
-@use 'views/editor-index';
+@use 'views/project-list';
 @use 'views/project-editor';
 
 // Legacy overrides

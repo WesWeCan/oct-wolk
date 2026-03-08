@@ -49,8 +49,14 @@ function makeItem(overrides: Partial<ResolvedItem> = {}): ResolvedItem {
         isActive: true,
         style: { ...DEFAULT_MOTION_STYLE },
         transform: { ...DEFAULT_MOTION_TRANSFORM },
-        enter: { ...DEFAULT_MOTION_ENTER_EXIT, opacityStart: 0, opacityEnd: 1 },
-        exit: { ...DEFAULT_MOTION_ENTER_EXIT, opacityStart: 1, opacityEnd: 0 },
+        enter: {
+            ...DEFAULT_MOTION_ENTER_EXIT,
+            fade: { ...DEFAULT_MOTION_ENTER_EXIT.fade, opacityStart: 0, opacityEnd: 1 },
+        },
+        exit: {
+            ...DEFAULT_MOTION_ENTER_EXIT,
+            fade: { ...DEFAULT_MOTION_ENTER_EXIT.fade, opacityStart: 1, opacityEnd: 0 },
+        },
         ...overrides,
     };
 }

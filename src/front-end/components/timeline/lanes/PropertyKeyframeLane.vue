@@ -3,7 +3,7 @@ import { computed, ref, onMounted, onUnmounted } from 'vue';
 import SvgIcon from '@jamescoyle/vue-icon';
 import { mdiDiamond } from '@mdi/js';
 import type { MotionTrack } from '@/types/project_types';
-import type { PropertyTrack, Keyframe } from '@/types/timeline_types';
+import type { PropertyTrack, Keyframe } from '@/types/keyframe_types';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import { sortKeyframes } from '@/front-end/utils/tracks';
 import { useLaneInteractions } from '../useLaneInteractions';

@@ -2,7 +2,8 @@ import { ref } from 'vue';
 import type { Ref } from 'vue';
 import type { MotionBlockType, WolkProject } from '@/types/project_types';
 import { createBlockRenderer, hasBlockType, registerBlockType } from '@/front-end/motion/MotionBlockRegistry';
-import type { MotionBlockRenderer } from '@/front-end/motion/types';
+import type { MotionBlockRenderer, MotionFrameRuntimeScaffolds } from '@/front-end/motion/types';
+import { createLegacyDeterministicRandomness } from '@/front-end/motion/legacy/legacy_seed_scaffold';
 import { msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
 import { resolveActiveItems, resolveBlockItems } from '@/front-end/utils/motion/resolveMotionItems';
 import { SubtitleRenderer } from '@/front-end/motion/renderers/SubtitleRenderer';
@@ -66,7 +67,11 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
         await Promise.all(getProjectMotionFonts(project).map((font) => ensureDocumentFont(font)));
     };
 
-    const renderMotionFrame = (project: WolkProject, currentMs: number): void => {
+    const renderMotionFrame = (
+        project: WolkProject,
+        currentMs: number,
+        runtimeScaffolds?: MotionFrameRuntimeScaffolds,
+    ): void => {
         primeProjectFonts(project);
         const canvas = renderCanvas.value;
         if (!canvas) return;
@@ -207,6 +212,12 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
                 fps,
                 canvasSize: { width, height },
                 allItems,
+                legacyModulation: runtimeScaffolds?.legacyModulation ?? null,
+                deterministicRandomness: createLegacyDeterministicRandomness(
+                    project.settings.seed || 'wolk-default',
+                    `${track.id}:${block.id}`,
+                ),
+                legacyManifestId: runtimeScaffolds?.legacyManifestId ?? null,
             }, animatedProps);
         }
     };

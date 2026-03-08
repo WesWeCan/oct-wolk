@@ -19,8 +19,6 @@ onMounted(() => {
 
         <nav class="navigation">
             <RouterLink to="/projects" class="nav-btn">Projects</RouterLink>
-            <RouterLink to="/song-bank" class="nav-btn">Analyze your lyrics</RouterLink>
-            <RouterLink to="/editor" class="nav-btn">Edit your visuals</RouterLink>
         </nav>
 
         <footer class="footer">

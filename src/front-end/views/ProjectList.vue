@@ -92,7 +92,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="song-bank-page">
+    <div class="project-list-page">
         <div class="page-header">
             <div class="header-content">
                 <div class="title-section">
@@ -156,11 +156,11 @@ onMounted(() => {
                 <p>Try a different search term</p>
             </div>
 
-            <div v-else class="banks-grid">
+            <div v-else class="project-grid">
                 <div
                     v-for="project in filteredAndSorted"
                     :key="project.id"
-                    class="bank-card"
+                    class="project-card"
                     :class="{ deleting: deletingId === project.id }"
                 >
                     <div class="card-content" @click="openProject(project.id)">

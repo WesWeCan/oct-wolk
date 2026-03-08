@@ -6,6 +6,8 @@ import type {
     MotionTransform,
     WolkProject,
 } from '@/types/project_types';
+import type { LegacyAudioModulationFrame } from '@/front-end/motion/legacy/legacy_audio_modulation_scaffold';
+import type { LegacyDeterministicRandomness } from '@/front-end/motion/legacy/legacy_seed_scaffold';
 
 export interface ResolvedItem {
     id: string;
@@ -32,6 +34,14 @@ export interface MotionRenderContext {
     fps: number;
     canvasSize: { width: number; height: number };
     allItems: ResolvedItem[];
+    legacyModulation?: LegacyAudioModulationFrame | null;
+    deterministicRandomness?: LegacyDeterministicRandomness;
+    legacyManifestId?: string | null;
+}
+
+export interface MotionFrameRuntimeScaffolds {
+    legacyModulation?: LegacyAudioModulationFrame | null;
+    legacyManifestId?: string | null;
 }
 
 export interface RendererBounds {

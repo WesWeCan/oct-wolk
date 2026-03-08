@@ -1,5 +1,5 @@
 import type { MotionStyle, WolkProjectFont } from '@/types/project_types';
-import type { ProjectSettings } from '@/types/timeline_types';
+import type { ExportRenderSettings } from '@/types/export_types';
 import type { SystemFontFile } from '@/front-end/services/FontsService';
 
 export interface FontDescriptor {
@@ -76,7 +76,7 @@ export const fontDescriptorFromProjectFont = (font?: Partial<WolkProjectFont>): 
     };
 };
 
-export const fontDescriptorFromTimelineSettings = (settings: Partial<ProjectSettings>): FontDescriptor => {
+export const fontDescriptorFromRenderSettings = (settings: Partial<ExportRenderSettings>): FontDescriptor => {
     return {
         family: String(settings.fontFamily || 'system-ui'),
         fallbacks: Array.isArray(settings.fontFallbacks) ? settings.fontFallbacks.filter(Boolean) : [],
@@ -86,6 +86,8 @@ export const fontDescriptorFromTimelineSettings = (settings: Partial<ProjectSett
         localPath: settings.fontLocalPath,
     };
 };
+
+export const fontDescriptorFromTimelineSettings = fontDescriptorFromRenderSettings;
 
 export const fontDescriptorFromMotionStyle = (
     style: Partial<MotionStyle>,

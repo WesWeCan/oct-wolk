@@ -1,4 +1,4 @@
-import type { Keyframe, PropertyTrack } from '@/types/timeline_types';
+import type { Keyframe, PropertyTrack } from '@/types/keyframe_types';
 import { ease } from '@/front-end/utils/easing';
 
 export function sortKeyframes<T>(keyframes: Keyframe<T>[]): Keyframe<T>[] {

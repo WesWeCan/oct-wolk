@@ -51,10 +51,10 @@ const emitSelection = (selection: MotionFontSelection) => {
 };
 
 const selectSystemFont = async (font: SystemFontFile) => {
-    const songId = (route.params.songId as string) || (route.params.id as string) || '';
+    const documentId = (route.params.projectId as string) || (route.params.songId as string) || (route.params.id as string) || '';
     copyingPath.value = font.filePath;
     try {
-        const wolkUrl = await FontsService.addToProject(songId, font.filePath);
+        const wolkUrl = await FontsService.addToProject(documentId, font.filePath);
         emitSelection({
             source: 'system',
             family: font.familyGuess,
