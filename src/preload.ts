@@ -6,6 +6,7 @@ declare global {
         electronAPI: {
             getRandomNumber: () => Promise<number>;
             openStorageFolder: () => Promise<string>;
+            openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
             projects: {
                 create: (initial?: { title?: string; audioSrc?: string; coverSrc?: string }) => Promise<WolkProject>;
                 save: (project: WolkProject) => Promise<WolkProject>;
@@ -54,6 +55,7 @@ ipcRenderer.send('renderer-ready');
 contextBridge.exposeInMainWorld('electronAPI', {
     getRandomNumber: () => ipcRenderer.invoke('getRandomNumber'),
     openStorageFolder: () => ipcRenderer.invoke('open-storage-folder'),
+    openExternalUrl: (url: string) => ipcRenderer.invoke('open-external-url', url),
     projects: {
         create: (initial?: { title?: string; audioSrc?: string; coverSrc?: string }) => ipcRenderer.invoke('projects:create', initial),
         save: (project: WolkProject) => ipcRenderer.invoke('projects:save', project),

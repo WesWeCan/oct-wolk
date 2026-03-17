@@ -28,7 +28,7 @@ export interface LyricTrack {
 
 // ---- Layer B: Motion Mode (redesigned) -----------------------------------
 
-export type MotionBlockType = 'subtitle' | 'wordReveal' | 'paragraph';
+export type MotionBlockType = 'subtitle';
 export type MotionAnimationStyle =
     | 'fade'
     | 'slideUp'

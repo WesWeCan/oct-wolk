@@ -2,7 +2,6 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 
 import Index from '../views/Index.vue';
 import Player from '../views/Player.vue';
-import ProjectList from '../views/ProjectList.vue';
 import ProjectEditor from '../views/ProjectEditor.vue';
 
 const routes = [
@@ -10,11 +9,6 @@ const routes = [
         path: '/', 
         name: 'Index',
         component: Index,
-    },
-    {
-        path: '/projects',
-        name: 'ProjectList',
-        component: ProjectList,
     },
     {
         path: '/project/:projectId',

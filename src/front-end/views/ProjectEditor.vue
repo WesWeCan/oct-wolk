@@ -1792,7 +1792,7 @@ const loadProject = async () => {
     try {
         project.value = await ProjectService.load(props.projectId);
         if (!project.value) {
-            router.push({ name: 'ProjectList' });
+            router.push({ name: 'Index' });
             return;
         }
         fps.value = project.value.settings.fps || 60;
@@ -2156,7 +2156,7 @@ onUnmounted(() => {
         <!-- Toolbar -->
         <div class="editor__toolbar">
             <div class="toolbar__left">
-                <button class="toolbar-back" @click="router.push({ name: 'ProjectList' })" aria-label="Back to projects">
+                <button class="toolbar-back" @click="router.push({ name: 'Index' })" aria-label="Back to home">
                     <SvgIcon type="mdi" :path="mdiArrowLeft" :size="16" />
                 </button>
 

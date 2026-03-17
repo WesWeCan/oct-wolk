@@ -26,6 +26,21 @@ export const registerInternalProcesses = async () => {
         return shell.openPath(getInternalStoragePath());
     });
 
+    ipcMain.handle('open-external-url', async (_event, url: string) => {
+        try {
+            const parsed = new URL(String(url));
+            const protocol = parsed.protocol.toLowerCase();
+            if (protocol !== 'http:' && protocol !== 'https:') {
+                return { success: false, error: 'Unsupported URL protocol' };
+            }
+
+            await shell.openExternal(parsed.toString());
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: String(error) };
+        }
+    });
+
     // Projects API (v2)
     ipcMain.handle('projects:create', (_event, initial) => {
         return createProject(initial);

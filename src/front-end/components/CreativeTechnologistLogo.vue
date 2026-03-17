@@ -178,9 +178,12 @@ onBeforeUnmount(() => {
     flex-direction: column;
     align-items: baseline;
     justify-content: flex-start;
+    width: 100%;
+    height: 100%;
     color: inherit;
     white-space: nowrap;
-    min-width: max-content;
+    min-width: 0;
+    overflow: hidden;
     transform: translateY(0.4em);
 
     * {

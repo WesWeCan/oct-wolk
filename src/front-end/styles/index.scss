@@ -3,8 +3,6 @@
 @use 'base/global';
 @use 'base/inputs';
 
-// Shared project flow styles
-@use 'splash-screen';
 @use 'editor';
 @use 'timeline';
 
@@ -17,7 +15,7 @@
 @use 'inspector/main';
 @use 'inspector/fonts';
 @use 'timeline/root';
-@use 'views/project-list';
+@use 'views/home';
 @use 'views/project-editor';
 
 // Legacy overrides
