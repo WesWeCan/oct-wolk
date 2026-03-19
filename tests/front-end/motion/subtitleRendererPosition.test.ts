@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { SubtitleRenderer } from '@/front-end/motion/renderers/SubtitleRenderer';
-import type { ResolvedItem, MotionRenderContext } from '@/front-end/motion/types';
+import { SubtitleRenderer } from '@/front-end/motion-blocks/subtitle/renderer/SubtitleRenderer';
+import type { ResolvedItem, MotionRenderContext } from '@/front-end/motion-blocks/core/types';
 import type { MotionBlock, MotionTrack, WolkProject } from '@/types/project_types';
-import { DEFAULT_MOTION_STYLE, DEFAULT_MOTION_TRANSFORM, DEFAULT_MOTION_ENTER_EXIT } from '@/types/project_types';
+import { DEFAULT_SUBTITLE_STYLE as DEFAULT_MOTION_STYLE, DEFAULT_SUBTITLE_TRANSFORM as DEFAULT_MOTION_TRANSFORM, DEFAULT_SUBTITLE_ENTER_EXIT as DEFAULT_MOTION_ENTER_EXIT } from '@/front-end/motion-blocks/subtitle/defaults';
 
 function createMockCtx(): CanvasRenderingContext2D {
     return {

@@ -12,7 +12,7 @@ import {
 } from '@mdi/js';
 import type { MotionTrack, MotionStyle, TextAlign, WolkProjectFont } from '@/types/project_types';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
-import MotionFontSelector from '@/front-end/components/editor/motion/MotionFontSelector.vue';
+import MotionFontSelector from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionFontSelector.vue';
 import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
 
 const props = defineProps<{

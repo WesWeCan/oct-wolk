@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { MotionTrack, MotionBlock } from '@/types/project_types';
-import { DEFAULT_MOTION_STYLE, DEFAULT_MOTION_TRANSFORM, DEFAULT_MOTION_ENTER_EXIT } from '@/types/project_types';
+import { DEFAULT_SUBTITLE_STYLE as DEFAULT_MOTION_STYLE, DEFAULT_SUBTITLE_TRANSFORM as DEFAULT_MOTION_TRANSFORM, DEFAULT_SUBTITLE_ENTER_EXIT as DEFAULT_MOTION_ENTER_EXIT } from '@/front-end/motion-blocks/subtitle/defaults';
 
 /**
  * Extracted migration logic from ProjectEditor.vue's ensureMotionTrackDefaults.

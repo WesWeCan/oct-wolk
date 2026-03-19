@@ -28,7 +28,7 @@ export interface LyricTrack {
 
 // ---- Layer B: Motion Mode (redesigned) -----------------------------------
 
-export type MotionBlockType = 'subtitle';
+export type MotionBlockType = string;
 export type MotionAnimationStyle =
     | 'fade'
     | 'slideUp'
@@ -243,71 +243,6 @@ export const DEFAULT_PROJECT_FONT: WolkProjectFont = {
     weight: 400,
 };
 
-export const DEFAULT_MOTION_STYLE: MotionStyle = {
-    fontFamily: 'system-ui',
-    fontFallbacks: [],
-    fontSize: 72,
-    fontWeight: 400,
-    fontStyle: 'normal',
-    fontName: undefined,
-    fontLocalPath: undefined,
-    underline: false,
-    textCase: 'none',
-    letterSpacing: 0,
-    lineHeight: 1.2,
-    color: '#ffffff',
-    opacity: 1,
-    globalOpacity: 1,
-    backgroundColor: '#000000',
-    backgroundOpacity: 0,
-    backgroundPadding: 0,
-    backgroundBorderRadius: 0,
-    textAlign: 'center',
-    writingMode: 'horizontal',
-    outlineWidth: 0,
-    outlineColor: '#000000',
-    boundsMode: 'safeArea',
-    wrapMode: 'word',
-    maxLines: 5,
-    overflowBehavior: 'none',
-    safeAreaPadding: 40,
-    safeAreaOffsetX: 0,
-    safeAreaOffsetY: 0,
-};
-
-export const DEFAULT_MOTION_TRANSFORM: MotionTransform = {
-    anchorX: 'center',
-    anchorY: 'center',
-    offsetX: 0,
-    offsetY: 0,
-    scale: 1,
-    rotation: 0,
-};
-
-export const DEFAULT_MOTION_ENTER_EXIT: MotionEnterExit = {
-    fraction: 0.3,
-    minFrames: 3,
-    maxFrames: 30,
-    easing: 'easeOut',
-    fade: {
-        enabled: true,
-        opacityStart: 0,
-        opacityEnd: 1,
-    },
-    move: {
-        enabled: false,
-        direction: 'up',
-        distancePx: 24,
-    },
-    scale: {
-        enabled: false,
-        amount: 0.12,
-    },
-    // Legacy fallback defaults.
-    style: 'fade',
-    opacityStart: 0,
-    opacityEnd: 1,
-};
 
 export const TRACK_COLORS = [
     '#4fc3f7', '#81c784', '#ffb74d', '#e57373',

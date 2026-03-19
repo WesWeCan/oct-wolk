@@ -1,5 +1,5 @@
 import type { MotionStyle, MotionTransform, TextAlign, BoundsMode, WrapMode, OverflowBehavior } from '@/types/project_types';
-import type { MotionBlockRenderer, MotionRenderContext, ResolvedItem, RendererBounds } from '@/front-end/motion/types';
+import type { MotionBlockRenderer, MotionRenderContext, ResolvedItem, RendererBounds } from '@/front-end/motion-blocks/core/types';
 import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
 import { buildFont, spansFromRichText, spansFromWordStyleMap } from '@/front-end/utils/motion/renderTipTapSpans';
 import type { StyledSpan } from '@/front-end/utils/motion/parseTipTapToSpans';
@@ -373,7 +373,6 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         const saWidth = saRight - saLeft;
         const saHeight = saBottom - saTop;
 
-        // Phase 1: measure and wrap inside the constraint region.
         const spanMetrics = measureSpans(ctx, spans, resolvedStyle);
         const availableWidth = boundsMode === 'safeArea'
             ? Math.max(0, saWidth - pad * 2)
@@ -464,7 +463,6 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             height: baseLocalBox.height,
         };
 
-        // Phase 2: render from the stable reference point.
         ctx.save();
         ctx.translate(drawReferenceX, drawReferenceY);
         ctx.rotate((resolvedTransform.rotation * Math.PI) / 180);
@@ -473,7 +471,6 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         ctx.textBaseline = 'top';
         ctx.globalAlpha = enterExitAlpha * globalOpacity;
 
-        // Background
         const bgOpacity = resolvedStyle.backgroundOpacity ?? 0;
         const bgColor = resolvedStyle.backgroundColor || '#000000';
         if (bgOpacity > 0 && bgColor) {
@@ -504,7 +501,6 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             ctx.globalAlpha = prevAlpha;
         }
 
-        // Render lines
         const baseAlpha = ctx.globalAlpha;
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
             const line = lines[lineIdx];

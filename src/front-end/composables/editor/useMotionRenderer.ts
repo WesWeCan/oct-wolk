@@ -1,30 +1,22 @@
 import { ref } from 'vue';
 import type { Ref } from 'vue';
 import type { MotionBlockType, WolkProject } from '@/types/project_types';
-import { createBlockRenderer, hasBlockType, registerBlockType } from '@/front-end/motion/MotionBlockRegistry';
-import type { MotionBlockRenderer, MotionFrameRuntimeScaffolds } from '@/front-end/motion/types';
+import type { MotionBlockRenderer, MotionFrameRuntimeScaffolds } from '@/front-end/motion-blocks/core/types';
 import { createLegacyDeterministicRandomness } from '@/front-end/motion/legacy/legacy_seed_scaffold';
 import { msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
-import { resolveActiveItems, resolveBlockItems } from '@/front-end/utils/motion/resolveMotionItems';
-import { SubtitleRenderer } from '@/front-end/motion/renderers/SubtitleRenderer';
+import { ensureMotionBlockPluginsRegistered } from '@/front-end/motion-blocks';
+import { getMotionBlockPlugin, getMotionTrackPlugin, requireMotionBlockPlugin } from '@/front-end/motion-blocks/core/registry';
 
 import { evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 import { ensureDocumentFont, primeDocumentFont } from '@/front-end/utils/fonts/fontLoader';
-import { fontDescriptorFromMotionStyle, fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
+import { fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
 
 const getProjectMotionFonts = (project: WolkProject) => {
     const fonts = [fontDescriptorFromProjectFont(project.font)];
 
     for (const track of project.motionTracks) {
-        fonts.push(fontDescriptorFromMotionStyle(track.block.style, project.font));
-        for (const override of track.block.overrides || []) {
-            if (override.styleOverride) {
-                fonts.push(fontDescriptorFromMotionStyle({ ...track.block.style, ...override.styleOverride }, project.font));
-            }
-            for (const wordStyle of Object.values(override.wordStyleMap || {})) {
-                fonts.push(fontDescriptorFromMotionStyle({ ...track.block.style, ...wordStyle }, project.font));
-            }
-        }
+        const plugin = getMotionTrackPlugin(track);
+        if (plugin.collectFonts) fonts.push(...plugin.collectFonts(project, track));
     }
 
     return fonts.filter((font, index, list) => (
@@ -38,13 +30,10 @@ const getProjectMotionFonts = (project: WolkProject) => {
 };
 
 export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
+    ensureMotionBlockPluginsRegistered();
     const rendererByTrackId = ref<Map<string, { type: MotionBlockType; renderer: MotionBlockRenderer }>>(new Map());
     const bgImageCache = new Map<string, HTMLImageElement>();
     const bgImageFailed = new Set<string>();
-
-    if (!hasBlockType('subtitle')) {
-        registerBlockType('subtitle', () => new SubtitleRenderer());
-    }
 
 
     const ensureRenderer = (trackId: string, type: MotionBlockType): MotionBlockRenderer => {
@@ -54,7 +43,7 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
             existing.renderer.dispose();
             rendererByTrackId.value.delete(trackId);
         }
-        const renderer = createBlockRenderer(type);
+        const renderer = requireMotionBlockPlugin(type).createRenderer();
         rendererByTrackId.value.set(trackId, { type, renderer });
         return renderer;
     };
@@ -183,13 +172,15 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
                 continue;
             }
             const block = track.block;
+            const plugin = getMotionBlockPlugin(block.type);
+            if (!plugin) continue;
             const blockStart = msToFrame(block.startMs, fps);
             const blockEnd = msToFrame(block.endMs, fps);
             if (currentFrame < blockStart || currentFrame > blockEnd) continue;
 
             const sourceTrack = lyricTrackById.get(block.sourceTrackId);
-            const activeItems = resolveActiveItems(block, sourceTrack, currentFrame, fps);
-            const allItems = resolveBlockItems(block, sourceTrack, currentFrame, fps);
+            const activeItems = plugin.resolveActiveItems(block, sourceTrack, currentFrame, fps);
+            const allItems = plugin.resolveBlockItems(block, sourceTrack, currentFrame, fps);
             const animatedProps: Record<string, any> = {};
             for (const propertyTrack of block.propertyTracks || []) {
                 if (!propertyTrack?.propertyPath) continue;

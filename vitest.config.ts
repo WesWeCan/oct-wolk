@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import vue from '@vitejs/plugin-vue';
 import path from 'path';
 
 export default defineConfig({
@@ -21,6 +22,7 @@ export default defineConfig({
     },
     projects: [
       {
+        plugins: [vue()],
         test: {
           name: 'renderer',
           environment: 'jsdom',

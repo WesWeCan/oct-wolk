@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { LyricTrack, MotionTrack } from '@/types/project_types';
 
 const props = defineProps<{
     lyricTracks: LyricTrack[];
     motionTracks: MotionTrack[];
     selectedTrackId: string | null;
+    plugins: Array<{ type: string; label: string }>;
 }>();
 
 const emit = defineEmits<{
@@ -15,7 +16,21 @@ const emit = defineEmits<{
     (e: 'update-track', track: MotionTrack): void;
 }>();
 
-const addType = ref<MotionTrack['block']['type']>('subtitle');
+const addType = ref<MotionTrack['block']['type']>('');
+
+watch(
+    () => props.plugins,
+    (plugins) => {
+        if (!plugins.length) {
+            addType.value = '';
+            return;
+        }
+        if (!plugins.some((plugin) => plugin.type === addType.value)) {
+            addType.value = plugins[0].type;
+        }
+    },
+    { immediate: true },
+);
 
 const renamingId = ref<string | null>(null);
 const renameValue = ref('');
@@ -41,23 +56,23 @@ const commitRename = (track: MotionTrack) => {
         </div>
 
         <p class="track-list-panel__hint">
-            Add a subtitle motion track, then adjust source/timing in inspector.
+            Add a motion block track, then adjust source, layout, and animation in the plugin inspector.
         </p>
 
         <div class="inspector-row">
             <div class="inspector-field half">
                 <label>Block Type</label>
                 <select v-model="addType" class="inspector-input" :disabled="lyricTracks.length === 0">
-                    <option value="subtitle">Subtitle</option>
+                    <option v-for="plugin in plugins" :key="plugin.type" :value="plugin.type">{{ plugin.label }}</option>
                 </select>
             </div>
         </div>
 
-        <button class="btn-sm" :disabled="lyricTracks.length === 0" @click="emit('add-track', { type: addType })">
+        <button class="btn-sm" :disabled="lyricTracks.length === 0 || !addType" @click="emit('add-track', { type: addType })">
             + Add Motion
         </button>
         <p class="track-list-panel__hint">
-            New authoring is subtitle-first. Legacy `wordReveal` / `paragraph` tracks still render for backwards compatibility.
+            In-repo motion block plugins register themselves here automatically.
         </p>
 
         <div v-if="lyricTracks.length === 0" class="track-list-empty">

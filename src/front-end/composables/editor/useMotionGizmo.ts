@@ -1,6 +1,7 @@
 import { watch, onUnmounted, type Ref, type ComputedRef } from 'vue';
 import type { MotionTrack } from '@/types/project_types';
-import type { RendererBounds } from '@/front-end/motion/types';
+import type { RendererBounds } from '@/front-end/motion-blocks/core/types';
+import { getMotionTrackPlugin } from '@/front-end/motion-blocks/core/registry';
 
 export interface GizmoCallbacks {
     onTransformDelta: (mode: 'move' | 'scale' | 'rotate', dx: number, dy: number) => void;
@@ -65,44 +66,23 @@ export function useMotionGizmo(
             };
         }
 
-        const t = track.block.transform;
-        const s = track.block.style;
-        const rw = renderWidth.value;
-        const rh = renderHeight.value;
-
-        const left = (s.boundsMode ?? 'safeArea') === 'safeArea' ? (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetX ?? 0) : 0;
-        const right = (s.boundsMode ?? 'safeArea') === 'safeArea' ? rw - (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetX ?? 0) : rw;
-        const top = (s.boundsMode ?? 'safeArea') === 'safeArea' ? (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetY ?? 0) : 0;
-        const bottom = (s.boundsMode ?? 'safeArea') === 'safeArea' ? rh - (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetY ?? 0) : rh;
-
-        let referenceX = (left + right) / 2;
-        let referenceY = (top + bottom) / 2;
-        if (t.anchorX === 'left') referenceX = left;
-        if (t.anchorX === 'right') referenceX = right;
-        if (t.anchorY === 'top') referenceY = top;
-        if (t.anchorY === 'bottom') referenceY = bottom;
-        referenceX += t.offsetX;
-        referenceY += t.offsetY;
-
-        const approxWidth = Math.max(40, s.fontSize * 8);
-        const approxHeight = Math.max(s.fontSize, s.fontSize * s.lineHeight);
-        const pad = Math.max(0, s.backgroundPadding ?? 0);
-        const localBoxX = t.anchorX === 'left' ? 0 : t.anchorX === 'right' ? -approxWidth - pad * 2 : -((approxWidth + pad * 2) / 2);
-        const localBoxY = t.anchorY === 'top' ? 0 : t.anchorY === 'bottom' ? -approxHeight - pad * 2 : -((approxHeight + pad * 2) / 2);
+        const plugin = getMotionTrackPlugin(track);
+        const fallback = plugin.gizmo?.getFallbackBounds?.(track, renderWidth.value, renderHeight.value);
+        if (!fallback) return null;
 
         return {
-            referenceX: referenceX * previewScale,
-            referenceY: referenceY * previewScale,
-            localBoxX,
-            localBoxY,
-            localBoxWidth: approxWidth + pad * 2,
-            localBoxHeight: approxHeight + pad * 2,
-            rotationDeg: t.rotation,
-            totalScale: t.scale * previewScale,
-            aabbX: (referenceX + localBoxX * t.scale) * previewScale,
-            aabbY: (referenceY + localBoxY * t.scale) * previewScale,
-            aabbWidth: (approxWidth + pad * 2) * t.scale * previewScale,
-            aabbHeight: (approxHeight + pad * 2) * t.scale * previewScale,
+            referenceX: fallback.referenceX * previewScale,
+            referenceY: fallback.referenceY * previewScale,
+            localBoxX: fallback.localBoxX,
+            localBoxY: fallback.localBoxY,
+            localBoxWidth: fallback.localBoxWidth,
+            localBoxHeight: fallback.localBoxHeight,
+            rotationDeg: fallback.rotation,
+            totalScale: fallback.scale * previewScale,
+            aabbX: fallback.x * previewScale,
+            aabbY: fallback.y * previewScale,
+            aabbWidth: fallback.width * previewScale,
+            aabbHeight: fallback.height * previewScale,
         };
     };
 
@@ -148,6 +128,8 @@ export function useMotionGizmo(
         if (showSafeArea && !showSafeArea.value) return;
         const track = selectedTrack.value;
         if (!track) return;
+        const plugin = getMotionTrackPlugin(track);
+        if (!plugin.gizmo?.supportsSafeAreaGuide) return;
         const style = track.block.style;
         if ((style.boundsMode ?? 'safeArea') !== 'safeArea') return;
 

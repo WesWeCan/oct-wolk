@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue';
 import type { LyricTrack, MotionTrack, MotionStyle, MotionTransform, MotionEnterExit, AnchorX, AnchorY, ItemOverride, WolkProjectFont } from '@/types/project_types';
-import type { RendererBounds } from '@/front-end/motion/types';
-import MotionAppearanceTab from '@/front-end/components/editor/motion/MotionAppearanceTab.vue';
-import MotionPositionTab from '@/front-end/components/editor/motion/MotionPositionTab.vue';
-import MotionAnimationTab from '@/front-end/components/editor/motion/MotionAnimationTab.vue';
-import MotionSafeAreaTab from '@/front-end/components/editor/motion/MotionSafeAreaTab.vue';
-import MotionItemsTab from '@/front-end/components/editor/motion/MotionItemsTab.vue';
+import type { RendererBounds } from '@/front-end/motion-blocks/core/types';
+import MotionAppearanceTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionAppearanceTab.vue';
+import MotionPositionTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionPositionTab.vue';
+import MotionAnimationTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionAnimationTab.vue';
+import MotionSafeAreaTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionSafeAreaTab.vue';
+import MotionItemsTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionItemsTab.vue';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import { upsertKeyframe, removeKeyframeAtIndex, evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
@@ -16,19 +16,6 @@ import { applyFontSelectionToMotionStyle } from '@/front-end/utils/fonts/fontUti
 const props = defineProps<{
     motionTrack: MotionTrack | null;
     lyricTracks: LyricTrack[];
-    backgroundImage?: string;
-    backgroundColor: string;
-    backgroundVisible?: boolean;
-    backgroundImageVisible?: boolean;
-    backgroundOpacity?: number;
-    backgroundUseGradient?: boolean;
-    backgroundGradientColor?: string;
-    backgroundGradientAngle?: number;
-    backgroundImageFit?: 'cover' | 'contain' | 'stretch';
-    backgroundImageOffsetX?: number;
-    backgroundImageOffsetY?: number;
-    backgroundImageScale?: number;
-    backgroundImageOpacity?: number;
     playheadMs?: number;
     fps?: number;
     projectFont?: WolkProjectFont;
@@ -39,22 +26,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (e: 'update-track', track: MotionTrack): void;
-    (e: 'set-background-color', color: string): void;
-    (e: 'set-background-visible', visible: boolean): void;
-    (e: 'set-background-image-visible', visible: boolean): void;
-    (e: 'set-background-opacity', opacity: number): void;
-    (e: 'set-background-use-gradient', enabled: boolean): void;
-    (e: 'set-background-gradient-color', color: string): void;
-    (e: 'set-background-gradient-angle', angle: number): void;
-    (e: 'set-background-fit', fit: 'cover' | 'contain' | 'stretch'): void;
-    (e: 'set-background-image-offset-x', offsetX: number): void;
-    (e: 'set-background-image-offset-y', offsetY: number): void;
-    (e: 'set-background-image-scale', scale: number): void;
-    (e: 'set-background-image-opacity', opacity: number): void;
-    (e: 'upload-background-image', file: File): void;
-    (e: 'clear-background-image'): void;
-    (e: 'reset-background-image-controls'): void;
-    (e: 'reset-background'): void;
     (e: 'seek-to-ms', ms: number): void;
 }>();
 
@@ -206,8 +177,6 @@ const selectedItemExitValue = computed<MotionEnterExit | null>(() => {
     const override = selectedItemOverride.value?.exitOverride;
     return mergeEnterExitForEditor(props.motionTrack.block.exit, override);
 });
-
-// --- Mutators ---
 
 const updateSourceTrack = (sourceTrackId: string) => {
     if (!props.motionTrack || isLocked.value) return;
@@ -383,8 +352,6 @@ const updateEnterExit = (which: 'enter' | 'exit', value: MotionEnterExit) => {
 
 const updateStyleGlobalOpacity = (value: number) => updateStyle('globalOpacity' as any, value);
 
-// --- Reset / default keyframe ---
-
 const resetToDefaults = () => {
     if (!props.motionTrack || isLocked.value) return;
     const block = { ...props.motionTrack.block };
@@ -414,8 +381,6 @@ const setDefaultKeyframe = () => {
     emit('update-track', { ...props.motionTrack, block });
 };
 
-// --- Keyframe toggling ---
-
 const toggleKeyframe = (path: string, value: any) => {
     if (!props.motionTrack || isLocked.value) return;
     const block = { ...props.motionTrack.block };
@@ -423,8 +388,6 @@ const toggleKeyframe = (path: string, value: any) => {
     const frame = currentFrame.value;
     let ptIdx = propertyTracks.findIndex((pt) => pt.propertyPath === path);
 
-    // Diamond-first: if property track doesn't exist yet, auto-create it with
-    // the first keyframe at current frame (implicit enable on first diamond click)
     if (ptIdx < 0) {
         const def = getPropertyDef(path);
         const interp = def?.defaultInterpolation ?? 'linear';
@@ -439,7 +402,6 @@ const toggleKeyframe = (path: string, value: any) => {
 
     const pt = { ...propertyTracks[ptIdx] };
 
-    // If track exists but is disabled, re-enable and add keyframe
     if (pt.enabled === false) {
         pt.enabled = true;
         const def = getPropertyDef(path);
@@ -496,8 +458,6 @@ const togglePropertyKeyframing = (path: string) => {
     emit('update-track', { ...props.motionTrack, block: { ...block, propertyTracks } });
 };
 
-// --- Item override helpers ---
-
 const getOrCreateOverride = (itemId: string) => {
     if (!props.motionTrack || isLocked.value) return { overrides: [] as ItemOverride[], idx: -1, override: null as ItemOverride | null };
     const overrides: ItemOverride[] = [...props.motionTrack.block.overrides];
@@ -541,7 +501,8 @@ const onSelectItem = (itemId: string | null) => {
     selectedWordIndex.value = null;
     if (itemId) {
         nextTick(() => {
-            inspectorRoot.value?.scrollTo({ top: 0, behavior: 'smooth' });
+            const inspectorScrollHost = inspectorRoot.value?.closest('.editor__inspector') as HTMLElement | null;
+            inspectorScrollHost?.scrollTo({ top: 0, behavior: 'smooth' });
         });
     }
 };
@@ -623,90 +584,15 @@ const resetSelectedItemTransformOverride = () => {
 const resetSelectedItemAnimationOverride = () => {
     updateSelectedItemOverride((current) => ({ ...current, enterOverride: undefined, exitOverride: undefined }));
 };
-
-const backgroundFitValue = computed(() => props.backgroundImageFit || 'cover');
-const backgroundVisibleValue = computed(() => props.backgroundVisible !== false);
-const backgroundImageVisibleValue = computed(() => props.backgroundImageVisible !== false);
-const backgroundOpacityValue = computed(() => {
-    const raw = Number(props.backgroundOpacity);
-    return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
-});
-const backgroundUseGradientValue = computed(() => !!props.backgroundUseGradient);
-const backgroundGradientColorValue = computed(() => props.backgroundGradientColor || '#222222');
-const backgroundGradientAngleValue = computed(() => {
-    const raw = Number(props.backgroundGradientAngle);
-    return Number.isFinite(raw) ? raw : 90;
-});
-const backgroundPreviewFillStyle = computed(() => {
-    const opacity = backgroundOpacityValue.value;
-    if (backgroundUseGradientValue.value) {
-        return {
-            background: `linear-gradient(${backgroundGradientAngleValue.value}deg, ${props.backgroundColor}, ${backgroundGradientColorValue.value})`,
-            opacity: `${opacity}`,
-        };
-    }
-    return {
-        background: props.backgroundColor,
-        opacity: `${opacity}`,
-    };
-});
-const backgroundImageOffsetXValue = computed(() => {
-    const raw = Number(props.backgroundImageOffsetX);
-    return Number.isFinite(raw) ? raw : 0;
-});
-const backgroundImageOffsetYValue = computed(() => {
-    const raw = Number(props.backgroundImageOffsetY);
-    return Number.isFinite(raw) ? raw : 0;
-});
-const backgroundImageScaleValue = computed(() => {
-    const raw = Number(props.backgroundImageScale);
-    return Number.isFinite(raw) ? Math.max(0.05, raw) : 1;
-});
-const backgroundImageOpacityValue = computed(() => {
-    const raw = Number(props.backgroundImageOpacity);
-    return Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 1;
-});
-const bgDropActive = ref(false);
-const backgroundFileInput = ref<HTMLInputElement | null>(null);
-
-const uploadBackgroundFile = (file?: File | null) => {
-    if (!file) return;
-    emit('upload-background-image', file);
-};
-
-const onUploadBackgroundImage = (event: Event) => {
-    const input = event.target as HTMLInputElement;
-    uploadBackgroundFile(input.files?.[0] ?? null);
-    input.value = '';
-};
-
-const openBackgroundFilePicker = () => backgroundFileInput.value?.click();
-
-const onBackgroundDrop = (event: DragEvent) => {
-    event.preventDefault();
-    bgDropActive.value = false;
-    const file = event.dataTransfer?.files?.[0];
-    uploadBackgroundFile(file ?? null);
-};
-
-const onBackgroundDragOver = (event: DragEvent) => {
-    event.preventDefault();
-    bgDropActive.value = true;
-};
-
-const onBackgroundDragLeave = () => {
-    bgDropActive.value = false;
-};
 </script>
 
 <template>
-    <div ref="inspectorRoot" class="project-inspector motion-inspector">
+    <div ref="inspectorRoot" class="motion-inspector">
         <div v-if="!motionTrack" class="inspector-empty">
             Select a motion track to edit.
         </div>
 
         <template v-else>
-            <!-- Item editing banner -->
             <div v-if="selectedItemId && editingItemLabel" class="motion-inspector__item-banner">
                 <span class="motion-inspector__item-label">
                     Editing: <strong>{{ selectedWordIndex !== null ? selectedItemWords[selectedWordIndex] : editingItemLabel }}</strong>
@@ -716,7 +602,6 @@ const onBackgroundDragLeave = () => {
                     {{ selectedWordIndex !== null ? 'Back to item' : 'Back to block' }}
                 </button>
             </div>
-            <!-- Per-word chips -->
             <div v-if="selectedItemId && selectedItemWords.length > 1" class="motion-inspector__word-chips">
                 <button
                     v-for="(word, wi) in selectedItemWords"
@@ -727,9 +612,6 @@ const onBackgroundDragLeave = () => {
                 >{{ word }}</button>
             </div>
 
-           
-
-            <!-- Text (item override mode) -->
             <details
                 v-if="selectedItemId && selectedWordIndex === null"
                 class="inspector-section"
@@ -759,7 +641,6 @@ const onBackgroundDragLeave = () => {
                 </div>
             </details>
 
-            <!-- Source + timing -->
             <details v-if="!selectedItemId" class="inspector-section" >
                 <summary class="inspector-section__title">Source &amp; Timing</summary>
                 <div class="inspector-section__content">
@@ -795,7 +676,6 @@ const onBackgroundDragLeave = () => {
                 </div>
             </details>
 
-            <!-- Style -->
             <details class="inspector-section" :class="{ 'inspector-section--item-override': selectedItemStyleOverride }" >
                 <summary class="inspector-section__title">Style</summary>
                 <div class="inspector-section__content">
@@ -814,7 +694,6 @@ const onBackgroundDragLeave = () => {
                 </div>
             </details>
 
-            <!-- Position -->
             <details class="inspector-section" :class="{ 'inspector-section--item-override': selectedItemTransformOverride }" >
                 <summary class="inspector-section__title">Position</summary>
                 <div class="inspector-section__content">
@@ -836,7 +715,6 @@ const onBackgroundDragLeave = () => {
                 </div>
             </details>
 
-            <!-- Constraint Region -->
             <details class="inspector-section" :class="{ 'inspector-section--item-override': selectedItemStyleOverride }" >
                 <summary class="inspector-section__title">Constraint Region</summary>
                 <div class="inspector-section__content">
@@ -850,7 +728,6 @@ const onBackgroundDragLeave = () => {
                 </div>
             </details>
 
-            <!-- Animation -->
             <details class="inspector-section" :class="{ 'inspector-section--item-override': selectedItemAnimationOverride }" >
                 <summary class="inspector-section__title">Animation</summary>
                 <div class="inspector-section__content">
@@ -866,7 +743,6 @@ const onBackgroundDragLeave = () => {
                 </div>
             </details>
 
-            <!-- Items -->
             <details class="inspector-section" >
                 <summary class="inspector-section__title">Items</summary>
                 <div class="inspector-section__content">
@@ -880,173 +756,6 @@ const onBackgroundDragLeave = () => {
                         @seek-to-ms="$emit('seek-to-ms', $event)"
                         @select-item="onSelectItem"
                     />
-                </div>
-            </details>
-
-            <!-- Background -->
-            <details v-if="!selectedItemId" class="inspector-section">
-                <summary class="inspector-section__title">Background</summary>
-                <div class="inspector-section__content">
-                    <div class="motion-tab style-v2">
-                        <details class="style-sub-section" open>
-                            <summary class="style-sub-section__header">Fill</summary>
-                            <div v-if="!backgroundVisibleValue" class="inspector-note">
-                                Background layer is currently hidden globally.
-                            </div>
-                            <div class="style-v2__field">
-                                <span class="style-v2__field-label">Mode</span>
-                                <div class="segmented-control">
-                                    <button :class="{ active: !backgroundUseGradientValue }" @click="emit('set-background-use-gradient', false)">Solid</button>
-                                    <button :class="{ active: backgroundUseGradientValue }" @click="emit('set-background-use-gradient', true)">Gradient</button>
-                                </div>
-                            </div>
-                            <div class="style-v2__field">
-                                <span class="style-v2__field-label">{{ backgroundUseGradientValue ? 'Start Color' : 'Color' }}</span>
-                                <div class="color-field">
-                                    <input
-                                        type="color"
-                                        class="color-field__swatch"
-                                        :value="backgroundColor === 'transparent' ? '#000000' : backgroundColor"
-                                        @input="emit('set-background-color', ($event.target as HTMLInputElement).value)"
-                                    />
-                                    <input
-                                        type="text"
-                                        class="color-field__hex inspector-input"
-                                        :value="backgroundColor === 'transparent' ? '#000000' : backgroundColor"
-                                        @change="emit('set-background-color', ($event.target as HTMLInputElement).value)"
-                                    />
-                                </div>
-                            </div>
-                            <div v-if="backgroundUseGradientValue" class="style-v2__field">
-                                <span class="style-v2__field-label">End Color</span>
-                                <div class="color-field">
-                                    <input
-                                        type="color"
-                                        class="color-field__swatch"
-                                        :value="backgroundGradientColorValue"
-                                        @input="emit('set-background-gradient-color', ($event.target as HTMLInputElement).value)"
-                                    />
-                                    <input
-                                        type="text"
-                                        class="color-field__hex inspector-input"
-                                        :value="backgroundGradientColorValue"
-                                        @change="emit('set-background-gradient-color', ($event.target as HTMLInputElement).value)"
-                                    />
-                                </div>
-                            </div>
-                            <AnimatableNumberField
-                                v-if="backgroundUseGradientValue"
-                                label="Gradient Angle"
-                                :model-value="backgroundGradientAngleValue"
-                                :step="1"
-                                :fallback-value="90"
-                                :hint="'0 = left to right, 90 = top to bottom'"
-                                @update:model-value="emit('set-background-gradient-angle', $event)"
-                            />
-
-                            <AnimatableNumberField
-                                label="Fill Opacity"
-                                :model-value="backgroundOpacityValue"
-                                :min="0"
-                                :max="1"
-                                :step="0.01"
-                                :fallback-value="1"
-                                :display-decimals="2"
-                                @update:model-value="emit('set-background-opacity', Math.max(0, Math.min(1, $event)))"
-                            />
-                        </details>
-
-                        <details class="style-sub-section" open>
-                            <summary class="style-sub-section__header">Image</summary>
-                            <div class="style-v2__field">
-                                <span class="style-v2__field-label">Image Layer</span>
-                                <div class="segmented-control">
-                                    <button :class="{ active: backgroundImageVisibleValue }" @click="emit('set-background-image-visible', true)">Shown</button>
-                                    <button :class="{ active: !backgroundImageVisibleValue }" @click="emit('set-background-image-visible', false)">Hidden</button>
-                                </div>
-                            </div>
-                            <div
-                                class="background-preview"
-                                :class="{ 'is-empty': !backgroundImage, 'is-drag-active': bgDropActive }"
-                                @drop="onBackgroundDrop"
-                                @dragover="onBackgroundDragOver"
-                                @dragleave="onBackgroundDragLeave"
-                            >
-                                <div class="background-preview__fill" :style="backgroundPreviewFillStyle" />
-                                <img
-                                    v-if="backgroundImage && backgroundImageVisibleValue"
-                                    class="background-preview__image"
-                                    :src="backgroundImage"
-                                    :style="{ opacity: backgroundImageOpacityValue }"
-                                    alt="Background preview"
-                                />
-                                <div class="background-preview__overlay">
-                                    {{
-                                        bgDropActive
-                                            ? 'Drop image to replace'
-                                            : (backgroundImageVisibleValue
-                                                ? (backgroundImage ? 'Drag image here to replace' : 'Drop image here')
-                                                : 'Image hidden - showing fill/gradient')
-                                    }}
-                                </div>
-                            </div>
-
-                            <input ref="backgroundFileInput" type="file" accept="image/*" class="background-hidden-file-input" @change="onUploadBackgroundImage" />
-                            <div class="inspector-actions">
-                                <button class="btn-sm" @click="openBackgroundFilePicker">{{ backgroundImage ? 'Replace Image' : 'Upload Image' }}</button>
-                                <button v-if="backgroundImage" class="btn-sm danger" @click="emit('clear-background-image')">Remove Image</button>
-                            </div>
-                            <div class="style-v2__field">
-                                <span class="style-v2__field-label">Image Fit</span>
-                                <div class="segmented-control">
-                                    <button :class="{ active: backgroundFitValue === 'cover' }" @click="emit('set-background-fit', 'cover')">▣ Cover</button>
-                                    <button :class="{ active: backgroundFitValue === 'contain' }" @click="emit('set-background-fit', 'contain')">□ Contain</button>
-                                    <button :class="{ active: backgroundFitValue === 'stretch' }" @click="emit('set-background-fit', 'stretch')">↔ Stretch</button>
-                                </div>
-                            </div>
-                            <AnimatableNumberField
-                                label="Offset X"
-                                :model-value="backgroundImageOffsetXValue"
-                                :step="1"
-                                :fallback-value="0"
-                                @update:model-value="emit('set-background-image-offset-x', $event)"
-                            />
-                            <AnimatableNumberField
-                                label="Offset Y"
-                                :model-value="backgroundImageOffsetYValue"
-                                :step="1"
-                                :fallback-value="0"
-                                @update:model-value="emit('set-background-image-offset-y', $event)"
-                            />
-                            <AnimatableNumberField
-                                label="Image Scale"
-                                :model-value="backgroundImageScaleValue"
-                                :min="0.05"
-                                :step="0.01"
-                                :fallback-value="1"
-                                :display-decimals="2"
-                                @update:model-value="emit('set-background-image-scale', Math.max(0.05, $event))"
-                            />
-                            <AnimatableNumberField
-                                label="Image Opacity"
-                                :model-value="backgroundImageOpacityValue"
-                                :min="0"
-                                :max="1"
-                                :step="0.01"
-                                :fallback-value="1"
-                                :display-decimals="2"
-                                @update:model-value="emit('set-background-image-opacity', Math.max(0, Math.min(1, $event)))"
-                            />
-                        </details>
-
-                        <details class="style-sub-section" open>
-                            <summary class="style-sub-section__header">Reset</summary>
-                            <div class="inspector-actions">
-                                <button class="btn-sm" @click="emit('reset-background-image-controls')">Reset Image Controls</button>
-                                <button class="btn-sm danger" @click="emit('reset-background')">Reset Background</button>
-                            </div>
-                        </details>
-                    </div>
                 </div>
             </details>
         </template>

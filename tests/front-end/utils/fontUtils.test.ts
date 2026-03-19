@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MOTION_STYLE, DEFAULT_PROJECT_FONT } from '@/types/project_types';
+import { DEFAULT_PROJECT_FONT } from '@/types/project_types';
+import { DEFAULT_SUBTITLE_STYLE as DEFAULT_MOTION_STYLE } from '@/front-end/motion-blocks/subtitle/defaults';
 import {
     applyFontSelectionToMotionStyle,
     buildFontFamilyChain,

@@ -20,9 +20,6 @@ import {
     mdiSkipPrevious,
 } from '@mdi/js';
 import {
-    DEFAULT_MOTION_ENTER_EXIT,
-    DEFAULT_MOTION_STYLE,
-    DEFAULT_MOTION_TRANSFORM,
     TRACK_COLORS,
     type MotionTrack,
     type WolkProject,
@@ -47,11 +44,14 @@ import LyricTrackLane from '@/front-end/components/timeline/lanes/LyricTrackLane
 import MotionTrackLane from '@/front-end/components/timeline/lanes/MotionTrackLane.vue';
 import PropertyKeyframeLane from '@/front-end/components/timeline/lanes/PropertyKeyframeLane.vue';
 import { useMotionGizmo } from '@/front-end/composables/editor/useMotionGizmo';
+import { ensureMotionBlockPluginsRegistered } from '@/front-end/motion-blocks';
+import { getMotionBlockPlugin, getMotionTrackPlugin, listMotionBlockPlugins } from '@/front-end/motion-blocks/core/registry';
 import SnapOverlay from '@/front-end/components/timeline/SnapOverlay.vue';
 import RawLyricsPanel from '@/front-end/components/editor/RawLyricsPanel.vue';
 import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
 import MotionTrackListPanel from '@/front-end/components/editor/MotionTrackListPanel.vue';
-import MotionInspector from '@/front-end/components/editor/MotionInspector.vue';
+import MotionInspectorHost from '@/front-end/components/editor/MotionInspectorHost.vue';
+import BackgroundInspector from '@/front-end/components/editor/BackgroundInspector.vue';
 import ProjectInspector from '@/front-end/components/editor/ProjectInspector.vue';
 import ExportModal from '@/front-end/components/editor/ExportModal.vue';
 import { useUndoRedo } from '@/front-end/composables/editor/useUndoRedo';
@@ -68,6 +68,7 @@ import { buildLegacyAudioModulationFrame } from '@/front-end/motion/legacy/legac
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
+ensureMotionBlockPluginsRegistered();
 
 const project = ref<WolkProject | null>(null);
 const loading = ref(true);
@@ -822,6 +823,7 @@ watch(() => selectedMotionTrackId.value, () => {
     markDirty();
 });
 const motionClipboard = ref<MotionTrack | null>(null);
+const availableMotionPlugins = computed(() => listMotionBlockPlugins({ authorableOnly: true }));
 const selectedMotionTrack = computed<MotionTrack | null>(() => {
     if (!project.value || !selectedMotionTrackId.value) return null;
     return project.value.motionTracks.find((track) => track.id === selectedMotionTrackId.value) || null;
@@ -834,29 +836,18 @@ const kfLabel = (path: string): string => {
 };
 
 const ensureMotionTrackDefaults = (track: MotionTrack, projectFont = project.value?.font): MotionTrack => {
-    const style = track.block.style || { ...DEFAULT_MOTION_STYLE };
-    const shouldInheritProjectFont = !style.fontLocalPath && (
-        !style.fontFamily ||
-        style.fontFamily === projectFont?.family ||
-        style.fontFamily === 'ProjectFont'
-    );
-    return {
-        ...track,
-        enabled: track.enabled !== false,
-        muted: !!track.muted,
-        solo: !!track.solo,
-        locked: !!track.locked,
-        block: {
-            ...track.block,
-            style: {
-                ...DEFAULT_MOTION_STYLE,
-                ...style,
-                fontFallbacks: style.fontFallbacks ?? (shouldInheritProjectFont ? projectFont?.fallbacks || [] : []),
-                fontName: style.fontName ?? (shouldInheritProjectFont ? projectFont?.name : undefined),
-                fontLocalPath: style.fontLocalPath ?? (shouldInheritProjectFont ? projectFont?.localPath : undefined),
-            },
-        },
-    };
+    if (!project.value) return track;
+    const plugin = getMotionBlockPlugin(track.block.type);
+    if (!plugin) {
+        return {
+            ...track,
+            enabled: track.enabled !== false,
+            muted: !!track.muted,
+            solo: !!track.solo,
+            locked: !!track.locked,
+        };
+    }
+    return plugin.normalizeTrack(track, { project: project.value, projectFont });
 };
 
 const toggleLyricMute = (track: LyricTrack) => onUpdateTrack({ ...track, muted: !track.muted });
@@ -959,34 +950,26 @@ const motionGizmo = useMotionGizmo(
         onTransformDelta(gizmoMode, dx, dy) {
             const track = selectedMotionTrack.value;
             if (!track || track.locked) return;
-            if (gizmoMode === 'move') {
-                const rot = -(track.block.transform.rotation * Math.PI) / 180;
-                const cos = Math.cos(rot);
-                const sin = Math.sin(rot);
-                const localDx = dx * cos - dy * sin;
-                const localDy = dx * sin + dy * cos;
-
-                let newOffsetX = Math.round(track.block.transform.offsetX + localDx);
-                let newOffsetY = Math.round(track.block.transform.offsetY + localDy);
-
-                if ((track.block.style.boundsMode ?? 'safeArea') === 'safeArea') {
-                    const padding = track.block.style.safeAreaPadding ?? 40;
-                    const regionOffsetX = track.block.style.safeAreaOffsetX ?? 0;
-                    const regionOffsetY = track.block.style.safeAreaOffsetY ?? 0;
-                    newOffsetX = clampOffsetToConstraintRegion(newOffsetX, track.block.transform.anchorX, padding, targetWidth.value, regionOffsetX);
-                    newOffsetY = clampOffsetToConstraintRegion(newOffsetY, track.block.transform.anchorY, padding, targetHeight.value, regionOffsetY);
+            const plugin = getMotionTrackPlugin(track);
+            const result = plugin.gizmo?.applyDelta?.(track, gizmoMode, dx, dy, {
+                renderWidth: targetWidth.value,
+                renderHeight: targetHeight.value,
+                currentBounds: motionRenderer.getRendererBounds(track.id),
+                currentFrame: playhead.value.frame,
+            });
+            if (!result) return;
+            const idx = project.value?.motionTracks.findIndex((item) => item.id === track.id) ?? -1;
+            if (idx >= 0 && project.value) {
+                project.value.motionTracks[idx] = result.track;
+                for (const path of result.autoKeyframePaths || []) {
+                    const parts = path.split('.');
+                    const root = parts[0];
+                    const key = parts[1];
+                    const value = root === 'transform'
+                        ? (result.track.block.transform as any)[key]
+                        : (result.track.block.style as any)[key];
+                    gizmoAutoKeyframe(project.value.motionTracks[idx], path, value);
                 }
-
-                track.block.transform.offsetX = newOffsetX;
-                track.block.transform.offsetY = newOffsetY;
-                gizmoAutoKeyframe(track, 'transform.offsetX', track.block.transform.offsetX);
-                gizmoAutoKeyframe(track, 'transform.offsetY', track.block.transform.offsetY);
-            } else if (gizmoMode === 'scale') {
-                track.block.transform.scale = Math.max(0.05, Math.min(10, track.block.transform.scale + dx * 0.005));
-                gizmoAutoKeyframe(track, 'transform.scale', track.block.transform.scale);
-            } else if (gizmoMode === 'rotate') {
-                track.block.transform.rotation += dx;
-                gizmoAutoKeyframe(track, 'transform.rotation', track.block.transform.rotation);
             }
             markDirty();
         },
@@ -1480,6 +1463,8 @@ const onUpdateProject = (updated: WolkProject) => {
 
 const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
     if (!project.value) return;
+    const plugin = getMotionBlockPlugin(payload.type);
+    if (!plugin) return;
     const sourceTrack = selectedTrack.value || project.value.lyricTracks[0] || null;
     if (!sourceTrack) return;
 
@@ -1489,48 +1474,15 @@ const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
     const endMs = Math.max(startMs + 200, Math.min(defaultEnd, maxEnd));
     const color = TRACK_COLORS[project.value.motionTracks.length % TRACK_COLORS.length];
 
-    const track: MotionTrack = {
-        id: randomUUID(),
-        name: `${payload.type} - ${sourceTrack.name}`,
+    const track = plugin.createTrack({
+        project: project.value,
+        sourceTrack,
+        startMs,
+        endMs,
         color,
-        enabled: true,
-        muted: false,
-        solo: false,
-        locked: false,
-        collapsed: false,
-        block: {
-            id: randomUUID(),
-            type: payload.type,
-            sourceTrackId: sourceTrack.id,
-            startMs,
-            endMs,
-            style: {
-                ...DEFAULT_MOTION_STYLE,
-                fontFamily: project.value.font.family || DEFAULT_MOTION_STYLE.fontFamily,
-                fontFallbacks: [...(project.value.font.fallbacks || [])],
-                fontStyle: project.value.font.style || DEFAULT_MOTION_STYLE.fontStyle,
-                fontWeight: project.value.font.weight || DEFAULT_MOTION_STYLE.fontWeight,
-                fontName: project.value.font.name,
-                fontLocalPath: project.value.font.localPath,
-            },
-            transform: { ...DEFAULT_MOTION_TRANSFORM },
-            enter: {
-                ...DEFAULT_MOTION_ENTER_EXIT,
-                fade: { ...(DEFAULT_MOTION_ENTER_EXIT.fade), enabled: true, opacityStart: 0, opacityEnd: 1 },
-                opacityStart: 0,
-                opacityEnd: 1,
-            },
-            exit: {
-                ...DEFAULT_MOTION_ENTER_EXIT,
-                fade: { ...(DEFAULT_MOTION_ENTER_EXIT.fade), enabled: true, opacityStart: 1, opacityEnd: 0 },
-                opacityStart: 1,
-                opacityEnd: 0,
-            },
-            overrides: [],
-            params: payload.type === 'wordReveal' ? { accumulate: false } : {},
-            propertyTracks: [],
-        },
-    };
+        trackId: randomUUID(),
+        blockId: randomUUID(),
+    });
 
     pushUndo();
     project.value.motionTracks.push(track);
@@ -1551,15 +1503,8 @@ const onDeleteMotionTrack = (trackId: string) => {
 };
 
 const onSelectMotionTrack = (trackId: string) => {
-    selectedMotionTrackId.value = trackId;
+    selectedMotionTrackId.value = selectedMotionTrackId.value === trackId ? null : trackId;
     selection.clearSelection();
-};
-
-const normalizePropertyTracks = (propertyTracks: any[] | undefined) => {
-    return (propertyTracks || []).filter((pt) => {
-        if (!pt || pt.enabled === false) return false;
-        return Array.isArray(pt.keyframes) && pt.keyframes.length > 0;
-    });
 };
 
 const onUpdateMotionTrack = (updated: MotionTrack) => {
@@ -1567,7 +1512,7 @@ const onUpdateMotionTrack = (updated: MotionTrack) => {
     const idx = project.value.motionTracks.findIndex((track) => track.id === updated.id);
     if (idx < 0) return;
     const existing = project.value.motionTracks[idx];
-    project.value.motionTracks[idx] = {
+    const nextTrack: MotionTrack = {
         ...updated,
         enabled: updated.enabled !== false,
         muted: !!updated.muted,
@@ -1576,9 +1521,12 @@ const onUpdateMotionTrack = (updated: MotionTrack) => {
         block: {
             ...updated.block,
             type: existing.block.type,
-            propertyTracks: normalizePropertyTracks(updated.block.propertyTracks as any[] | undefined),
         },
     };
+    const plugin = getMotionBlockPlugin(existing.block.type);
+    project.value.motionTracks[idx] = plugin
+        ? plugin.normalizeTrack(nextTrack, { project: project.value, projectFont: project.value?.font })
+        : nextTrack;
     markDirty();
     scheduleSave();
 };
@@ -2238,6 +2186,7 @@ onUnmounted(() => {
                     :lyric-tracks="project.lyricTracks"
                     :motion-tracks="project.motionTracks"
                     :selected-track-id="selectedMotionTrackId"
+                    :plugins="availableMotionPlugins.map((plugin) => ({ type: plugin.type, label: plugin.meta.label }))"
                     @add-track="onAddMotionTrack"
                     @delete-track="onDeleteMotionTrack"
                     @select-track="onSelectMotionTrack"
@@ -2336,9 +2285,20 @@ onUnmounted(() => {
         <!-- Inspector -->
         <div class="editor__inspector">
             <template v-if="mode === 'motion'">
-                <MotionInspector
+                <MotionInspectorHost
+                    v-if="selectedMotionTrack"
                     :motion-track="selectedMotionTrack"
                     :lyric-tracks="project.lyricTracks"
+                    :playhead-ms="playheadMs"
+                    :fps="fps"
+                    :project-font="project.font"
+                    :render-width="targetWidth"
+                    :render-height="targetHeight"
+                    :renderer-bounds="selectedMotionTrackId ? motionRenderer.getRendererBounds(selectedMotionTrackId) : null"
+                    @update-track="onUpdateMotionTrack"
+                    @seek-to-ms="onSeekToMs"
+                />
+                <BackgroundInspector
                     :background-image="project.backgroundImage"
                     :background-color="project.backgroundColor"
                     :background-visible="project.backgroundVisible !== false"
@@ -2352,13 +2312,6 @@ onUnmounted(() => {
                     :background-image-offset-y="project.backgroundImageY ?? 0"
                     :background-image-scale="project.backgroundImageScale ?? 1"
                     :background-image-opacity="project.backgroundImageOpacity ?? 1"
-                    :playhead-ms="playheadMs"
-                    :fps="fps"
-                    :project-font="project.font"
-                    :render-width="targetWidth"
-                    :render-height="targetHeight"
-                    :renderer-bounds="selectedMotionTrackId ? motionRenderer.getRendererBounds(selectedMotionTrackId) : null"
-                    @update-track="onUpdateMotionTrack"
                     @set-background-color="onSetBackgroundColor"
                     @set-background-visible="onSetBackgroundVisibility"
                     @set-background-image-visible="onSetBackgroundImageVisibility"
@@ -2375,7 +2328,6 @@ onUnmounted(() => {
                     @clear-background-image="onClearBackgroundImage"
                     @reset-background-image-controls="onResetBackgroundImageControls"
                     @reset-background="onResetBackground"
-                    @seek-to-ms="onSeekToMs"
                 />
             </template>
             <template v-else>
@@ -2460,7 +2412,7 @@ onUnmounted(() => {
                                         class="lane-label lane-label--motion lane-label--track"
                                         :class="{ selected: selectedMotionTrackId === track.id, collapsed: collapsed[`motion-${track.id}`] }"
                                         :style="{ height: `${collapsed[`motion-${track.id}`] ? 28 : 58}px` }"
-                                        @click="onSelectMotionTrack(track.id); collapsed[`motion-${track.id}`] = !collapsed[`motion-${track.id}`]"
+                                        @click="onSelectMotionTrack(track.id)"
                                     >
                                         <div class="lane-label__content">
                                             <span class="lane-kind-icon lane-kind-icon--motion" aria-hidden="true">
@@ -2470,6 +2422,15 @@ onUnmounted(() => {
                                             <span class="lane-label__name">{{ track.name }}</span>
                                         </div>
                                         <div class="lane-label__actions" @click.stop>
+                                            <button
+                                                class="lane-icon-btn"
+                                                :class="{ active: collapsed[`motion-${track.id}`] }"
+                                                aria-label="Collapse motion track"
+                                                data-tooltip="Collapse motion track"
+                                                @click.stop="collapsed[`motion-${track.id}`] = !collapsed[`motion-${track.id}`]"
+                                            >
+                                                <SvgIcon type="mdi" :path="mdiArrowDown" :size="12" />
+                                            </button>
                                             <button class="lane-icon-btn" :class="{ active: track.muted }" aria-label="Mute track" data-tooltip="Mute track" @click.stop="toggleMotionMute(track)">
                                                 <SvgIcon type="mdi" :path="mdiEyeOff" :size="12" />
                                             </button>

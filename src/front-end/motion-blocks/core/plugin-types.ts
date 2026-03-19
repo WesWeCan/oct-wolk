@@ -1,0 +1,74 @@
+import type { Component } from 'vue';
+import type { FontDescriptor } from '@/front-end/utils/fonts/fontUtils';
+import type { KeyframePropertyDef } from '@/front-end/motion-blocks/core/keyframes';
+import type { MotionBlockRenderer, RendererBounds, ResolvedItem } from '@/front-end/motion-blocks/core/types';
+import type { LyricTrack, MotionBlock, MotionTrack, WolkProject, WolkProjectFont } from '@/types/project_types';
+
+export interface MotionBlockMeta {
+    label: string;
+    description?: string;
+    authorable?: boolean;
+    order?: number;
+}
+
+export interface CreateMotionTrackArgs {
+    project: WolkProject;
+    sourceTrack: LyricTrack;
+    startMs: number;
+    endMs: number;
+    color: string;
+    trackId: string;
+    blockId: string;
+}
+
+export interface NormalizeMotionTrackArgs {
+    project: WolkProject;
+    projectFont?: WolkProjectFont;
+}
+
+export interface MotionBlockPlugin {
+    type: string;
+    meta: MotionBlockMeta;
+    inspectorComponent?: Component;
+    createTrack(args: CreateMotionTrackArgs): MotionTrack;
+    normalizeTrack(track: MotionTrack, args: NormalizeMotionTrackArgs): MotionTrack;
+    createRenderer(): MotionBlockRenderer;
+    resolveActiveItems(
+        block: MotionBlock,
+        sourceTrack: LyricTrack | null | undefined,
+        currentFrame: number,
+        fps: number,
+    ): ResolvedItem[];
+    resolveBlockItems(
+        block: MotionBlock,
+        sourceTrack: LyricTrack | null | undefined,
+        currentFrame: number,
+        fps: number,
+    ): ResolvedItem[];
+    cleanOrphanedOverrides?(project: WolkProject): { removedCount: number };
+    collectFonts?(project: WolkProject, track: MotionTrack): FontDescriptor[];
+    getKeyframeProperties?(): KeyframePropertyDef[];
+    gizmo?: {
+        getFallbackBounds?(
+            track: MotionTrack,
+            renderWidth: number,
+            renderHeight: number,
+        ): RendererBounds | null;
+        applyDelta?(
+            track: MotionTrack,
+            mode: 'move' | 'scale' | 'rotate',
+            dx: number,
+            dy: number,
+            context: {
+                renderWidth: number;
+                renderHeight: number;
+                currentBounds: RendererBounds | null;
+                currentFrame: number;
+            },
+        ): {
+            track: MotionTrack;
+            autoKeyframePaths?: string[];
+        };
+        supportsSafeAreaGuide?: boolean;
+    };
+}
