@@ -3,6 +3,7 @@ import {
     createDefaultSubtitleExit,
     DEFAULT_SUBTITLE_STYLE,
     DEFAULT_SUBTITLE_TRANSFORM,
+    normalizeSubtitleEnterExit,
 } from '@/front-end/motion-blocks/subtitle/defaults';
 import { collectSubtitleFonts } from '@/front-end/motion-blocks/subtitle/fonts';
 import {
@@ -91,6 +92,8 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
                 ...track.block,
                 type: 'subtitle',
                 style: inheritProjectFont(track, projectFont),
+                enter: normalizeSubtitleEnterExit(track.block.enter, 'enter'),
+                exit: normalizeSubtitleEnterExit(track.block.exit, 'exit'),
                 propertyTracks,
             },
         };

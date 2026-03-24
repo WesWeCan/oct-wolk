@@ -59,6 +59,7 @@ export interface NormalizedEnterExit {
     minFrames: number;
     maxFrames: number;
     easing: string;
+    style: MotionAnimationStyle;
     fade: {
         enabled: boolean;
         opacityStart: number;
@@ -81,7 +82,7 @@ const hasComposerFields = (config: MotionEnterExit): boolean => {
 
 export function normalizeEnterExit(config: MotionEnterExit): NormalizedEnterExit {
     const style = config.style ?? 'fade';
-    const defaultFadeEnabled = style !== 'none';
+    const defaultFadeEnabled = style !== 'none' && style !== 'typewriter';
     const defaultMoveEnabled = isSlideStyle(style);
     const defaultScaleEnabled = style === 'scale';
     const defaultDirection = isSlideStyle(style) ? slideStyleToDirection(style) : 'up';
@@ -92,6 +93,7 @@ export function normalizeEnterExit(config: MotionEnterExit): NormalizedEnterExit
             minFrames: config.minFrames,
             maxFrames: config.maxFrames,
             easing: config.easing,
+            style,
             fade: {
                 enabled: defaultFadeEnabled,
                 opacityStart: config.opacityStart ?? 0,
@@ -114,6 +116,7 @@ export function normalizeEnterExit(config: MotionEnterExit): NormalizedEnterExit
         minFrames: config.minFrames,
         maxFrames: config.maxFrames,
         easing: config.easing,
+        style,
         fade: {
             enabled: config.fade?.enabled ?? defaultFadeEnabled,
             opacityStart: config.fade?.opacityStart ?? config.opacityStart ?? 0,
@@ -159,13 +162,13 @@ export function computeEnterExitProgress(
     );
 
     let enterProgress = 1;
-    const enterAnimEnabled = enterCfg.fade.enabled || enterCfg.move.enabled || enterCfg.scale.enabled;
+    const enterAnimEnabled = enterCfg.style === 'typewriter' || enterCfg.fade.enabled || enterCfg.move.enabled || enterCfg.scale.enabled;
     if (enterAnimEnabled && elapsed < enterFrames) {
         enterProgress = applyEasing(elapsed / Math.max(1, enterFrames), enterCfg.easing);
     }
 
     let exitProgress = 0;
-    const exitAnimEnabled = exitCfg.fade.enabled || exitCfg.move.enabled || exitCfg.scale.enabled;
+    const exitAnimEnabled = exitCfg.style === 'typewriter' || exitCfg.fade.enabled || exitCfg.move.enabled || exitCfg.scale.enabled;
     if (exitAnimEnabled && remaining < exitFrames) {
         exitProgress = applyEasing(1 - remaining / Math.max(1, exitFrames), exitCfg.easing);
     }

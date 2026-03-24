@@ -1,6 +1,6 @@
 import type { MotionStyle, MotionTransform, TextAlign, BoundsMode, WrapMode, OverflowBehavior } from '@/types/project_types';
 import type { MotionBlockRenderer, MotionRenderContext, ResolvedItem, RendererBounds } from '@/front-end/motion-blocks/core/types';
-import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
+import { applyEnterExitToAlpha, applyEnterExitToTransform, normalizeEnterExit } from '@/front-end/utils/motion/enterExitAnimation';
 import { buildFont, spansFromRichText, spansFromWordStyleMap } from '@/front-end/utils/motion/renderTipTapSpans';
 import type { StyledSpan } from '@/front-end/utils/motion/parseTipTapToSpans';
 
@@ -301,6 +301,55 @@ function applyOverflow(
     return truncated;
 }
 
+interface RenderUnit {
+    span: StyledSpan;
+    text: string;
+    width: number;
+    addWordSpacingAfter: boolean;
+}
+
+interface PositionedRenderUnit extends RenderUnit {
+    x: number;
+    y: number;
+}
+
+const graphemeSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null;
+
+const splitIntoGraphemes = (text: string): string[] => {
+    if (!text) return [];
+    if (graphemeSegmenter) {
+        return Array.from(graphemeSegmenter.segment(text), (segment) => segment.segment);
+    }
+    return Array.from(text);
+};
+
+function splitMetricIntoUnits(
+    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+    metric: SpanMetric,
+    resolvedStyle: MotionStyle,
+): RenderUnit[] {
+    const segments = splitIntoGraphemes(metric.span.text);
+    if (segments.length === 0) return [];
+
+    ctx.font = buildFont(resolvedStyle, metric.span);
+    const rawWidths = segments.map((segment) => ctx.measureText(segment).width);
+    const rawTotal = rawWidths.reduce((sum, width) => sum + width, 0);
+    const fallbackWidth = segments.length > 0 ? metric.width / segments.length : metric.width;
+    const widths = rawTotal > 0
+        ? rawWidths.map((width) => width * (metric.width / rawTotal))
+        : segments.map(() => fallbackWidth);
+    const shouldAddWordSpacingAfter = /^\s+$/.test(metric.span.text);
+
+    return segments.map((segment, index) => ({
+        span: { ...metric.span, text: segment },
+        text: segment,
+        width: widths[index] ?? 0,
+        addWordSpacingAfter: shouldAddWordSpacingAfter && index === segments.length - 1,
+    }));
+}
+
 export class SubtitleRenderer implements MotionBlockRenderer {
     lastBounds: RendererBounds | null = null;
 
@@ -462,6 +511,8 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             width: baseLocalBox.width,
             height: baseLocalBox.height,
         };
+        const enterUsesTypewriter = normalizeEnterExit(item.enter).style === 'typewriter';
+        const exitUsesTypewriter = normalizeEnterExit(item.exit).style === 'typewriter';
 
         ctx.save();
         ctx.translate(drawReferenceX, drawReferenceY);
@@ -502,6 +553,7 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         }
 
         const baseAlpha = ctx.globalAlpha;
+        const positionedLines: PositionedRenderUnit[][] = [];
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
             const line = lines[lineIdx];
             const lineY = shiftedContentTop + lineIdx * lineHeightPx;
@@ -528,43 +580,77 @@ export class SubtitleRenderer implements MotionBlockRenderer {
 
             ctx.textAlign = 'left';
             let cursorX = startX;
+            const positionedUnits: PositionedRenderUnit[] = [];
 
             for (const metric of line.metrics) {
-                ctx.font = buildFont(resolvedStyle, metric.span);
+                const units = enterUsesTypewriter || exitUsesTypewriter
+                    ? splitMetricIntoUnits(ctx, metric, resolvedStyle)
+                    : [{
+                        span: metric.span,
+                        text: metric.span.text,
+                        width: metric.width,
+                        addWordSpacingAfter: justifyThisLine && /^\s+$/.test(metric.span.text),
+                    }];
 
-                if (outlineWidth > 0) {
-                    ctx.globalAlpha = baseAlpha;
-                    ctx.strokeStyle = outlineColor;
-                    ctx.lineWidth = outlineWidth;
-                    ctx.lineJoin = 'round';
-                    ctx.strokeText(metric.span.text, cursorX, lineY);
-                }
-
-                const spanColor = item.forceStyleColor ? resolvedStyle.color : (metric.span.color || resolvedStyle.color);
-                if (textOpacity > 0) {
-                    ctx.globalAlpha = baseAlpha * textOpacity;
-                    ctx.fillStyle = spanColor;
-                    ctx.fillText(metric.span.text, cursorX, lineY);
-                }
-
-                if (metric.span.underline || resolvedStyle.underline) {
-                    if (textOpacity > 0) {
-                        ctx.globalAlpha = baseAlpha * textOpacity;
-                        ctx.strokeStyle = spanColor;
-                        ctx.lineWidth = 1;
-                        ctx.beginPath();
-                        ctx.moveTo(cursorX, lineY + fontSize * 0.35);
-                        ctx.lineTo(cursorX + metric.width, lineY + fontSize * 0.35);
-                        ctx.stroke();
+                for (const unit of units) {
+                    positionedUnits.push({
+                        ...unit,
+                        x: cursorX,
+                        y: lineY,
+                    });
+                    cursorX += unit.width;
+                    if (justifyThisLine && unit.addWordSpacingAfter) {
+                        cursorX += extraWordSpacing;
                     }
                 }
+            }
+            positionedLines.push(positionedUnits);
+        }
+
+        const flattenedUnits = positionedLines.flat();
+        const totalUnits = flattenedUnits.length;
+        const enterVisibleCount = enterUsesTypewriter
+            ? Math.max(0, Math.min(totalUnits, Math.floor(clamp01(item.enterProgress, 0) * totalUnits)))
+            : totalUnits;
+        const exitVisibleLimit = exitUsesTypewriter
+            ? Math.max(0, totalUnits - Math.floor(clamp01(item.exitProgress, 0) * totalUnits))
+            : totalUnits;
+
+        flattenedUnits.forEach((unit, index) => {
+            if ((enterUsesTypewriter && index >= enterVisibleCount) || (exitUsesTypewriter && index >= exitVisibleLimit)) {
+                return;
+            }
+
+            ctx.font = buildFont(resolvedStyle, unit.span);
+
+            if (outlineWidth > 0) {
                 ctx.globalAlpha = baseAlpha;
-                cursorX += metric.width;
-                if (justifyThisLine && /^\s+$/.test(metric.span.text)) {
-                    cursorX += extraWordSpacing;
+                ctx.strokeStyle = outlineColor;
+                ctx.lineWidth = outlineWidth;
+                ctx.lineJoin = 'round';
+                ctx.strokeText(unit.text, unit.x, unit.y);
+            }
+
+            const spanColor = item.forceStyleColor ? resolvedStyle.color : (unit.span.color || resolvedStyle.color);
+            if (textOpacity > 0) {
+                ctx.globalAlpha = baseAlpha * textOpacity;
+                ctx.fillStyle = spanColor;
+                ctx.fillText(unit.text, unit.x, unit.y);
+            }
+
+            if (unit.span.underline || resolvedStyle.underline) {
+                if (textOpacity > 0) {
+                    ctx.globalAlpha = baseAlpha * textOpacity;
+                    ctx.strokeStyle = spanColor;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(unit.x, unit.y + fontSize * 0.35);
+                    ctx.lineTo(unit.x + unit.width, unit.y + fontSize * 0.35);
+                    ctx.stroke();
                 }
             }
-        }
+            ctx.globalAlpha = baseAlpha;
+        });
 
         ctx.restore();
         const finalAabb = computeRectAabb(

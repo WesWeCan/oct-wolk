@@ -85,4 +85,39 @@ describe('subtitle motion block plugin', () => {
         expect(normalized.block.propertyTracks).toHaveLength(1);
         expect(normalized.block.propertyTracks[0].propertyPath).toBe('transform.offsetY');
     });
+
+    it('preserves typewriter styles while normalizing enter and exit payloads', () => {
+        const project = makeProject();
+        const track = subtitleMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack: makeSourceTrack(),
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.enter = {
+            fraction: 0.25,
+            minFrames: 2,
+            maxFrames: 18,
+            easing: 'easeOut',
+            style: 'typewriter',
+        } as any;
+        track.block.exit = {
+            fraction: 0.25,
+            minFrames: 2,
+            maxFrames: 18,
+            easing: 'easeOut',
+            style: 'typewriter',
+        } as any;
+
+        const normalized = subtitleMotionBlockPlugin.normalizeTrack(track, { project, projectFont: project.font });
+
+        expect(normalized.block.enter.style).toBe('typewriter');
+        expect(normalized.block.exit.style).toBe('typewriter');
+        expect(normalized.block.enter.fade.enabled).toBe(false);
+        expect(normalized.block.exit.fade.enabled).toBe(false);
+    });
 });

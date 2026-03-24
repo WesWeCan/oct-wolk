@@ -38,16 +38,31 @@ const directionOptions: { value: MotionAnimationDirection; label: string }[] = [
     { value: 'right', label: 'Right' },
 ];
 
+type AnimationPreset = 'subtle' | 'default' | 'snappy' | 'dramatic' | 'typewriter';
+
 const resolveLegacyStyle = (config: MotionEnterExit): MotionAnimationStyle => {
     const style = config.style ?? 'fade';
     if (style === 'none') return 'none';
     if (style === 'slideUp' || style === 'slideDown' || style === 'slideLeft' || style === 'slideRight') return style;
     if (style === 'scale') return style;
+    if (style === 'typewriter') return style;
     return 'fade';
 };
 
 const defaultDirectionFor = (which: 'enter' | 'exit'): MotionAnimationDirection => {
     return which === 'enter' ? 'up' : 'down';
+};
+
+const deriveStyleFromComposer = (config: MotionEnterExit): MotionAnimationStyle => {
+    if (config.move?.enabled) {
+        if (config.move.direction === 'up') return 'slideUp';
+        if (config.move.direction === 'down') return 'slideDown';
+        if (config.move.direction === 'left') return 'slideLeft';
+        return 'slideRight';
+    }
+    if (config.scale?.enabled) return 'scale';
+    if (config.fade?.enabled) return 'fade';
+    return 'none';
 };
 
 const toComposer = (which: 'enter' | 'exit', config: MotionEnterExit): MotionEnterExit => {
@@ -61,7 +76,7 @@ const toComposer = (which: 'enter' | 'exit', config: MotionEnterExit): MotionEnt
                 : legacyStyle === 'slideRight'
                     ? 'right'
                     : defaultDirectionFor(which);
-    const fadeEnabledDefault = legacyStyle !== 'none';
+    const fadeEnabledDefault = legacyStyle !== 'none' && legacyStyle !== 'typewriter';
     const moveEnabledDefault = legacyStyle === 'slideUp' || legacyStyle === 'slideDown' || legacyStyle === 'slideLeft' || legacyStyle === 'slideRight';
     const scaleEnabledDefault = legacyStyle === 'scale';
     const fadeStartFallback = which === 'enter' ? 0 : 1;
@@ -94,15 +109,8 @@ const toComposer = (which: 'enter' | 'exit', config: MotionEnterExit): MotionEnt
 };
 
 const deriveLegacyStyle = (config: MotionEnterExit): MotionAnimationStyle => {
-    if (config.move?.enabled) {
-        if (config.move.direction === 'up') return 'slideUp';
-        if (config.move.direction === 'down') return 'slideDown';
-        if (config.move.direction === 'left') return 'slideLeft';
-        return 'slideRight';
-    }
-    if (config.scale?.enabled) return 'scale';
-    if (config.fade?.enabled) return 'fade';
-    return 'none';
+    if (config.style === 'typewriter') return 'typewriter';
+    return deriveStyleFromComposer(config);
 };
 
 const sectionState = (which: 'enter' | 'exit'): MotionEnterExit => {
@@ -120,6 +128,31 @@ const emitSection = (which: 'enter' | 'exit', next: MotionEnterExit) => {
         opacityEnd: next.fade.opacityEnd,
     };
     emit('update-enter-exit', which, withLegacy);
+};
+
+const setRevealMode = (which: 'enter' | 'exit', mode: 'standard' | 'typewriter') => {
+    const current = sectionState(which);
+    if (mode === 'typewriter') {
+        updateSection(which, {
+            style: 'typewriter',
+            fade: {
+                enabled: false,
+                opacityStart: 1,
+                opacityEnd: 1,
+            },
+            move: {
+                enabled: false,
+            },
+            scale: {
+                enabled: false,
+            },
+        });
+        return;
+    }
+
+    updateSection(which, {
+        style: deriveStyleFromComposer({ ...current, style: 'fade' }),
+    });
 };
 
 const updateSection = (which: 'enter' | 'exit', patch: Partial<MotionEnterExit>) => {
@@ -143,13 +176,32 @@ const updateSection = (which: 'enter' | 'exit', patch: Partial<MotionEnterExit>)
     emitSection(which, next);
 };
 
-const applyPreset = (which: 'enter' | 'exit', preset: 'subtle' | 'default' | 'snappy' | 'dramatic') => {
+const applyPreset = (which: 'enter' | 'exit', preset: AnimationPreset) => {
+    if (preset === 'typewriter') {
+        updateSection(which, {
+            fraction: 0.3,
+            minFrames: 3,
+            maxFrames: 30,
+            easing: 'easeOut',
+            style: 'typewriter',
+            fade: {
+                enabled: false,
+                opacityStart: 1,
+                opacityEnd: 1,
+            },
+            move: { enabled: false, direction: defaultDirectionFor(which), distancePx: 24 },
+            scale: { enabled: false, amount: 0.12 },
+        });
+        return;
+    }
+
     if (preset === 'subtle') {
         updateSection(which, {
             fraction: 0.24,
             minFrames: 2,
             maxFrames: 22,
             easing: 'easeOut',
+            style: 'fade',
             fade: {
                 enabled: true,
                 opacityStart: which === 'enter' ? 0 : 1,
@@ -166,6 +218,7 @@ const applyPreset = (which: 'enter' | 'exit', preset: 'subtle' | 'default' | 'sn
             minFrames: 3,
             maxFrames: 30,
             easing: 'easeOut',
+            style: 'fade',
             fade: {
                 enabled: true,
                 opacityStart: which === 'enter' ? 0 : 1,
@@ -182,6 +235,7 @@ const applyPreset = (which: 'enter' | 'exit', preset: 'subtle' | 'default' | 'sn
             minFrames: 2,
             maxFrames: 12,
             easing: 'easeOutCubic',
+            style: 'fade',
             fade: {
                 enabled: true,
                 opacityStart: which === 'enter' ? 0 : 1,
@@ -197,6 +251,7 @@ const applyPreset = (which: 'enter' | 'exit', preset: 'subtle' | 'default' | 'sn
         minFrames: 6,
         maxFrames: 70,
         easing: which === 'enter' ? 'easeOutBack' : 'easeOutBounce',
+        style: 'fade',
         fade: {
             enabled: true,
             opacityStart: which === 'enter' ? 0 : 1,
@@ -214,12 +269,27 @@ const applyPreset = (which: 'enter' | 'exit', preset: 'subtle' | 'default' | 'sn
             <summary class="style-sub-section__header">Enter</summary>
 
             <div class="style-v2__field">
+                <span class="style-v2__field-label">Reveal</span>
+                <div class="segmented-control">
+                    <button
+                        :class="{ active: sectionState('enter').style !== 'typewriter' }"
+                        @click="setRevealMode('enter', 'standard')"
+                    >Standard</button>
+                    <button
+                        :class="{ active: sectionState('enter').style === 'typewriter' }"
+                        @click="setRevealMode('enter', 'typewriter')"
+                    >Typewriter</button>
+                </div>
+            </div>
+
+            <div class="style-v2__field">
                 <span class="style-v2__field-label">Presets</span>
                 <div class="motion-tab__chips">
                     <button class="chip" @click="applyPreset('enter', 'subtle')">Subtle</button>
                     <button class="chip" @click="applyPreset('enter', 'default')">Default</button>
                     <button class="chip" @click="applyPreset('enter', 'snappy')">Snappy</button>
                     <button class="chip" @click="applyPreset('enter', 'dramatic')">Dramatic</button>
+                    <button class="chip" @click="applyPreset('enter', 'typewriter')">Typewriter</button>
                 </div>
             </div>
 
@@ -321,12 +391,27 @@ const applyPreset = (which: 'enter' | 'exit', preset: 'subtle' | 'default' | 'sn
             <summary class="style-sub-section__header">Exit</summary>
 
             <div class="style-v2__field">
+                <span class="style-v2__field-label">Reveal</span>
+                <div class="segmented-control">
+                    <button
+                        :class="{ active: sectionState('exit').style !== 'typewriter' }"
+                        @click="setRevealMode('exit', 'standard')"
+                    >Standard</button>
+                    <button
+                        :class="{ active: sectionState('exit').style === 'typewriter' }"
+                        @click="setRevealMode('exit', 'typewriter')"
+                    >Typewriter</button>
+                </div>
+            </div>
+
+            <div class="style-v2__field">
                 <span class="style-v2__field-label">Presets</span>
                 <div class="motion-tab__chips">
                     <button class="chip" @click="applyPreset('exit', 'subtle')">Subtle</button>
                     <button class="chip" @click="applyPreset('exit', 'default')">Default</button>
                     <button class="chip" @click="applyPreset('exit', 'snappy')">Snappy</button>
                     <button class="chip" @click="applyPreset('exit', 'dramatic')">Dramatic</button>
+                    <button class="chip" @click="applyPreset('exit', 'typewriter')">Typewriter</button>
                 </div>
             </div>
 

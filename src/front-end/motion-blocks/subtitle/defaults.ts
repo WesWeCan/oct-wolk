@@ -1,4 +1,5 @@
-import type { MotionEnterExit, MotionStyle, MotionTransform } from '@/types/project_types';
+import type { MotionAnimationStyle, MotionEnterExit, MotionStyle, MotionTransform } from '@/types/project_types';
+import { normalizeEnterExit } from '@/front-end/utils/motion/enterExitAnimation';
 
 export const DEFAULT_SUBTITLE_STYLE: MotionStyle = {
     fontFamily: 'system-ui',
@@ -84,5 +85,62 @@ export function createDefaultSubtitleExit(): MotionEnterExit {
         scale: { ...DEFAULT_SUBTITLE_ENTER_EXIT.scale },
         opacityStart: 1,
         opacityEnd: 0,
+    };
+}
+
+const deriveStyleFromComposer = (
+    style: MotionAnimationStyle | undefined,
+    normalized: ReturnType<typeof normalizeEnterExit>,
+): MotionAnimationStyle => {
+    if (style === 'typewriter') return 'typewriter';
+    if (normalized.move.enabled) {
+        if (normalized.move.direction === 'up') return 'slideUp';
+        if (normalized.move.direction === 'down') return 'slideDown';
+        if (normalized.move.direction === 'left') return 'slideLeft';
+        return 'slideRight';
+    }
+    if (normalized.scale.enabled) return 'scale';
+    if (normalized.fade.enabled) return 'fade';
+    return 'none';
+};
+
+export function normalizeSubtitleEnterExit(
+    config: MotionEnterExit | null | undefined,
+    which: 'enter' | 'exit',
+): MotionEnterExit {
+    const fallback = which === 'enter' ? createDefaultSubtitleEnter() : createDefaultSubtitleExit();
+    const isTypewriter = config?.style === 'typewriter';
+    const merged: MotionEnterExit = {
+        ...fallback,
+        ...(config ?? {}),
+        fade: {
+            ...fallback.fade,
+            ...(isTypewriter ? { enabled: false, opacityStart: 1, opacityEnd: 1 } : {}),
+            ...(config?.fade ?? {}),
+        },
+        move: {
+            ...fallback.move,
+            ...(isTypewriter ? { enabled: false } : {}),
+            ...(config?.move ?? {}),
+        },
+        scale: {
+            ...fallback.scale,
+            ...(isTypewriter ? { enabled: false } : {}),
+            ...(config?.scale ?? {}),
+        },
+    };
+    const normalized = normalizeEnterExit(merged);
+
+    return {
+        fraction: normalized.fraction,
+        minFrames: normalized.minFrames,
+        maxFrames: normalized.maxFrames,
+        easing: normalized.easing as MotionEnterExit['easing'],
+        fade: { ...normalized.fade },
+        move: { ...normalized.move },
+        scale: { ...normalized.scale },
+        style: deriveStyleFromComposer(config?.style, normalized),
+        opacityStart: normalized.fade.opacityStart,
+        opacityEnd: normalized.fade.opacityEnd,
     };
 }

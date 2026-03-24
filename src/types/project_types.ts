@@ -36,6 +36,7 @@ export type MotionAnimationStyle =
     | 'slideLeft'
     | 'slideRight'
     | 'scale'
+    | 'typewriter'
     | 'none';
 
 export type MotionAnimationDirection = 'up' | 'down' | 'left' | 'right';
