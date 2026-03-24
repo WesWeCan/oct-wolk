@@ -1,9 +1,7 @@
 import {
-    createMulberry32,
-    deriveSeed,
-    hashStringToUint32,
-    type SeedRng,
-} from '@/front-end/utils/seededRng';
+    createDeterministicRandomness,
+    type DeterministicRandomness,
+} from '@/front-end/motion/deterministicRandomness';
 
 /**
  * LEGACY SCAFFOLD: deterministic randomness for future motion modules.
@@ -28,39 +26,11 @@ import {
  *   source item id, or a richer module-specific scope key.
  */
 
-export interface LegacyDeterministicRandomness {
-    baseSeed: string;
-    baseSeedHash: number;
-    scopeKey: string;
-    createRng: (subScope?: string) => SeedRng;
-    pickNumber: (subScope?: string) => number;
-}
-
-const joinScope = (scopeKey: string, subScope?: string): string => {
-    return subScope && subScope.trim().length > 0
-        ? `${scopeKey}:${subScope}`
-        : scopeKey;
-};
+export type LegacyDeterministicRandomness = DeterministicRandomness;
 
 export const createLegacyDeterministicRandomness = (
     baseSeed: string,
     scopeKey: string,
 ): LegacyDeterministicRandomness => {
-    const normalizedSeed = String(baseSeed || 'wolk-default');
-    const normalizedScope = String(scopeKey || 'motion');
-    const baseSeedHash = hashStringToUint32(normalizedSeed);
-
-    return {
-        baseSeed: normalizedSeed,
-        baseSeedHash,
-        scopeKey: normalizedScope,
-        createRng: (subScope?: string) => {
-            const scopedSeed = deriveSeed(baseSeedHash, joinScope(normalizedScope, subScope));
-            return createMulberry32(scopedSeed);
-        },
-        pickNumber: (subScope?: string) => {
-            const rng = createMulberry32(deriveSeed(baseSeedHash, joinScope(normalizedScope, subScope)));
-            return rng();
-        },
-    };
+    return createDeterministicRandomness(baseSeed, scopeKey);
 };

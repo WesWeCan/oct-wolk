@@ -49,6 +49,8 @@ export interface MotionBlockPlugin {
     collectFonts?(project: WolkProject, track: MotionTrack): FontDescriptor[];
     getKeyframeProperties?(): KeyframePropertyDef[];
     gizmo?: {
+        // Reuse the shared useMotionGizmo pipeline for new blocks instead of cloning subtitle monitor logic.
+        // Block-specific math belongs in these hooks plus renderer.getLastBounds(), not in a second gizmo implementation.
         getFallbackBounds?(
             track: MotionTrack,
             renderWidth: number,

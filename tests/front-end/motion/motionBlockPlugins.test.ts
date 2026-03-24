@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ensureMotionBlockPluginsRegistered, subtitleMotionBlockPlugin } from '@/front-end/motion-blocks';
+import { cloudMotionBlockPlugin, ensureMotionBlockPluginsRegistered, subtitleMotionBlockPlugin } from '@/front-end/motion-blocks';
 import {
     getMotionBlockPlugin,
     getMotionTrackPlugin,
@@ -14,8 +14,11 @@ describe('motion block plugin registry', () => {
         ensureMotionBlockPluginsRegistered();
         const plugins = listMotionBlockPlugins({ authorableOnly: true });
         expect(plugins.map((plugin) => plugin.type)).toContain('subtitle');
+        expect(plugins.map((plugin) => plugin.type)).toContain('cloud');
         expect(plugins.find((plugin) => plugin.type === 'subtitle')?.meta.label).toBe('Subtitle');
+        expect(plugins.find((plugin) => plugin.type === 'cloud')?.meta.label).toBe('Cloud');
         expect(plugins.find((plugin) => plugin.type === 'subtitle')?.inspectorComponent).toBeTruthy();
+        expect(plugins.find((plugin) => plugin.type === 'cloud')?.inspectorComponent).toBeTruthy();
     });
 
     it('returns unsupported fallback for unknown block types', () => {
@@ -60,6 +63,44 @@ describe('motion block plugin registry', () => {
 
         expect(getMotionTrackPlugin(track).type).toBe('subtitle');
         expect(getMotionBlockPlugin(track.block.type)?.type).toBe('subtitle');
+    });
+
+    it('resolves cloud tracks through the registry', () => {
+        ensureMotionBlockPluginsRegistered();
+        const track = cloudMotionBlockPlugin.createTrack({
+            project: {
+                id: 'project-1',
+                version: 2,
+                song: { title: 'Song', audioSrc: '' },
+                settings: { fps: 60, renderWidth: 1920, renderHeight: 1080, seed: 'seed', durationMs: 30000 },
+                font: { family: 'system-ui', fallbacks: ['sans-serif'], style: 'normal', weight: 400 },
+                rawLyrics: '',
+                lyricTracks: [],
+                motionTracks: [],
+                backgroundColor: '#000000',
+                backgroundImageFit: 'cover',
+                createdAt: 0,
+                updatedAt: 0,
+            },
+            sourceTrack: {
+                id: 'lyric-1',
+                name: 'Verse',
+                color: '#fff',
+                kind: 'word',
+                items: [],
+                muted: false,
+                solo: false,
+                locked: false,
+            },
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-2',
+            blockId: 'block-2',
+        });
+
+        expect(getMotionTrackPlugin(track).type).toBe('cloud');
+        expect(getMotionBlockPlugin(track.block.type)?.type).toBe('cloud');
     });
 
     it('merges plugin keyframe definitions into the shared lookup', () => {

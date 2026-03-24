@@ -2,7 +2,7 @@ import { ref } from 'vue';
 import type { Ref } from 'vue';
 import type { MotionBlockType, WolkProject } from '@/types/project_types';
 import type { MotionBlockRenderer, MotionFrameRuntimeScaffolds } from '@/front-end/motion-blocks/core/types';
-import { createLegacyDeterministicRandomness } from '@/front-end/motion/legacy/legacy_seed_scaffold';
+import { createDeterministicRandomness } from '@/front-end/motion/deterministicRandomness';
 import { msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
 import { ensureMotionBlockPluginsRegistered } from '@/front-end/motion-blocks';
 import { getMotionBlockPlugin, getMotionTrackPlugin, requireMotionBlockPlugin } from '@/front-end/motion-blocks/core/registry';
@@ -204,7 +204,7 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
                 canvasSize: { width, height },
                 allItems,
                 legacyModulation: runtimeScaffolds?.legacyModulation ?? null,
-                deterministicRandomness: createLegacyDeterministicRandomness(
+                deterministicRandomness: createDeterministicRandomness(
                     project.settings.seed || 'wolk-default',
                     `${track.id}:${block.id}`,
                 ),

@@ -1,23 +1,10 @@
 import type { MotionTrack } from '@/types/project_types';
 import type { RendererBounds } from '@/front-end/motion-blocks/core/types';
-
-const clampOffsetToConstraintRegion = (
-    offset: number,
-    anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
-    padding: number,
-    canvasSize: number,
-    regionOffset = 0,
-): number => {
-    const min = padding + regionOffset;
-    const max = canvasSize - padding + regionOffset;
-
-    let anchorPos: number;
-    if (anchor === 'left' || anchor === 'top') anchorPos = min;
-    else if (anchor === 'right' || anchor === 'bottom') anchorPos = max;
-    else anchorPos = (min + max) / 2;
-
-    return Math.max(min - anchorPos, Math.min(max - anchorPos, offset));
-};
+import {
+    clampOffsetToConstraintRegion,
+    resolveReferencePointInRegion,
+    resolveSafeAreaRegion,
+} from '@/front-end/motion-blocks/core/safeArea';
 
 export function getSubtitleFallbackBounds(
     track: MotionTrack,
@@ -26,18 +13,10 @@ export function getSubtitleFallbackBounds(
 ): RendererBounds {
     const t = track.block.transform;
     const s = track.block.style;
-
-    const left = (s.boundsMode ?? 'safeArea') === 'safeArea' ? (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetX ?? 0) : 0;
-    const right = (s.boundsMode ?? 'safeArea') === 'safeArea' ? renderWidth - (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetX ?? 0) : renderWidth;
-    const top = (s.boundsMode ?? 'safeArea') === 'safeArea' ? (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetY ?? 0) : 0;
-    const bottom = (s.boundsMode ?? 'safeArea') === 'safeArea' ? renderHeight - (s.safeAreaPadding ?? 40) + (s.safeAreaOffsetY ?? 0) : renderHeight;
-
-    let referenceX = (left + right) / 2;
-    let referenceY = (top + bottom) / 2;
-    if (t.anchorX === 'left') referenceX = left;
-    if (t.anchorX === 'right') referenceX = right;
-    if (t.anchorY === 'top') referenceY = top;
-    if (t.anchorY === 'bottom') referenceY = bottom;
+    const region = resolveSafeAreaRegion(s, renderWidth, renderHeight);
+    const base = resolveReferencePointInRegion(t.anchorX, t.anchorY, region);
+    let referenceX = base.x;
+    let referenceY = base.y;
     referenceX += t.offsetX;
     referenceY += t.offsetY;
 

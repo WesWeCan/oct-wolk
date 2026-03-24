@@ -1,5 +1,5 @@
 import type { LegacyAudioModulationFrame } from './legacy_audio_modulation_scaffold';
-import type { LegacyDeterministicRandomness } from './legacy_seed_scaffold';
+import type { DeterministicRandomness } from '@/front-end/motion/deterministicRandomness';
 
 /**
  * LEGACY SCAFFOLD: adapter contract for future advanced runtime modules.
@@ -23,7 +23,7 @@ export type LegacyRuntimeExecutionMode = 'canvas2d' | 'worker2d' | 'workerWebGL'
 export interface LegacyRuntimeAdapterFrameContext {
     frame: number;
     fps: number;
-    deterministicRandomness?: LegacyDeterministicRandomness;
+    deterministicRandomness?: DeterministicRandomness;
     modulation?: LegacyAudioModulationFrame | null;
     animatedProps?: Record<string, any>;
 }

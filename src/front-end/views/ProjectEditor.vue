@@ -46,6 +46,7 @@ import PropertyKeyframeLane from '@/front-end/components/timeline/lanes/Property
 import { useMotionGizmo } from '@/front-end/composables/editor/useMotionGizmo';
 import { ensureMotionBlockPluginsRegistered } from '@/front-end/motion-blocks';
 import { getMotionBlockPlugin, getMotionTrackPlugin, listMotionBlockPlugins } from '@/front-end/motion-blocks/core/registry';
+import { pickPreferredCloudSourceTrack } from '@/front-end/motion-blocks/cloud/source-tracks';
 import SnapOverlay from '@/front-end/components/timeline/SnapOverlay.vue';
 import RawLyricsPanel from '@/front-end/components/editor/RawLyricsPanel.vue';
 import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
@@ -1465,7 +1466,9 @@ const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
     if (!project.value) return;
     const plugin = getMotionBlockPlugin(payload.type);
     if (!plugin) return;
-    const sourceTrack = selectedTrack.value || project.value.lyricTracks[0] || null;
+    const sourceTrack = payload.type === 'cloud'
+        ? pickPreferredCloudSourceTrack(selectedTrack.value, project.value.lyricTracks)
+        : (selectedTrack.value || project.value.lyricTracks[0] || null);
     if (!sourceTrack) return;
 
     const startMs = Math.max(0, Math.round(playheadMs.value));

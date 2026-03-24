@@ -7,7 +7,7 @@ import type {
     WolkProject,
 } from '@/types/project_types';
 import type { LegacyAudioModulationFrame } from '@/front-end/motion/legacy/legacy_audio_modulation_scaffold';
-import type { LegacyDeterministicRandomness } from '@/front-end/motion/legacy/legacy_seed_scaffold';
+import type { DeterministicRandomness } from '@/front-end/motion/deterministicRandomness';
 
 export interface ResolvedItem {
     id: string;
@@ -35,7 +35,7 @@ export interface MotionRenderContext {
     canvasSize: { width: number; height: number };
     allItems: ResolvedItem[];
     legacyModulation?: LegacyAudioModulationFrame | null;
-    deterministicRandomness?: LegacyDeterministicRandomness;
+    deterministicRandomness?: DeterministicRandomness;
     legacyManifestId?: string | null;
 }
 
