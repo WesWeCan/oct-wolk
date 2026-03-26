@@ -157,7 +157,8 @@
       }
       
       .fps-input,
-      .bitrate-input {
+      .bitrate-input,
+      .dimension-input {
         width: 50px;
         padding: 4px 8px;
         font-size: 11px;
@@ -179,6 +180,19 @@
           background: rgba(0, 0, 0, 0.4);
         }
       }
+
+      .dimension-input {
+        // Wider so 4-digit values (e.g. 8192) clear native steppers; left-aligned label-style numerals
+        width: 82px;
+        min-width: 82px;
+        padding: 4px 6px 4px 8px;
+        box-sizing: border-box;
+        text-align: left;
+      }
+
+      .dim-cross {
+        margin: 0 2px;
+      }
       
       .dimension-preset {
         font-size: 11px;
@@ -199,24 +213,6 @@
         &:focus {
           outline: none;
           border-color: rgba(0, 212, 255, 0.5);
-          box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
-        }
-      }
-      
-      .custom-dimensions {
-        font-size: 11px;
-        padding: 4px 8px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(0, 212, 255, 0.3);
-        border-radius: 4px;
-        color: #fff;
-        font-family: 'SF Mono', 'Monaco', monospace;
-        width: 120px;
-        
-        &:focus {
-          background: rgba(255, 255, 255, 0.08);
-          border-color: rgba(0, 212, 255, 0.5);
-          outline: none;
           box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
         }
       }

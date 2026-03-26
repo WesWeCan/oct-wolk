@@ -66,6 +66,12 @@ import type { ExportDocument } from '@/types/export_types';
 import { buildFontFamilyChain, fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
 import { primeDocumentFont } from '@/front-end/utils/fonts/fontLoader';
 import { buildLegacyAudioModulationFrame } from '@/front-end/motion/legacy/legacy_audio_modulation_scaffold';
+import {
+    CANVAS_DIMENSION_PRESETS,
+    clampRenderDimension,
+    dimensionPresetSelectValue,
+    RENDER_DIMENSION_BOUNDS,
+} from '@/front-end/utils/dimensionPresets';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -180,12 +186,36 @@ const scheduleSave = () => {
 const isEditingSettings = ref(false);
 const toggleEditSettings = () => { isEditingSettings.value = !isEditingSettings.value; };
 
+const dimensionSelectValue = computed(() => {
+    if (!project.value) return 'custom';
+    return dimensionPresetSelectValue(
+        project.value.settings.renderWidth,
+        project.value.settings.renderHeight,
+    );
+});
+
 const updateDimensions = (e: Event) => {
     const value = (e.target as HTMLSelectElement).value;
     if (!project.value || value === 'custom') return;
     const [width, height] = value.split('x').map(Number);
-    project.value.settings.renderWidth = width;
-    project.value.settings.renderHeight = height;
+    project.value.settings.renderWidth = clampRenderDimension(width, 1920);
+    project.value.settings.renderHeight = clampRenderDimension(height, 1080);
+    scheduleSave();
+};
+
+const updateRenderWidth = (e: Event) => {
+    if (!project.value) return;
+    const raw = Number((e.target as HTMLInputElement).value);
+    const fb = project.value.settings.renderWidth || 1920;
+    project.value.settings.renderWidth = clampRenderDimension(raw, fb);
+    scheduleSave();
+};
+
+const updateRenderHeight = (e: Event) => {
+    if (!project.value) return;
+    const raw = Number((e.target as HTMLInputElement).value);
+    const fb = project.value.settings.renderHeight || 1080;
+    project.value.settings.renderHeight = clampRenderDimension(raw, fb);
     scheduleSave();
 };
 
@@ -2249,13 +2279,28 @@ onUnmounted(() => {
                             />
                             <span class="info-label">FPS</span>
                             <span class="info-separator">&middot;</span>
-                            <select @change="updateDimensions" :value="`${project.settings.renderWidth}x${project.settings.renderHeight}`" class="dimension-preset">
-                                <option value="1920x1080">1920 &times; 1080</option>
-                                <option value="1280x720">1280 &times; 720</option>
-                                <option value="3840x2160">3840 &times; 2160 (4K)</option>
-                                <option value="2560x1440">2560 &times; 1440 (2K)</option>
-                                <option value="1080x1920">1080 &times; 1920 (Vertical)</option>
+                            <select @change="updateDimensions" :value="dimensionSelectValue" class="dimension-preset">
+                                <option v-for="p in CANVAS_DIMENSION_PRESETS" :key="p.value" :value="p.value">{{ p.label }}</option>
+                                <option value="custom">Custom</option>
                             </select>
+                            <span class="info-separator">&middot;</span>
+                            <input
+                                type="number"
+                                :value="project.settings.renderWidth"
+                                @input="updateRenderWidth"
+                                class="fps-input dimension-input"
+                                :min="RENDER_DIMENSION_BOUNDS.min"
+                                :max="RENDER_DIMENSION_BOUNDS.max"
+                            />
+                            <span class="info-separator dim-cross">&times;</span>
+                            <input
+                                type="number"
+                                :value="project.settings.renderHeight"
+                                @input="updateRenderHeight"
+                                class="fps-input dimension-input"
+                                :min="RENDER_DIMENSION_BOUNDS.min"
+                                :max="RENDER_DIMENSION_BOUNDS.max"
+                            />
                             <span class="info-separator">&middot;</span>
                             <input
                                 type="number"
