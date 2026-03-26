@@ -1,102 +1,34 @@
 import type { MotionTrack } from '@/types/project_types';
 import type { RendererBounds } from '@/front-end/motion-blocks/core/types';
-import {
-    clampOffsetToConstraintRegion,
-    resolveReferencePointInRegion,
-    resolveSafeAreaRegion,
-} from '@/front-end/motion-blocks/core/safeArea';
+import { resolveSafeAreaRegion } from '@/front-end/motion-blocks/core/safeArea';
 
-const resolveLocalBox = (track: MotionTrack, renderWidth: number, renderHeight: number) => {
-    const region = resolveSafeAreaRegion(track.block.style, renderWidth, renderHeight);
-    const localBoxWidth = region.width;
-    const localBoxHeight = region.height;
-    const anchorLocalX = track.block.transform.anchorX === 'left'
-        ? 0
-        : track.block.transform.anchorX === 'right'
-            ? localBoxWidth
-            : localBoxWidth / 2;
-    const anchorLocalY = track.block.transform.anchorY === 'top'
-        ? 0
-        : track.block.transform.anchorY === 'bottom'
-            ? localBoxHeight
-            : localBoxHeight / 2;
-
-    return {
-        localBoxX: -anchorLocalX,
-        localBoxY: -anchorLocalY,
-        localBoxWidth,
-        localBoxHeight,
-    };
-};
-
-const computeRectAabb = (
-    localBoxX: number,
-    localBoxY: number,
-    localBoxWidth: number,
-    localBoxHeight: number,
-    rotationDeg: number,
-    scale: number,
-    referenceX: number,
-    referenceY: number,
-) => {
-    const rad = (rotationDeg * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const corners = [
-        { x: localBoxX, y: localBoxY },
-        { x: localBoxX + localBoxWidth, y: localBoxY },
-        { x: localBoxX, y: localBoxY + localBoxHeight },
-        { x: localBoxX + localBoxWidth, y: localBoxY + localBoxHeight },
-    ].map((corner) => ({
-        x: referenceX + ((corner.x * cos - corner.y * sin) * scale),
-        y: referenceY + ((corner.x * sin + corner.y * cos) * scale),
-    }));
-
-    const minX = Math.min(...corners.map((corner) => corner.x));
-    const maxX = Math.max(...corners.map((corner) => corner.x));
-    const minY = Math.min(...corners.map((corner) => corner.y));
-    const maxY = Math.max(...corners.map((corner) => corner.y));
-
-    return {
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-    };
-};
-
+/**
+ * The cloud gizmo IS the constraint region — no block transform layer.
+ * Returned bounds match the safe-area inset so the blue gizmo box
+ * sits exactly where words are confined.
+ */
 export function getCloudFallbackBounds(
     track: MotionTrack,
     renderWidth: number,
     renderHeight: number,
 ): RendererBounds {
-    const transform = track.block.transform;
     const region = resolveSafeAreaRegion(track.block.style, renderWidth, renderHeight);
-    const base = resolveReferencePointInRegion(transform.anchorX, transform.anchorY, region);
-    const referenceX = base.x + transform.offsetX;
-    const referenceY = base.y + transform.offsetY;
-    const localBox = resolveLocalBox(track, renderWidth, renderHeight);
-    const aabb = computeRectAabb(
-        localBox.localBoxX,
-        localBox.localBoxY,
-        localBox.localBoxWidth,
-        localBox.localBoxHeight,
-        transform.rotation,
-        transform.scale,
-        referenceX,
-        referenceY,
-    );
+    const referenceX = region.left + region.width / 2;
+    const referenceY = region.top + region.height / 2;
 
     return {
-        ...aabb,
+        x: region.left,
+        y: region.top,
+        width: region.width,
+        height: region.height,
         referenceX,
         referenceY,
-        localBoxX: localBox.localBoxX,
-        localBoxY: localBox.localBoxY,
-        localBoxWidth: localBox.localBoxWidth,
-        localBoxHeight: localBox.localBoxHeight,
-        rotation: transform.rotation,
-        scale: transform.scale,
+        localBoxX: -region.width / 2,
+        localBoxY: -region.height / 2,
+        localBoxWidth: region.width,
+        localBoxHeight: region.height,
+        rotation: 0,
+        scale: 1,
     };
 }
 
@@ -109,45 +41,39 @@ export function applyCloudGizmoDelta(
     renderHeight: number,
 ) {
     const nextTrack: MotionTrack = JSON.parse(JSON.stringify(track));
-    const transform = nextTrack.block.transform;
 
     if (mode === 'move') {
-        const rot = -(transform.rotation * Math.PI) / 180;
-        const cos = Math.cos(rot);
-        const sin = Math.sin(rot);
-        const localDx = dx * cos - dy * sin;
-        const localDy = dx * sin + dy * cos;
+        const currentX = nextTrack.block.style.safeAreaOffsetX ?? 0;
+        const currentY = nextTrack.block.style.safeAreaOffsetY ?? 0;
+        const padding = nextTrack.block.style.safeAreaPadding ?? 40;
 
-        let newOffsetX = Math.round(transform.offsetX + localDx);
-        let newOffsetY = Math.round(transform.offsetY + localDy);
-
-        if ((nextTrack.block.style.boundsMode ?? 'safeArea') === 'safeArea') {
-            const padding = nextTrack.block.style.safeAreaPadding ?? 40;
-            const regionOffsetX = nextTrack.block.style.safeAreaOffsetX ?? 0;
-            const regionOffsetY = nextTrack.block.style.safeAreaOffsetY ?? 0;
-            newOffsetX = clampOffsetToConstraintRegion(newOffsetX, transform.anchorX, padding, renderWidth, regionOffsetX);
-            newOffsetY = clampOffsetToConstraintRegion(newOffsetY, transform.anchorY, padding, renderHeight, regionOffsetY);
-        }
-
-        transform.offsetX = newOffsetX;
-        transform.offsetY = newOffsetY;
+        nextTrack.block.style.safeAreaOffsetX = Math.max(-padding, Math.min(padding, Math.round(currentX + dx)));
+        nextTrack.block.style.safeAreaOffsetY = Math.max(-padding, Math.min(padding, Math.round(currentY + dy)));
         return {
             track: nextTrack,
-            autoKeyframePaths: ['transform.offsetX', 'transform.offsetY'],
+            autoKeyframePaths: ['style.safeAreaOffsetX', 'style.safeAreaOffsetY'],
         };
     }
 
     if (mode === 'scale') {
-        transform.scale = Math.max(0.05, Math.min(10, transform.scale + dx * 0.005));
+        const currentPadding = nextTrack.block.style.safeAreaPadding ?? 40;
+        const maxPadding = Math.max(0, Math.floor(Math.min(renderWidth, renderHeight) / 2));
+        const newPadding = Math.max(0, Math.min(maxPadding, Math.round(currentPadding - dx)));
+        nextTrack.block.style.safeAreaPadding = newPadding;
+
+        const offsetX = nextTrack.block.style.safeAreaOffsetX ?? 0;
+        const offsetY = nextTrack.block.style.safeAreaOffsetY ?? 0;
+        nextTrack.block.style.safeAreaOffsetX = Math.max(-newPadding, Math.min(newPadding, offsetX));
+        nextTrack.block.style.safeAreaOffsetY = Math.max(-newPadding, Math.min(newPadding, offsetY));
         return {
             track: nextTrack,
-            autoKeyframePaths: ['transform.scale'],
+            autoKeyframePaths: ['style.safeAreaPadding'],
         };
     }
 
-    transform.rotation += dx;
+    // Rotation is a no-op — the constraint region isn't rotatable
     return {
         track: nextTrack,
-        autoKeyframePaths: ['transform.rotation'],
+        autoKeyframePaths: [] as string[],
     };
 }

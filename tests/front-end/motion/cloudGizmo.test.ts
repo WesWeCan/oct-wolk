@@ -34,7 +34,7 @@ const makeTrack = () => cloudMotionBlockPlugin.createTrack({
 });
 
 describe('cloud gizmo adapter', () => {
-    it('reports fallback bounds from the fitted region assumptions', () => {
+    it('reports fallback bounds matching the constraint region (identity transform)', () => {
         const track = makeTrack();
         const bounds = cloudMotionBlockPlugin.gizmo?.getFallbackBounds?.(track, 1920, 1080);
         expect(bounds).not.toBeNull();
@@ -42,9 +42,13 @@ describe('cloud gizmo adapter', () => {
         expect(bounds?.referenceY).toBe(540);
         expect(bounds?.localBoxWidth).toBe(1840);
         expect(bounds?.localBoxHeight).toBe(1000);
+        expect(bounds?.rotation).toBe(0);
+        expect(bounds?.scale).toBe(1);
+        expect(bounds?.x).toBe(40);
+        expect(bounds?.y).toBe(40);
     });
 
-    it('clamps move deltas to the constraint region and returns autokey paths', () => {
+    it('move adjusts safeAreaOffsetX/Y and clamps within padding', () => {
         const track = makeTrack();
         const result = cloudMotionBlockPlugin.gizmo?.applyDelta?.(track, 'move', 9999, -9999, {
             renderWidth: 1920,
@@ -54,12 +58,13 @@ describe('cloud gizmo adapter', () => {
         });
 
         expect(result).toBeTruthy();
-        expect(result?.track.block.transform.offsetX).toBeLessThanOrEqual(920);
-        expect(result?.track.block.transform.offsetY).toBeGreaterThanOrEqual(-500);
-        expect(result?.autoKeyframePaths).toEqual(['transform.offsetX', 'transform.offsetY']);
+        const padding = result!.track.block.style.safeAreaPadding ?? 40;
+        expect(result?.track.block.style.safeAreaOffsetX).toBe(padding);
+        expect(result?.track.block.style.safeAreaOffsetY).toBe(-padding);
+        expect(result?.autoKeyframePaths).toEqual(['style.safeAreaOffsetX', 'style.safeAreaOffsetY']);
     });
 
-    it('returns scale and rotate autokey paths for their respective modes', () => {
+    it('scale resizes the constraint region via safeAreaPadding', () => {
         const track = makeTrack();
         const scaled = cloudMotionBlockPlugin.gizmo?.applyDelta?.(track, 'scale', 50, 0, {
             renderWidth: 1920,
@@ -67,6 +72,29 @@ describe('cloud gizmo adapter', () => {
             currentBounds: null,
             currentFrame: 0,
         });
+
+        expect(scaled?.track.block.style.safeAreaPadding).toBeLessThan(40);
+        expect(scaled?.autoKeyframePaths).toEqual(['style.safeAreaPadding']);
+    });
+
+    it('scale clamps existing offset when padding shrinks', () => {
+        const track = makeTrack();
+        track.block.style.safeAreaPadding = 40;
+        track.block.style.safeAreaOffsetX = 35;
+
+        const scaled = cloudMotionBlockPlugin.gizmo?.applyDelta?.(track, 'scale', 30, 0, {
+            renderWidth: 1920,
+            renderHeight: 1080,
+            currentBounds: null,
+            currentFrame: 0,
+        });
+
+        const newPadding = scaled!.track.block.style.safeAreaPadding!;
+        expect(scaled?.track.block.style.safeAreaOffsetX).toBeLessThanOrEqual(newPadding);
+    });
+
+    it('rotate is a no-op and returns empty autokey paths', () => {
+        const track = makeTrack();
         const rotated = cloudMotionBlockPlugin.gizmo?.applyDelta?.(track, 'rotate', 15, 0, {
             renderWidth: 1920,
             renderHeight: 1080,
@@ -74,7 +102,7 @@ describe('cloud gizmo adapter', () => {
             currentFrame: 0,
         });
 
-        expect(scaled?.autoKeyframePaths).toEqual(['transform.scale']);
-        expect(rotated?.autoKeyframePaths).toEqual(['transform.rotation']);
+        expect(rotated?.autoKeyframePaths).toEqual([]);
+        expect(rotated?.track.block.transform.rotation).toBe(0);
     });
 });

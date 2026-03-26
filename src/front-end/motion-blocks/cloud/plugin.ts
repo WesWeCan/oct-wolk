@@ -40,7 +40,7 @@ export const cloudMotionBlockPlugin: MotionBlockPlugin = {
     type: 'cloud',
     meta: {
         label: 'Cloud',
-        description: 'Spreads the full in-range lyric dataset across a deterministic fitted cloud inside the constraint region.',
+        description: 'Scatters in-range lyric words at deterministic positions that accumulate over time inside the constraint region.',
         authorable: true,
         order: 2,
     },
@@ -112,6 +112,6 @@ export const cloudMotionBlockPlugin: MotionBlockPlugin = {
         applyDelta(track, mode, dx, dy, context) {
             return applyCloudGizmoDelta(track, mode, dx, dy, context.renderWidth, context.renderHeight);
         },
-        supportsSafeAreaGuide: true,
+        supportsSafeAreaGuide: false,
     },
 };

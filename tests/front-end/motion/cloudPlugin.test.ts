@@ -44,7 +44,9 @@ describe('cloud motion block plugin', () => {
         expect(track.block.style.fontFamily).toBe('ProjectFont');
         expect(track.block.style.fontWeight).toBe(700);
         expect(track.block.style.fontSize).toBe(42);
-        expect(track.block.params.targetCoverage).toBe(0.8);
+        expect(track.block.params.gap).toBe(12);
+        expect(track.block.params.scatter).toBe(0.7);
+        expect(track.block.params.sizeVariation).toBe(0.3);
     });
 
     it('normalizes booleans, inherits project font metadata, and prunes empty keyframe tracks', () => {
@@ -82,7 +84,7 @@ describe('cloud motion block plugin', () => {
         expect(normalized.block.style.fontFallbacks).toEqual(['Arial']);
         expect(normalized.block.style.fontName).toBe('Project Font');
         expect(normalized.block.style.fontLocalPath).toBe('/font.otf');
-        expect(normalized.block.params.targetCoverage).toBe(0.8);
+        expect(normalized.block.params.gap).toBe(12);
         expect(normalized.block.propertyTracks).toHaveLength(1);
         expect(normalized.block.propertyTracks[0].propertyPath).toBe('transform.offsetY');
     });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { shallowMount } from '@vue/test-utils';
 import CloudInspector from '@/front-end/motion-blocks/cloud/inspector/CloudInspector.vue';
+import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import { cloudMotionBlockPlugin } from '@/front-end/motion-blocks';
 
 const makeProject = () => ({
@@ -79,5 +80,8 @@ describe('cloud inspector', () => {
         const options = wrapper.findAll('option').map((option) => option.text());
         expect(options).toEqual(['Words']);
         expect(wrapper.text()).toContain('1 lyric items currently contribute to this cloud.');
+        const gapField = wrapper.findAllComponents(AnimatableNumberField)
+            .find((component) => component.props('label') === 'Gap');
+        expect(gapField?.props('hint')).toContain('For tighter packing, lower Style -> Background Padding too.');
     });
 });
