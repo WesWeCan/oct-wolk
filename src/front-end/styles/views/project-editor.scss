@@ -1655,6 +1655,38 @@ body:has(.project-editor) {
         margin-bottom: 12px;
     }
 
+    &__override {
+        margin-top: 10px;
+        border: 1px solid #2d2d2d;
+        border-radius: 6px;
+        background: #151515;
+        overflow: hidden;
+    }
+
+    &__override-summary {
+        cursor: pointer;
+        padding: 8px 10px;
+        color: #b3b3b3;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        list-style: none;
+
+        &::-webkit-details-marker {
+            display: none;
+        }
+    }
+
+    &__override[open] {
+        padding-bottom: 10px;
+    }
+
+    &__section-note {
+        margin: 0 0 10px;
+        color: #8f8f8f;
+        font-size: 11px;
+    }
+
     .motion-tab__chips {
         gap: 6px;
     }
@@ -1663,6 +1695,154 @@ body:has(.project-editor) {
         font-size: 9px;
         text-transform: uppercase;
         letter-spacing: 0.03em;
+    }
+
+    .typewriter-timing-field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .typewriter-timing-field__label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .typewriter-timing-field__stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .typewriter-timing-field__stat {
+        padding: 6px 8px;
+        border: 1px solid #333;
+        border-radius: 4px;
+        background: #171717;
+        color: #bbb;
+        font-size: 11px;
+        text-align: center;
+
+        &.is-disabled {
+            opacity: 0.45;
+        }
+    }
+
+    .typewriter-timing-field__track {
+        position: relative;
+        height: 44px;
+        border: 1px solid #333;
+        border-radius: 999px;
+        background: #141414;
+        overflow: hidden;
+    }
+
+    .typewriter-timing-field__segment {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border: none;
+        padding: 0;
+    }
+
+    .typewriter-timing-field__segment--enter {
+        left: 0;
+        background: rgba(0, 212, 255, 0.15);
+    }
+
+    .typewriter-timing-field__segment--hold {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        min-height: 0;
+        background: rgba(255, 255, 255, 0.06);
+        color: #d0d0d0;
+        cursor: grab;
+        border-radius: 0;
+        box-shadow: none;
+        transition: background-color 120ms ease, color 120ms ease;
+
+        &:hover:not(:disabled),
+        &:active:not(:disabled),
+        &:focus-visible {
+            transform: none;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: none;
+        }
+    }
+
+    .typewriter-timing-field__segment--exit {
+        background: rgba(255, 107, 107, 0.16);
+    }
+
+    .typewriter-timing-field__segment-label {
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        pointer-events: none;
+    }
+
+    .typewriter-timing-field__handle {
+        position: absolute;
+        top: 50%;
+        width: 16px;
+        height: 32px;
+        padding: 0;
+        min-height: 0;
+        border: 1px solid #00d4ff;
+        border-radius: 999px;
+        background: #0f0f0f;
+        transform: translate(-50%, -50%);
+        cursor: ew-resize;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #00d4ff;
+        box-shadow: none;
+        transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+
+        &:hover:not(:disabled),
+        &:active:not(:disabled),
+        &:focus-visible {
+            transform: translate(-50%, -50%);
+            background: #171717;
+            box-shadow: none;
+        }
+
+        &.is-disabled {
+            border-color: #555;
+            color: #555;
+            cursor: default;
+        }
+    }
+
+    .typewriter-timing-field__handle--end {
+        border-color: #ff8a80;
+        color: #ff8a80;
+
+        &.is-disabled {
+            border-color: #555;
+            color: #555;
+        }
+    }
+
+    .typewriter-timing-field__handle-label {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        font-size: 8px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        pointer-events: none;
+    }
+
+    .typewriter-timing-field__legend {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: #8a8a8a;
+        font-size: 11px;
     }
 }
 

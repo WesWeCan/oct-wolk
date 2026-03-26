@@ -151,25 +151,45 @@ export function computeEnterExitProgress(
     const itemDurationFrames = Math.max(1, endFrame - startFrame);
     const elapsed = currentFrame - startFrame;
     const remaining = endFrame - currentFrame;
+    const enterUsesTypewriter = enterCfg.style === 'typewriter';
+    const exitUsesTypewriter = exitCfg.style === 'typewriter';
+    let enterFrames = enterUsesTypewriter
+        ? Math.max(0, Math.round(itemDurationFrames * clamp01(enterCfg.fraction)))
+        : Math.max(
+            enterCfg.minFrames,
+            Math.min(enterCfg.maxFrames, Math.round(itemDurationFrames * enterCfg.fraction)),
+        );
+    let exitFrames = exitUsesTypewriter
+        ? Math.max(0, Math.round(itemDurationFrames * clamp01(exitCfg.fraction)))
+        : Math.max(
+            exitCfg.minFrames,
+            Math.min(exitCfg.maxFrames, Math.round(itemDurationFrames * exitCfg.fraction)),
+        );
 
-    const enterFrames = Math.max(
-        enterCfg.minFrames,
-        Math.min(enterCfg.maxFrames, Math.round(itemDurationFrames * enterCfg.fraction)),
-    );
-    const exitFrames = Math.max(
-        exitCfg.minFrames,
-        Math.min(exitCfg.maxFrames, Math.round(itemDurationFrames * exitCfg.fraction)),
-    );
+    if (enterUsesTypewriter && exitUsesTypewriter) {
+        enterFrames = Math.min(itemDurationFrames, enterFrames);
+        exitFrames = Math.min(Math.max(0, itemDurationFrames - enterFrames), exitFrames);
+    }
 
     let enterProgress = 1;
-    const enterAnimEnabled = enterCfg.style === 'typewriter' || enterCfg.fade.enabled || enterCfg.move.enabled || enterCfg.scale.enabled;
-    if (enterAnimEnabled && elapsed < enterFrames) {
+    const enterAnimEnabled = enterUsesTypewriter || enterCfg.fade.enabled || enterCfg.move.enabled || enterCfg.scale.enabled;
+    if (enterUsesTypewriter) {
+        if (enterFrames > 0 && elapsed < enterFrames) {
+            enterProgress = applyEasing(elapsed / Math.max(1, enterFrames), enterCfg.easing);
+        }
+    } else if (enterAnimEnabled && elapsed < enterFrames) {
         enterProgress = applyEasing(elapsed / Math.max(1, enterFrames), enterCfg.easing);
     }
 
     let exitProgress = 0;
-    const exitAnimEnabled = exitCfg.style === 'typewriter' || exitCfg.fade.enabled || exitCfg.move.enabled || exitCfg.scale.enabled;
-    if (exitAnimEnabled && remaining < exitFrames) {
+    const exitAnimEnabled = exitUsesTypewriter || exitCfg.fade.enabled || exitCfg.move.enabled || exitCfg.scale.enabled;
+    if (exitUsesTypewriter && exitCfg.fraction >= 1) {
+        exitProgress = 1;
+    } else if (exitUsesTypewriter) {
+        if (exitFrames > 0 && remaining < exitFrames) {
+            exitProgress = applyEasing(1 - remaining / Math.max(1, exitFrames), exitCfg.easing);
+        }
+    } else if (exitAnimEnabled && remaining < exitFrames) {
         exitProgress = applyEasing(1 - remaining / Math.max(1, exitFrames), exitCfg.easing);
     }
 

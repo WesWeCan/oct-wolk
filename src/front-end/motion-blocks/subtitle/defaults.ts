@@ -47,6 +47,7 @@ export const DEFAULT_SUBTITLE_ENTER_EXIT: MotionEnterExit = {
     minFrames: 3,
     maxFrames: 30,
     easing: 'easeOut',
+    showCursor: false,
     fade: {
         enabled: true,
         opacityStart: 0,
@@ -72,6 +73,7 @@ export function createDefaultSubtitleEnter(): MotionEnterExit {
         fade: { ...DEFAULT_SUBTITLE_ENTER_EXIT.fade, enabled: true, opacityStart: 0, opacityEnd: 1 },
         move: { ...DEFAULT_SUBTITLE_ENTER_EXIT.move },
         scale: { ...DEFAULT_SUBTITLE_ENTER_EXIT.scale },
+        showCursor: false,
         opacityStart: 0,
         opacityEnd: 1,
     };
@@ -83,6 +85,7 @@ export function createDefaultSubtitleExit(): MotionEnterExit {
         fade: { ...DEFAULT_SUBTITLE_ENTER_EXIT.fade, enabled: true, opacityStart: 1, opacityEnd: 0 },
         move: { ...DEFAULT_SUBTITLE_ENTER_EXIT.move },
         scale: { ...DEFAULT_SUBTITLE_ENTER_EXIT.scale },
+        showCursor: false,
         opacityStart: 1,
         opacityEnd: 0,
     };
@@ -136,6 +139,7 @@ export function normalizeSubtitleEnterExit(
         minFrames: normalized.minFrames,
         maxFrames: normalized.maxFrames,
         easing: normalized.easing as MotionEnterExit['easing'],
+        showCursor: config?.showCursor ?? fallback.showCursor ?? false,
         fade: { ...normalized.fade },
         move: { ...normalized.move },
         scale: { ...normalized.scale },

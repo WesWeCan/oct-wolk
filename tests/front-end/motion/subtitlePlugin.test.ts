@@ -103,6 +103,7 @@ describe('subtitle motion block plugin', () => {
             minFrames: 2,
             maxFrames: 18,
             easing: 'easeOut',
+            showCursor: true,
             style: 'typewriter',
         } as any;
         track.block.exit = {
@@ -110,6 +111,7 @@ describe('subtitle motion block plugin', () => {
             minFrames: 2,
             maxFrames: 18,
             easing: 'easeOut',
+            showCursor: true,
             style: 'typewriter',
         } as any;
 
@@ -119,5 +121,7 @@ describe('subtitle motion block plugin', () => {
         expect(normalized.block.exit.style).toBe('typewriter');
         expect(normalized.block.enter.fade.enabled).toBe(false);
         expect(normalized.block.exit.fade.enabled).toBe(false);
+        expect(normalized.block.enter.showCursor).toBe(true);
+        expect(normalized.block.exit.showCursor).toBe(true);
     });
 });

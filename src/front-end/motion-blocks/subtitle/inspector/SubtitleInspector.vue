@@ -350,6 +350,29 @@ const updateEnterExit = (which: 'enter' | 'exit', value: MotionEnterExit) => {
     });
 };
 
+const updateEnterExits = (value: { enter?: MotionEnterExit; exit?: MotionEnterExit }) => {
+    if (!props.motionTrack || isLocked.value) return;
+    if (selectedItemId.value) {
+        const { overrides, idx } = getOrCreateOverride(selectedItemId.value);
+        overrides[idx] = {
+            ...overrides[idx],
+            ...(value.enter ? { enterOverride: cloneEnterExit(value.enter) } : {}),
+            ...(value.exit ? { exitOverride: cloneEnterExit(value.exit) } : {}),
+        };
+        emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
+        return;
+    }
+
+    emit('update-track', {
+        ...props.motionTrack,
+        block: {
+            ...props.motionTrack.block,
+            ...(value.enter ? { enter: cloneEnterExit(value.enter) } : {}),
+            ...(value.exit ? { exit: cloneEnterExit(value.exit) } : {}),
+        },
+    });
+};
+
 const updateStyleGlobalOpacity = (value: number) => updateStyle('globalOpacity' as any, value);
 
 const resetToDefaults = () => {
@@ -739,6 +762,7 @@ const resetSelectedItemAnimationOverride = () => {
                         :enter-value="selectedItemEnterValue"
                         :exit-value="selectedItemExitValue"
                         @update-enter-exit="updateEnterExit"
+                        @update-enter-exits="updateEnterExits"
                     />
                 </div>
             </details>

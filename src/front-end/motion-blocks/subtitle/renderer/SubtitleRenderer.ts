@@ -350,6 +350,31 @@ function splitMetricIntoUnits(
     }));
 }
 
+function resolveTypewriterCursorAnchor(
+    units: PositionedRenderUnit[],
+    boundaryIndex: number,
+): { x: number; y: number; span: StyledSpan } | null {
+    if (units.length === 0) return null;
+
+    const nextUnit = units[boundaryIndex];
+    if (nextUnit) {
+        return {
+            x: nextUnit.x,
+            y: nextUnit.y,
+            span: nextUnit.span,
+        };
+    }
+
+    const previousUnit = units[Math.max(0, boundaryIndex - 1)];
+    if (!previousUnit) return null;
+
+    return {
+        x: previousUnit.x + previousUnit.width,
+        y: previousUnit.y,
+        span: previousUnit.span,
+    };
+}
+
 export class SubtitleRenderer implements MotionBlockRenderer {
     lastBounds: RendererBounds | null = null;
 
@@ -615,6 +640,11 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         const exitVisibleLimit = exitUsesTypewriter
             ? Math.max(0, totalUnits - Math.floor(clamp01(item.exitProgress, 0) * totalUnits))
             : totalUnits;
+        const showEnterCursor = enterUsesTypewriter && !!item.enter.showCursor && clamp01(item.enterProgress, 0) < 1;
+        const showExitCursor = exitUsesTypewriter
+            && !!item.exit.showCursor
+            && clamp01(item.exitProgress, 0) > 0
+            && clamp01(item.exitProgress, 0) < 1;
 
         flattenedUnits.forEach((unit, index) => {
             if ((enterUsesTypewriter && index >= enterVisibleCount) || (exitUsesTypewriter && index >= exitVisibleLimit)) {
@@ -651,6 +681,23 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             }
             ctx.globalAlpha = baseAlpha;
         });
+
+        const cursorBoundaryIndex = showExitCursor
+            ? exitVisibleLimit
+            : showEnterCursor
+                ? enterVisibleCount
+                : null;
+        if (cursorBoundaryIndex !== null) {
+            const cursorAnchor = resolveTypewriterCursorAnchor(flattenedUnits, cursorBoundaryIndex);
+            if (cursorAnchor && textOpacity > 0) {
+                const cursorColor = item.forceStyleColor ? resolvedStyle.color : (cursorAnchor.span.color || resolvedStyle.color);
+                ctx.font = buildFont(resolvedStyle, cursorAnchor.span);
+                ctx.globalAlpha = baseAlpha * textOpacity;
+                ctx.fillStyle = cursorColor;
+                ctx.fillText('|', cursorAnchor.x, cursorAnchor.y);
+                ctx.globalAlpha = baseAlpha;
+            }
+        }
 
         ctx.restore();
         const finalAabb = computeRectAabb(

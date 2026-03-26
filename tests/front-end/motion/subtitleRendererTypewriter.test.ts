@@ -45,6 +45,7 @@ function createMockCtx() {
 function makeTypewriterEnterExit(which: 'enter' | 'exit') {
     return {
         ...DEFAULT_SUBTITLE_ENTER_EXIT,
+        showCursor: false,
         fade: {
             ...DEFAULT_SUBTITLE_ENTER_EXIT.fade,
             enabled: false,
@@ -140,5 +141,54 @@ describe('SubtitleRenderer typewriter effect', () => {
 
         expect(drawnText).toBe('AB');
         expect(yPositions.size).toBe(1);
+    });
+
+    it('treats spaces and punctuation as backspace steps', () => {
+        const renderer = new SubtitleRenderer();
+        const ctx = createMockCtx();
+
+        renderer.render(ctx, [makeItem({
+            text: 'AB, C!',
+            enter: makeTypewriterEnterExit('enter'),
+            exit: makeTypewriterEnterExit('exit'),
+            enterProgress: 1,
+            exitProgress: 0.5,
+        })], makeContext(), {});
+
+        const drawnText = ((ctx.fillText as any).mock.calls as Array<[string]>).map((call) => call[0]).join('');
+
+        expect(drawnText).toBe('AB,');
+    });
+
+    it('draws a cursor while typing and deleting when enabled', () => {
+        const renderer = new SubtitleRenderer();
+        const ctx = createMockCtx();
+
+        renderer.render(ctx, [makeItem({
+            text: 'WOLK',
+            enterProgress: 0.5,
+            enter: {
+                ...makeTypewriterEnterExit('enter'),
+                showCursor: true,
+            },
+        })], makeContext(), {});
+
+        renderer.render(ctx, [makeItem({
+            text: 'WOLK',
+            enterProgress: 1,
+            exitProgress: 0.5,
+            enter: {
+                ...makeTypewriterEnterExit('enter'),
+                showCursor: true,
+            },
+            exit: {
+                ...makeTypewriterEnterExit('exit'),
+                showCursor: true,
+            },
+        })], makeContext(), {});
+
+        const drawnText = ((ctx.fillText as any).mock.calls as Array<[string]>).map((call) => call[0]).join('');
+
+        expect(drawnText).toContain('|');
     });
 });

@@ -74,6 +74,7 @@ export interface MotionEnterExit {
     minFrames: number;
     maxFrames: number;
     easing: MotionAnimationEasing;
+    showCursor?: boolean;
     fade: MotionFadeAnimation;
     move: MotionMoveAnimation;
     scale: MotionScaleAnimation;

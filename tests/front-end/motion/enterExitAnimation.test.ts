@@ -14,6 +14,7 @@ const createTypewriterConfig = (): MotionEnterExit => ({
     minFrames: 3,
     maxFrames: 30,
     easing: 'linear',
+    showCursor: false,
     fade: {
         enabled: false,
         opacityStart: 1,
@@ -50,6 +51,56 @@ describe('enter/exit animation timing', () => {
 
         expect(progress.enterProgress).toBe(1);
         expect(progress.exitProgress).toBeCloseTo(2 / 3, 5);
+    });
+
+    it('lets a 100 percent typewriter enter use the full cue span', () => {
+        const config = {
+            ...createTypewriterConfig(),
+            fraction: 1,
+        };
+
+        const progress = computeEnterExitProgress(item, 30, 60, config, createTypewriterConfig());
+
+        expect(progress.enterProgress).toBeCloseTo(0.5, 5);
+    });
+
+    it('partitions typewriter enter and exit windows so they do not overlap', () => {
+        const enter = {
+            ...createTypewriterConfig(),
+            fraction: 0.7,
+        };
+        const exit = {
+            ...createTypewriterConfig(),
+            fraction: 0.5,
+        };
+
+        const beforeExit = computeEnterExitProgress(item, 41, 60, enter, exit);
+        const duringExit = computeEnterExitProgress(item, 45, 60, enter, exit);
+
+        expect(beforeExit.exitProgress).toBe(0);
+        expect(duringExit.exitProgress).toBeCloseTo(1 / 6, 5);
+    });
+
+    it('treats a full-span typewriter exit as immediately hidden', () => {
+        const exit = {
+            ...createTypewriterConfig(),
+            fraction: 1,
+        };
+
+        const progress = computeEnterExitProgress(item, 0, 60, createTypewriterConfig(), exit);
+
+        expect(progress.exitProgress).toBe(1);
+    });
+
+    it('makes very small typewriter enter fractions finish quickly', () => {
+        const enter = {
+            ...createTypewriterConfig(),
+            fraction: 0.05,
+        };
+
+        const progress = computeEnterExitProgress(item, 3, 60, enter, createTypewriterConfig());
+
+        expect(progress.enterProgress).toBe(1);
     });
 
     it('keeps non-animated configs inert when all effects are disabled', () => {
