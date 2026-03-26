@@ -49,6 +49,7 @@ import { getMotionBlockPlugin, getMotionTrackPlugin, listMotionBlockPlugins } fr
 import { pickPreferredCloudSourceTrack } from '@/front-end/motion-blocks/cloud/source-tracks';
 import SnapOverlay from '@/front-end/components/timeline/SnapOverlay.vue';
 import RawLyricsPanel from '@/front-end/components/editor/RawLyricsPanel.vue';
+import SongMediaPanel from '@/front-end/components/editor/SongMediaPanel.vue';
 import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
 import MotionTrackListPanel from '@/front-end/components/editor/MotionTrackListPanel.vue';
 import MotionInspectorHost from '@/front-end/components/editor/MotionInspectorHost.vue';
@@ -719,41 +720,11 @@ watch(mode, () => {
     markDirty();
 });
 
-// Upload audio handler
-const audioInputRef = ref<HTMLInputElement | null>(null);
-const audioDragOver = ref(false);
-
-const handleAudioFile = async (file: File) => {
-    if (!project.value) return;
-    const updated = await ProjectService.uploadAudio(project.value.id, file);
+const onSongProjectUpdated = async ({ project: updated, kind }: { project: WolkProject; kind: 'audio' | 'cover' }) => {
     project.value = updated;
-    await loadAudio(updated.song.audioSrc);
-};
-
-const onAudioUpload = async (e: Event) => {
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    await handleAudioFile(file);
-    input.value = '';
-};
-
-const onAudioDrop = async (e: DragEvent) => {
-    e.preventDefault();
-    audioDragOver.value = false;
-    const file = e.dataTransfer?.files?.[0];
-    if (file && (file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|ogg|flac|aac|m4a)$/i))) {
-        await handleAudioFile(file);
+    if (kind === 'audio' && updated.song.audioSrc) {
+        await loadAudio(updated.song.audioSrc);
     }
-};
-
-const onAudioDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    audioDragOver.value = true;
-};
-
-const onAudioDragLeave = () => {
-    audioDragOver.value = false;
 };
 
 const audioDurationFallback = ref(0);
@@ -2184,23 +2155,11 @@ onUnmounted(() => {
         <!-- Sidebar -->
         <div class="editor__sidebar">
             <template v-if="mode === 'lyric'">
-                <div v-if="!project.song.audioSrc" class="sidebar-section">
-                    <div
-                        class="audio-drop-zone"
-                        :class="{ 'drag-over': audioDragOver }"
-                        @drop="onAudioDrop"
-                        @dragover="onAudioDragOver"
-                        @dragleave="onAudioDragLeave"
-                        @click="audioInputRef?.click()"
-                    >
-                        <span class="audio-drop-zone__icon">
-                            <SvgIcon type="mdi" :path="mdiMusicNote" :size="24" />
-                        </span>
-                        <span class="audio-drop-zone__text">Click or drag audio file here</span>
-                        <span class="audio-drop-zone__hint">MP3, WAV, OGG, FLAC, AAC</span>
-                    </div>
-                    <input ref="audioInputRef" type="file" accept=".mp3,.wav,.ogg,.flac,.aac,.m4a,audio/*" style="display:none" @change="onAudioUpload" />
-                </div>
+                <SongMediaPanel
+                    :project-id="project.id"
+                    :song="project.song"
+                    @project-updated="onSongProjectUpdated"
+                />
                 <TrackListPanel
                     :tracks="project.lyricTracks"
                     :raw-lyrics="rawLyrics"

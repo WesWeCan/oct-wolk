@@ -1,20 +1,23 @@
 import { vi } from 'vitest';
 
 export function createMockElectronAPI() {
+  const projects = {
+    create: vi.fn().mockResolvedValue({ id: 'test-id', title: 'Test' }),
+    save: vi.fn().mockImplementation((project: any) => Promise.resolve(project)),
+    load: vi.fn().mockResolvedValue(null),
+    list: vi.fn().mockResolvedValue([]),
+    uploadCover: vi.fn().mockResolvedValue({}),
+    uploadAudio: vi.fn().mockResolvedValue({}),
+    uploadAsset: vi.fn().mockResolvedValue({ url: '', fileName: '' }),
+    deleteAsset: vi.fn().mockResolvedValue(true),
+    delete: vi.fn().mockResolvedValue(true),
+  };
+
   return {
     getRandomNumber: vi.fn().mockResolvedValue(42),
     openStorageFolder: vi.fn().mockResolvedValue(undefined),
-    songs: {
-      create: vi.fn().mockResolvedValue({ id: 'test-id', title: 'Test' }),
-      save: vi.fn().mockImplementation((song: any) => Promise.resolve(song)),
-      load: vi.fn().mockResolvedValue(null),
-      list: vi.fn().mockResolvedValue([]),
-      uploadCover: vi.fn().mockResolvedValue({}),
-      uploadAudio: vi.fn().mockResolvedValue({}),
-      uploadAsset: vi.fn().mockResolvedValue({ url: '', fileName: '' }),
-      deleteAsset: vi.fn().mockResolvedValue(true),
-      delete: vi.fn().mockResolvedValue(true),
-    },
+    projects,
+    songs: projects,
     timeline: {
       createOrLoad: vi.fn().mockResolvedValue({ settings: { fps: 60, renderWidth: 1920, renderHeight: 1080, seed: 'test' }, scenes: [] }),
       save: vi.fn().mockImplementation((_id: string, tl: any) => Promise.resolve(tl)),
