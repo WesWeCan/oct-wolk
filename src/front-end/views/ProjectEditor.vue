@@ -60,12 +60,14 @@ import { useTimelineSelection } from '@/front-end/composables/timeline/useTimeli
 import { useVideoExport } from '@/front-end/composables/editor/useVideoExport';
 import { enforceNoOverlap, generateLineTrackFromVerseTrack, generateWordTrackFromLineTrack } from '@/front-end/utils/lyricTrackGenerators';
 import { cleanOrphanedOverrides } from '@/front-end/utils/motion/resolveMotionItems';
+import { getMotionBlockPropertyValue } from '@/front-end/utils/motion/blockPropertyPaths';
 import { upsertKeyframe } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import type { ExportDocument } from '@/types/export_types';
 import { buildFontFamilyChain, fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
 import { primeDocumentFont } from '@/front-end/utils/fonts/fontLoader';
 import { buildLegacyAudioModulationFrame } from '@/front-end/motion/legacy/legacy_audio_modulation_scaffold';
+import { normalizeScene3DSettings } from '@/front-end/utils/projectScene3D';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -824,12 +826,24 @@ watch(() => selectedMotionTrackId.value, () => {
     markDirty();
 });
 const motionClipboard = ref<MotionTrack | null>(null);
-const availableMotionPlugins = computed(() => listMotionBlockPlugins({ authorableOnly: true }));
+const availableMotionPlugins = computed(() => listMotionBlockPlugins({ authorableOnly: true }).map((plugin) => ({
+    type: plugin.type,
+    label: plugin.meta.label,
+    requiresSourceTrack: plugin.meta.requiresSourceTrack !== false,
+})));
 const selectedMotionTrack = computed<MotionTrack | null>(() => {
     if (!project.value || !selectedMotionTrackId.value) return null;
     return project.value.motionTracks.find((track) => track.id === selectedMotionTrackId.value) || null;
 });
+const selectedMotionPlugin = computed(() => (
+    selectedMotionTrack.value ? getMotionTrackPlugin(selectedMotionTrack.value) : null
+));
 const monitorManipulationEnabled = ref(true);
+const selectedTrackSupportsMonitorGizmo = computed(() => (
+    selectedMotionPlugin.value?.meta.supportsMonitorGizmo !== false
+));
+const enableMonitorGizmo = computed(() => monitorManipulationEnabled.value && selectedTrackSupportsMonitorGizmo.value);
+const normalizedScene3D = computed(() => normalizeScene3DSettings(project.value?.scene3d));
 
 const kfLabel = (path: string): string => {
     const def = getPropertyDef(path);
@@ -922,6 +936,30 @@ const gizmoAutoKeyframe = (track: MotionTrack, path: string, value: any) => {
     pts[ptIdx] = upsertKeyframe(pts[ptIdx] as any, frame, value, interp) as any;
 };
 
+const applyGizmoMutation = (track: MotionTrack, gizmoMode: 'move' | 'scale' | 'rotate', dx: number, dy: number) => {
+    if (track.locked) return;
+    const plugin = getMotionTrackPlugin(track);
+    const result = plugin.gizmo?.applyDelta?.(track, gizmoMode, dx, dy, {
+        renderWidth: targetWidth.value,
+        renderHeight: targetHeight.value,
+        currentBounds: motionRenderer.getRendererBounds(track.id),
+        currentFrame: playhead.value.frame,
+    });
+    if (!result) return;
+    const idx = project.value?.motionTracks.findIndex((item) => item.id === track.id) ?? -1;
+    if (idx >= 0 && project.value) {
+        project.value.motionTracks[idx] = result.track;
+        for (const path of result.autoKeyframePaths || []) {
+            gizmoAutoKeyframe(
+                project.value.motionTracks[idx],
+                path,
+                getMotionBlockPropertyValue(result.track.block, path),
+            );
+        }
+    }
+    markDirty();
+};
+
 const clampOffsetToConstraintRegion = (
     offset: number,
     anchor: 'left' | 'center' | 'right' | 'top' | 'bottom',
@@ -944,41 +982,20 @@ const motionGizmo = useMotionGizmo(
     previewOverlay,
     previewCanvas,
     selectedMotionTrack,
-    monitorManipulationEnabled,
+    enableMonitorGizmo as any,
     targetWidth,
     targetHeight,
     {
         onTransformDelta(gizmoMode, dx, dy) {
             const track = selectedMotionTrack.value;
-            if (!track || track.locked) return;
-            const plugin = getMotionTrackPlugin(track);
-            const result = plugin.gizmo?.applyDelta?.(track, gizmoMode, dx, dy, {
-                renderWidth: targetWidth.value,
-                renderHeight: targetHeight.value,
-                currentBounds: motionRenderer.getRendererBounds(track.id),
-                currentFrame: playhead.value.frame,
-            });
-            if (!result) return;
-            const idx = project.value?.motionTracks.findIndex((item) => item.id === track.id) ?? -1;
-            if (idx >= 0 && project.value) {
-                project.value.motionTracks[idx] = result.track;
-                for (const path of result.autoKeyframePaths || []) {
-                    const parts = path.split('.');
-                    const root = parts[0];
-                    const key = parts[1];
-                    const value = root === 'transform'
-                        ? (result.track.block.transform as any)[key]
-                        : (result.track.block.style as any)[key];
-                    gizmoAutoKeyframe(project.value.motionTracks[idx], path, value);
-                }
-            }
-            markDirty();
+            if (!track) return;
+            applyGizmoMutation(track, gizmoMode, dx, dy);
         },
         onDragStart() { pushUndo(); },
         onDragEnd() { scheduleSave(); },
     },
     (trackId) => motionRenderer.getRendererBounds(trackId),
-    monitorManipulationEnabled,
+    enableMonitorGizmo as any,
 );
 
 const selectedTrack = computed<LyricTrack | null>(() => {
@@ -1466,10 +1483,13 @@ const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
     if (!project.value) return;
     const plugin = getMotionBlockPlugin(payload.type);
     if (!plugin) return;
-    const sourceTrack = payload.type === 'cloud'
-        ? pickPreferredCloudSourceTrack(selectedTrack.value, project.value.lyricTracks)
-        : (selectedTrack.value || project.value.lyricTracks[0] || null);
-    if (!sourceTrack) return;
+    const requiresSourceTrack = plugin.meta.requiresSourceTrack !== false;
+    const sourceTrack = !requiresSourceTrack
+        ? null
+        : payload.type === 'cloud'
+            ? pickPreferredCloudSourceTrack(selectedTrack.value, project.value.lyricTracks)
+            : (selectedTrack.value || project.value.lyricTracks[0] || null);
+    if (requiresSourceTrack && !sourceTrack) return;
 
     const startMs = Math.max(0, Math.round(playheadMs.value));
     const defaultEnd = startMs + 10_000;
@@ -1490,6 +1510,13 @@ const onAddMotionTrack = (payload: { type: MotionTrack['block']['type'] }) => {
     pushUndo();
     project.value.motionTracks.push(track);
     selectedMotionTrackId.value = track.id;
+    markDirty();
+    scheduleSave();
+};
+
+const onUpdateScene3D = (scene3d: typeof normalizedScene3D.value) => {
+    if (!project.value) return;
+    project.value.scene3d = normalizeScene3DSettings(scene3d);
     markDirty();
     scheduleSave();
 };
@@ -1746,6 +1773,7 @@ const loadProject = async () => {
             router.push({ name: 'Index' });
             return;
         }
+        project.value.scene3d = normalizeScene3DSettings(project.value.scene3d);
         fps.value = project.value.settings.fps || 60;
         document.title = `${project.value.song.title || 'Untitled'} - W.O.L.K.`;
         undoRedo.clear();
@@ -2189,7 +2217,7 @@ onUnmounted(() => {
                     :lyric-tracks="project.lyricTracks"
                     :motion-tracks="project.motionTracks"
                     :selected-track-id="selectedMotionTrackId"
-                    :plugins="availableMotionPlugins.map((plugin) => ({ type: plugin.type, label: plugin.meta.label }))"
+                    :plugins="availableMotionPlugins"
                     @add-track="onAddMotionTrack"
                     @delete-track="onDeleteMotionTrack"
                     @select-track="onSelectMotionTrack"
@@ -2208,7 +2236,7 @@ onUnmounted(() => {
                     </div>
                     <div class="monitor-export-controls">
                         <button
-                            v-if="mode === 'motion'"
+                            v-if="mode === 'motion' && selectedTrackSupportsMonitorGizmo"
                             class="toolbar-toggle gizmo-toggle"
                             :class="{ active: monitorManipulationEnabled }"
                             title="Toggle transform overlay"
@@ -2298,8 +2326,10 @@ onUnmounted(() => {
                     :render-width="targetWidth"
                     :render-height="targetHeight"
                     :renderer-bounds="selectedMotionTrackId ? motionRenderer.getRendererBounds(selectedMotionTrackId) : null"
+                    :scene3d="normalizedScene3D"
                     @update-track="onUpdateMotionTrack"
                     @seek-to-ms="onSeekToMs"
+                    @update-scene3d="onUpdateScene3D"
                 />
                 <BackgroundInspector
                     :background-image="project.backgroundImage"

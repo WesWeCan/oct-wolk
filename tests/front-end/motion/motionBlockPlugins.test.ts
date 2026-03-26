@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cloudMotionBlockPlugin, ensureMotionBlockPluginsRegistered, subtitleMotionBlockPlugin } from '@/front-end/motion-blocks';
+import { cloudMotionBlockPlugin, ensureMotionBlockPluginsRegistered, primitive3dMotionBlockPlugin, subtitleMotionBlockPlugin } from '@/front-end/motion-blocks';
 import {
     getMotionBlockPlugin,
     getMotionTrackPlugin,
@@ -15,10 +15,15 @@ describe('motion block plugin registry', () => {
         const plugins = listMotionBlockPlugins({ authorableOnly: true });
         expect(plugins.map((plugin) => plugin.type)).toContain('subtitle');
         expect(plugins.map((plugin) => plugin.type)).toContain('cloud');
+        expect(plugins.map((plugin) => plugin.type)).toContain('primitive3d');
         expect(plugins.find((plugin) => plugin.type === 'subtitle')?.meta.label).toBe('Subtitle');
         expect(plugins.find((plugin) => plugin.type === 'cloud')?.meta.label).toBe('Cloud');
+        expect(plugins.find((plugin) => plugin.type === 'primitive3d')?.meta.label).toBe('3D Primitive');
         expect(plugins.find((plugin) => plugin.type === 'subtitle')?.inspectorComponent).toBeTruthy();
         expect(plugins.find((plugin) => plugin.type === 'cloud')?.inspectorComponent).toBeTruthy();
+        expect(plugins.find((plugin) => plugin.type === 'primitive3d')?.meta.requiresSourceTrack).toBe(false);
+        expect(plugins.find((plugin) => plugin.type === 'primitive3d')?.meta.ignoreSolo).toBe(true);
+        expect(plugins.find((plugin) => plugin.type === 'primitive3d')?.meta.supportsMonitorGizmo).toBe(false);
     });
 
     it('returns unsupported fallback for unknown block types', () => {
@@ -107,10 +112,40 @@ describe('motion block plugin registry', () => {
         ensureMotionBlockPluginsRegistered();
         expect(getPropertyDef('transform.offsetX')?.label).toBe('Reference X');
         expect(getPropertyDef('style.safeAreaOffsetY')?.label).toBe('Region Offset Y');
+        expect(getPropertyDef('params.object.positionX')?.label).toBe('Object X');
+        expect(getPropertyDef('params.camera.orbitYaw')).toBeUndefined();
     });
 
     it('does not expose fallback plugin as authorable', () => {
         ensureMotionBlockPluginsRegistered();
         expect(listMotionBlockPlugins({ authorableOnly: true }).some((plugin) => plugin.type === '__unsupported__')).toBe(false);
+    });
+
+    it('creates source-independent primitive3d tracks through the registry', () => {
+        ensureMotionBlockPluginsRegistered();
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project: {
+                id: 'project-1',
+                version: 2,
+                song: { title: 'Song', audioSrc: '' },
+                settings: { fps: 60, renderWidth: 1920, renderHeight: 1080, seed: 'seed', durationMs: 30000 },
+                font: { family: 'system-ui', fallbacks: ['sans-serif'], style: 'normal', weight: 400 },
+                rawLyrics: '',
+                lyricTracks: [],
+                motionTracks: [],
+                backgroundColor: '#000000',
+                backgroundImageFit: 'cover',
+                createdAt: 0,
+                updatedAt: 0,
+            },
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-3',
+            blockId: 'block-3',
+        });
+
+        expect(getMotionTrackPlugin(track).type).toBe('primitive3d');
+        expect(track.block.sourceTrackId).toBe('');
     });
 });

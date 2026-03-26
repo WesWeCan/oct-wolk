@@ -42,8 +42,11 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
         description: 'Renders lyric-backed subtitle text with styling, item overrides, safe-area layout, and 2D transform controls.',
         authorable: true,
         order: 1,
+        requiresSourceTrack: true,
+        renderSpace: '2d',
     },
     createTrack({ project, sourceTrack, startMs, endMs, color, trackId, blockId }) {
+        if (!sourceTrack) throw new Error('Subtitle motion block requires a source track.');
         return {
             id: trackId,
             name: `subtitle - ${sourceTrack.name}`,

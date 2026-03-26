@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { LyricTrack, MotionTrack, WolkProjectFont } from '@/types/project_types';
+import type { LyricTrack, MotionTrack, Scene3DSettings, WolkProjectFont } from '@/types/project_types';
 import type { RendererBounds } from '@/front-end/motion-blocks/core/types';
 import { getMotionBlockPlugin } from '@/front-end/motion-blocks/core/registry';
 
@@ -13,11 +13,13 @@ const props = defineProps<{
     renderWidth?: number;
     renderHeight?: number;
     rendererBounds?: RendererBounds | null;
+    scene3d?: Scene3DSettings;
 }>();
 
 defineEmits<{
     (e: 'update-track', track: MotionTrack): void;
     (e: 'seek-to-ms', ms: number): void;
+    (e: 'update-scene3d', value: Scene3DSettings): void;
 }>();
 
 const activePlugin = computed(() => {
@@ -43,8 +45,10 @@ const inspectorComponent = computed(() => activePlugin.value?.inspectorComponent
         :render-width="renderWidth"
         :render-height="renderHeight"
         :renderer-bounds="rendererBounds"
+        :scene3d="scene3d"
         @update-track="$emit('update-track', $event)"
         @seek-to-ms="$emit('seek-to-ms', $event)"
+        @update-scene3d="$emit('update-scene3d', $event)"
     />
     <div v-else class="inspector-empty">
         Unsupported motion block: <strong>{{ motionTrack.block.type }}</strong>

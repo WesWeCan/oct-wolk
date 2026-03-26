@@ -9,11 +9,16 @@ export interface MotionBlockMeta {
     description?: string;
     authorable?: boolean;
     order?: number;
+    requiresSourceTrack?: boolean;
+    /** When true, this track still renders while another track is soloed (muted/disabled still hide it). */
+    ignoreSolo?: boolean;
+    renderSpace?: '2d' | '3d';
+    supportsMonitorGizmo?: boolean;
 }
 
 export interface CreateMotionTrackArgs {
     project: WolkProject;
-    sourceTrack: LyricTrack;
+    sourceTrack?: LyricTrack | null;
     startMs: number;
     endMs: number;
     color: string;

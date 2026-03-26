@@ -43,8 +43,11 @@ export const cloudMotionBlockPlugin: MotionBlockPlugin = {
         description: 'Spreads the full in-range lyric dataset across a deterministic fitted cloud inside the constraint region.',
         authorable: true,
         order: 2,
+        requiresSourceTrack: true,
+        renderSpace: '2d',
     },
     createTrack({ project, sourceTrack, startMs, endMs, color, trackId, blockId }) {
+        if (!sourceTrack) throw new Error('Cloud motion block requires a source track.');
         return {
             id: trackId,
             name: `cloud - ${sourceTrack.name}`,
