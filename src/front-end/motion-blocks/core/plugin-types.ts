@@ -3,6 +3,7 @@ import type { FontDescriptor } from '@/front-end/utils/fonts/fontUtils';
 import type { KeyframePropertyDef } from '@/front-end/motion-blocks/core/keyframes';
 import type { MotionBlockRenderer, RendererBounds, ResolvedItem } from '@/front-end/motion-blocks/core/types';
 import type { LyricTrack, MotionBlock, MotionTrack, WolkProject, WolkProjectFont } from '@/types/project_types';
+import type { MotionPresetDocument } from '@/types/motion_preset_types';
 
 export interface MotionBlockMeta {
     label: string;
@@ -22,8 +23,14 @@ export interface CreateMotionTrackArgs {
 }
 
 export interface NormalizeMotionTrackArgs {
-    project: WolkProject;
+    project?: WolkProject;
     projectFont?: WolkProjectFont;
+}
+
+export interface MotionBlockPresetAdapter<TPayload = unknown, TDocument extends MotionPresetDocument<TPayload> = MotionPresetDocument<TPayload>> {
+    version: number;
+    extractPayload(track: MotionTrack, args: NormalizeMotionTrackArgs): TPayload;
+    applyPreset(track: MotionTrack, document: TDocument, args: NormalizeMotionTrackArgs): MotionTrack;
 }
 
 export interface MotionBlockPlugin {
@@ -48,6 +55,7 @@ export interface MotionBlockPlugin {
     cleanOrphanedOverrides?(project: WolkProject): { removedCount: number };
     collectFonts?(project: WolkProject, track: MotionTrack): FontDescriptor[];
     getKeyframeProperties?(): KeyframePropertyDef[];
+    presets?: MotionBlockPresetAdapter<any>;
     gizmo?: {
         // Reuse the shared useMotionGizmo pipeline for new blocks instead of cloning subtitle monitor logic.
         // Block-specific math belongs in these hooks plus renderer.getLastBounds(), not in a second gizmo implementation.

@@ -3,6 +3,7 @@ import { ipcMain, shell } from 'electron';
 import { getInternalStoragePath, isPathInsideRoot } from './internal-storage';
 import { listSystemFonts } from './fonts';
 import { createProject, loadProject, saveProject, listProjects, deleteProject, saveProjectAudio, saveProjectCover, saveProjectAsset } from './project-storage';
+import { deleteMotionPreset, listMotionPresets, loadMotionPreset, saveMotionPreset } from './motion-preset-storage';
 import fs from 'fs';
 import path from 'path';
 import { getDocStoragePath } from './internal-storage';
@@ -65,6 +66,19 @@ export const registerInternalProcesses = async () => {
     });
     ipcMain.handle('projects:uploadAsset', (_event, projectId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => {
         return saveProjectAsset(projectId, fileData, originalFileName, preferredFileName);
+    });
+
+    ipcMain.handle('motion-presets:list', (_event, blockType: string) => {
+        return listMotionPresets(blockType);
+    });
+    ipcMain.handle('motion-presets:load', (_event, blockType: string, presetId: string) => {
+        return loadMotionPreset(blockType, presetId);
+    });
+    ipcMain.handle('motion-presets:save', (_event, preset) => {
+        return saveMotionPreset(preset);
+    });
+    ipcMain.handle('motion-presets:delete', (_event, blockType: string, presetId: string) => {
+        return deleteMotionPreset(blockType, presetId);
     });
 
     // Fonts API

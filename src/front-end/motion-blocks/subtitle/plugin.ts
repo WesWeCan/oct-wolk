@@ -17,6 +17,7 @@ import type { MotionBlockPlugin } from '@/front-end/motion-blocks/core/plugin-ty
 import { SubtitleRenderer } from '@/front-end/motion-blocks/subtitle/renderer/SubtitleRenderer';
 import SubtitleInspector from '@/front-end/motion-blocks/subtitle/inspector/SubtitleInspector.vue';
 import type { MotionTrack, WolkProjectFont } from '@/types/project_types';
+import { subtitleMotionPresetAdapter } from '@/front-end/motion-blocks/subtitle/presets';
 
 function inheritProjectFont(track: MotionTrack, projectFont?: WolkProjectFont) {
     const style = track.block.style || { ...DEFAULT_SUBTITLE_STYLE };
@@ -106,6 +107,17 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
     cleanOrphanedOverrides: cleanSubtitleOrphanedOverrides,
     collectFonts: collectSubtitleFonts,
     getKeyframeProperties: () => SUBTITLE_KEYFRAME_PROPERTIES,
+    presets: {
+        version: subtitleMotionPresetAdapter.version,
+        extractPayload(track, args) {
+            const normalized = subtitleMotionBlockPlugin.normalizeTrack(track, args);
+            return subtitleMotionPresetAdapter.extractPayload(normalized, args);
+        },
+        applyPreset(track, document, args) {
+            const updated = subtitleMotionPresetAdapter.applyPreset(track, document, args);
+            return subtitleMotionBlockPlugin.normalizeTrack(updated, args);
+        },
+    },
     inspectorComponent: SubtitleInspector,
     gizmo: {
         getFallbackBounds: getSubtitleFallbackBounds,

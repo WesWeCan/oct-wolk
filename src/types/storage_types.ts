@@ -1,6 +1,7 @@
 export enum DOCUMENT_STORAGE_FOLDER {
     SONGS = 'songs',
-    EXPORTS = 'exports'
+    EXPORTS = 'exports',
+    PRESETS = 'presets',
 }
 
 
