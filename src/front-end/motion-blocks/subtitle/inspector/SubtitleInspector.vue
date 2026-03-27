@@ -12,6 +12,14 @@ import { upsertKeyframe, removeKeyframeAtIndex, evalInterpolatedAtFrame } from '
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
 import { applyFontSelectionToMotionStyle } from '@/front-end/utils/fonts/fontUtils';
+import { createDefaultSubtitleEnter, createDefaultSubtitleExit } from '@/front-end/motion-blocks/subtitle/defaults';
+import { resolveTextRevealParams } from '@/front-end/utils/motion/textReveal';
+import type { TextRevealParams } from '@/front-end/utils/motion/textReveal';
+import {
+    cloneMotionEnterExit,
+    createMotionVisualOffEnterExit,
+    motionEnterExitEquals,
+} from '@/front-end/utils/motion/motionEnterExitPresets';
 
 const props = defineProps<{
     motionTrack: MotionTrack | null;
@@ -178,6 +186,11 @@ const selectedItemExitValue = computed<MotionEnterExit | null>(() => {
     return mergeEnterExitForEditor(props.motionTrack.block.exit, override);
 });
 
+const textRevealParams = computed<TextRevealParams>(() => {
+    if (!props.motionTrack) return resolveTextRevealParams(null);
+    return resolveTextRevealParams(props.motionTrack.block.params);
+});
+
 const updateSourceTrack = (sourceTrackId: string) => {
     if (!props.motionTrack || isLocked.value) return;
     emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, sourceTrackId } });
@@ -328,25 +341,47 @@ const updateAnchor = (x: AnchorX, y: AnchorY) => {
     });
 };
 
-const cloneEnterExit = (value: MotionEnterExit): MotionEnterExit => ({
-    ...value,
-    fade: value.fade ? { ...value.fade } : value.fade,
-    move: value.move ? { ...value.move } : value.move,
-    scale: value.scale ? { ...value.scale } : value.scale,
-});
+const blockMotionStillAtDefaults = (): boolean => {
+    if (!props.motionTrack) return false;
+    return motionEnterExitEquals(props.motionTrack.block.enter, createDefaultSubtitleEnter())
+        && motionEnterExitEquals(props.motionTrack.block.exit, createDefaultSubtitleExit());
+};
 
 const updateEnterExit = (which: 'enter' | 'exit', value: MotionEnterExit) => {
     if (!props.motionTrack || isLocked.value) return;
     if (selectedItemId.value) {
         const overrideKey = which === 'enter' ? 'enterOverride' : 'exitOverride';
         const { overrides, idx } = getOrCreateOverride(selectedItemId.value);
-        overrides[idx] = { ...overrides[idx], [overrideKey]: cloneEnterExit(value) };
+        overrides[idx] = { ...overrides[idx], [overrideKey]: cloneMotionEnterExit(value) };
         emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, overrides } });
         return;
     }
     emit('update-track', {
         ...props.motionTrack,
-        block: { ...props.motionTrack.block, [which]: cloneEnterExit(value) },
+        block: { ...props.motionTrack.block, [which]: cloneMotionEnterExit(value) },
+    });
+};
+
+const updateTextReveal = (value: TextRevealParams) => {
+    if (!props.motionTrack || isLocked.value || selectedItemId.value) return;
+    const shouldAutoApplyMotionOff = textRevealParams.value.textRevealMode !== 'typewriter'
+        && value.textRevealMode === 'typewriter'
+        && blockMotionStillAtDefaults();
+    emit('update-track', {
+        ...props.motionTrack,
+        block: {
+            ...props.motionTrack.block,
+            enter: shouldAutoApplyMotionOff
+                ? createMotionVisualOffEnterExit(props.motionTrack.block.enter)
+                : props.motionTrack.block.enter,
+            exit: shouldAutoApplyMotionOff
+                ? createMotionVisualOffEnterExit(props.motionTrack.block.exit)
+                : props.motionTrack.block.exit,
+            params: {
+                ...(props.motionTrack.block.params || {}),
+                ...value,
+            },
+        },
     });
 };
 
@@ -738,7 +773,10 @@ const resetSelectedItemAnimationOverride = () => {
                         :track="motionTrack"
                         :enter-value="selectedItemEnterValue"
                         :exit-value="selectedItemExitValue"
+                        :reveal-value="textRevealParams"
+                        :show-reveal="!selectedItemId"
                         @update-enter-exit="updateEnterExit"
+                        @update-text-reveal="updateTextReveal"
                     />
                 </div>
             </details>

@@ -9,6 +9,7 @@ import type {
 import type { ResolvedItem } from '@/front-end/motion-blocks/core/types';
 import { computeEnterExitProgress, msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
 import { extractPlainTextFromTipTap } from '@/front-end/utils/motion/parseTipTapToSpans';
+import { computeTextRevealProgress } from '@/front-end/utils/motion/textReveal';
 import { DEFAULT_SUBTITLE_ENTER_EXIT } from '@/front-end/motion-blocks/subtitle/defaults';
 
 const isItemWithinBlockRange = (item: TimelineItem, block: MotionBlock): boolean => {
@@ -98,6 +99,13 @@ function resolveItems(
                 resolvedEnter,
                 resolvedExit,
             );
+            const textRevealProgress = computeTextRevealProgress(
+                item,
+                currentFrame,
+                fps,
+                resolvedEnter,
+                resolvedExit,
+            );
 
             return {
                 id: item.id,
@@ -107,6 +115,8 @@ function resolveItems(
                 endMs: item.endMs,
                 enterProgress,
                 exitProgress,
+                textRevealEnterProgress: textRevealProgress.enterProgress,
+                textRevealExitProgress: textRevealProgress.exitProgress,
                 isActive: isItemActiveAtFrame(item, currentFrame, fps),
                 style: {
                     ...block.style,

@@ -2,6 +2,7 @@ import type { MotionStyle, MotionTransform, TextAlign, BoundsMode, WrapMode, Ove
 import type { MotionBlockRenderer, MotionRenderContext, ResolvedItem, RendererBounds } from '@/front-end/motion-blocks/core/types';
 import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
 import { buildFont, spansFromRichText, spansFromWordStyleMap } from '@/front-end/utils/motion/renderTipTapSpans';
+import { applyTextRevealToSpans, textRevealConfigFromParams } from '@/front-end/utils/motion/textReveal';
 import type { StyledSpan } from '@/front-end/utils/motion/parseTipTapToSpans';
 
 const clamp01 = (value: unknown, fallback = 1): number => {
@@ -325,13 +326,23 @@ export class SubtitleRenderer implements MotionBlockRenderer {
 
         const resolvedStyle = applyAnimatedStyle(item.style, animatedProps);
         const resolvedTransform = applyAnimatedTransform(item.transform, animatedProps);
+        const revealConfig = textRevealConfigFromParams(context.block.params);
 
         const displayText = applyTextCase(item.text, resolvedStyle.textCase);
-        let spans = spansFromRichText(item.richText, displayText);
-        if (spans.length === 1 && !item.richText && item.wordStyleMap && Object.keys(item.wordStyleMap).length > 0) {
-            spans = spansFromWordStyleMap(displayText, item.wordStyleMap);
+        let fullSpans = spansFromRichText(item.richText, displayText);
+        if (fullSpans.length === 1 && !item.richText && item.wordStyleMap && Object.keys(item.wordStyleMap).length > 0) {
+            fullSpans = spansFromWordStyleMap(displayText, item.wordStyleMap);
         }
-        if (!displayText && spans.length === 0) return;
+        if (!displayText && fullSpans.length === 0) return;
+
+        const revealResult = applyTextRevealToSpans(
+            fullSpans,
+            item.textRevealEnterProgress ?? item.enterProgress,
+            item.textRevealExitProgress ?? item.exitProgress,
+            revealConfig,
+        );
+        const spans = revealResult.spans;
+        if (spans.length === 0 && revealResult.cursorCharIndex === null) return;
 
         const enterExitAlpha = applyEnterExitToAlpha(
             item.enterProgress,
@@ -379,6 +390,9 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             : Infinity;
 
         let lines = wrapSpans(ctx, spanMetrics, availableWidth, resolvedStyle, wrapMode);
+        if (lines.length === 0 && revealResult.cursorCharIndex !== null) {
+            lines = [{ metrics: [], width: 0 }];
+        }
 
         if (wrapMode !== 'none') {
             lines = applyOverflow(lines, maxLines, overflowBehavior, ctx, resolvedStyle);
@@ -502,6 +516,7 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         }
 
         const baseAlpha = ctx.globalAlpha;
+        let revealCursorAnchor: { x: number; y: number; span: StyledSpan } | null = null;
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
             const line = lines[lineIdx];
             const lineY = shiftedContentTop + lineIdx * lineHeightPx;
@@ -528,6 +543,13 @@ export class SubtitleRenderer implements MotionBlockRenderer {
 
             ctx.textAlign = 'left';
             let cursorX = startX;
+            if (revealResult.cursorCharIndex !== null) {
+                revealCursorAnchor = {
+                    x: cursorX,
+                    y: lineY,
+                    span: line.metrics[0]?.span ?? fullSpans[0] ?? { text: '|' },
+                };
+            }
 
             for (const metric of line.metrics) {
                 ctx.font = buildFont(resolvedStyle, metric.span);
@@ -563,7 +585,25 @@ export class SubtitleRenderer implements MotionBlockRenderer {
                 if (justifyThisLine && /^\s+$/.test(metric.span.text)) {
                     cursorX += extraWordSpacing;
                 }
+                if (revealResult.cursorCharIndex !== null) {
+                    revealCursorAnchor = {
+                        x: cursorX,
+                        y: lineY,
+                        span: metric.span,
+                    };
+                }
             }
+        }
+
+        if (revealCursorAnchor && textOpacity > 0) {
+            const cursorColor = item.forceStyleColor
+                ? resolvedStyle.color
+                : (revealCursorAnchor.span.color || resolvedStyle.color);
+            ctx.font = buildFont(resolvedStyle, revealCursorAnchor.span);
+            ctx.globalAlpha = baseAlpha * textOpacity;
+            ctx.fillStyle = cursorColor;
+            ctx.fillText('|', revealCursorAnchor.x, revealCursorAnchor.y);
+            ctx.globalAlpha = baseAlpha;
         }
 
         ctx.restore();

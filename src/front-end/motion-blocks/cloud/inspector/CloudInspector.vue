@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { LyricTrack, MotionStyle, MotionTrack, WolkProjectFont } from '@/types/project_types';
+import type { LyricTrack, MotionEnterExit, MotionStyle, MotionTrack, WolkProjectFont } from '@/types/project_types';
 import MotionAppearanceTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionAppearanceTab.vue';
 import CloudSafeAreaTab from '@/front-end/motion-blocks/cloud/inspector/tabs/CloudSafeAreaTab.vue';
+import MotionEnterExitEditor from '@/front-end/components/editor/motion/MotionEnterExitEditor.vue';
+import MotionTextRevealEditor from '@/front-end/components/editor/motion/MotionTextRevealEditor.vue';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import { applyFontSelectionToMotionStyle } from '@/front-end/utils/fonts/fontUtils';
 import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
@@ -12,7 +14,15 @@ import {
     isCloudSupportedSourceTrack,
     listCloudSupportedSourceTracks,
 } from '@/front-end/motion-blocks/cloud/source-tracks';
+import { createDefaultCloudEnter, createDefaultCloudExit } from '@/front-end/motion-blocks/cloud/defaults';
 import { resolveCloudLayoutParams } from '@/front-end/motion-blocks/cloud/params';
+import type { CloudExitMode } from '@/front-end/motion-blocks/cloud/params';
+import type { TextRevealParams } from '@/front-end/utils/motion/textReveal';
+import {
+    cloneMotionEnterExit,
+    createMotionVisualOffEnterExit,
+    motionEnterExitEquals,
+} from '@/front-end/utils/motion/motionEnterExitPresets';
 
 const props = defineProps<{
     motionTrack: MotionTrack | null;
@@ -93,11 +103,42 @@ const autoKeyframe = (path: string, value: any, propertyTracks: any[]): any[] =>
     return updated;
 };
 
-const updateParam = (key: string, value: number) => {
+const updateParam = (key: string, value: number | string) => {
     if (!props.motionTrack || isLocked.value) return;
     const block = { ...props.motionTrack.block };
     block.params = { ...(block.params || {}), [key]: value };
     emit('update-track', { ...props.motionTrack, block });
+};
+
+const updateExitMode = (mode: CloudExitMode) => updateParam('exitMode', mode);
+const blockMotionStillAtDefaults = (): boolean => {
+    if (!props.motionTrack) return false;
+    return motionEnterExitEquals(props.motionTrack.block.enter, createDefaultCloudEnter())
+        && motionEnterExitEquals(props.motionTrack.block.exit, createDefaultCloudExit());
+};
+
+const updateTextReveal = (value: TextRevealParams) => {
+    if (!props.motionTrack || isLocked.value) return;
+    const block = { ...props.motionTrack.block };
+    const shouldAutoApplyMotionOff = layoutParams.value.textRevealMode !== 'typewriter'
+        && value.textRevealMode === 'typewriter'
+        && blockMotionStillAtDefaults();
+    block.enter = shouldAutoApplyMotionOff
+        ? createMotionVisualOffEnterExit(block.enter)
+        : block.enter;
+    block.exit = shouldAutoApplyMotionOff
+        ? createMotionVisualOffEnterExit(block.exit)
+        : block.exit;
+    block.params = { ...(block.params || {}), ...value };
+    emit('update-track', { ...props.motionTrack, block });
+};
+
+const updateEnterExit = (which: 'enter' | 'exit', value: MotionEnterExit) => {
+    if (!props.motionTrack || isLocked.value) return;
+    emit('update-track', {
+        ...props.motionTrack,
+        block: { ...props.motionTrack.block, [which]: cloneMotionEnterExit(value) },
+    });
 };
 
 const updateSourceTrack = (sourceTrackId: string) => {
@@ -323,6 +364,62 @@ const togglePropertyKeyframing = (path: string) => {
                         @toggle-keyframe="toggleKeyframe"
                         @toggle-property-keyframing="togglePropertyKeyframing"
                     />
+                </div>
+            </details>
+
+            <details class="inspector-section">
+                <summary class="inspector-section__title">Animation</summary>
+                <div class="inspector-section__content">
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Text Reveal</summary>
+                        <MotionTextRevealEditor
+                            :value="layoutParams"
+                            :disabled="isLocked"
+                            @update-text-reveal="updateTextReveal"
+                        />
+                    </details>
+
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Lifecycle</summary>
+                        <div class="inspector-field">
+                            <span class="inspector-hint">Controls when each word starts exiting inside the cloud.</span>
+                        </div>
+
+                        <div class="inspector-field">
+                            <label>Exit Behavior</label>
+                            <div class="segmented-control">
+                                <button
+                                    :class="{ active: layoutParams.exitMode === 'stay' }"
+                                    @click="updateExitMode('stay')"
+                                >Stay Until Block Exit</button>
+                                <button
+                                    :class="{ active: layoutParams.exitMode === 'perItem' }"
+                                    @click="updateExitMode('perItem')"
+                                >Exit Per Word</button>
+                            </div>
+                        </div>
+
+                        <AnimatableNumberField
+                            v-if="layoutParams.exitMode === 'perItem'"
+                            label="Exit Delay (ms)"
+                            :model-value="layoutParams.exitDelayMs"
+                            :min="0"
+                            :max="60000"
+                            :step="50"
+                            :fallback-value="0"
+                            hint="Delay in milliseconds after a word ends before its exit animation begins."
+                            @update:model-value="(v: number) => updateParam('exitDelayMs', Math.max(0, v))"
+                        />
+                    </details>
+
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Motion</summary>
+                        <MotionEnterExitEditor
+                            :enter-value="motionTrack.block.enter"
+                            :exit-value="motionTrack.block.exit"
+                            @update-enter-exit="updateEnterExit"
+                        />
+                    </details>
                 </div>
             </details>
         </template>

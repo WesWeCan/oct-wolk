@@ -2320,6 +2320,174 @@ body:has(.project-editor) {
     }
 }
 
+.motion-text-reveal-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    &__stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    &__stat {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 7px 8px;
+        border: 1px solid #333;
+        border-radius: 6px;
+        background: #171717;
+        color: #b7b7b7;
+        font-size: 11px;
+
+        strong {
+            color: #f2f2f2;
+            font-size: 13px;
+        }
+    }
+}
+
+.typewriter-timing-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    &__label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    &__stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    &__stat {
+        padding: 6px 8px;
+        border: 1px solid #333;
+        border-radius: 4px;
+        background: #171717;
+        color: #bbb;
+        font-size: 11px;
+        text-align: center;
+
+        &.is-disabled {
+            opacity: 0.45;
+        }
+    }
+
+    &__track {
+        position: relative;
+        height: 44px;
+        border: 1px solid #333;
+        border-radius: 999px;
+        background: #141414;
+        overflow: hidden;
+    }
+
+    &__segment {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border: none;
+        padding: 0;
+    }
+
+    &__segment--enter {
+        left: 0;
+        background: rgba(0, 212, 255, 0.15);
+    }
+
+    &__segment--hold {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 0;
+        background: rgba(255, 255, 255, 0.06);
+        color: #d0d0d0;
+        cursor: grab;
+        border-radius: 0;
+        box-shadow: none;
+        transition: background-color 120ms ease, color 120ms ease;
+
+        &:hover:not(:disabled),
+        &:active:not(:disabled),
+        &:focus-visible {
+            transform: none;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: none;
+        }
+    }
+
+    &__segment--exit {
+        background: rgba(255, 107, 107, 0.16);
+    }
+
+    &__segment-label,
+    &__handle-label {
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        pointer-events: none;
+    }
+
+    &__handle {
+        position: absolute;
+        top: 50%;
+        z-index: 2;
+        width: 16px;
+        height: 32px;
+        padding: 0;
+        min-height: 0;
+        border: 1px solid #00d4ff;
+        border-radius: 999px;
+        background: #0f0f0f;
+        transform: translate(-50%, -50%);
+        cursor: ew-resize;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #00d4ff;
+        box-shadow: none;
+        transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
+
+        &:hover:not(:disabled),
+        &:active:not(:disabled),
+        &:focus-visible {
+            transform: translate(-50%, -50%);
+            background: #171717;
+            box-shadow: none;
+        }
+
+        &.is-disabled {
+            border-color: #555;
+            color: #555;
+            cursor: default;
+        }
+    }
+
+    &__handle--start {
+        z-index: 3;
+    }
+
+    &__handle--end {
+        z-index: 2;
+    }
+
+    &__legend {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 10px;
+        color: #9a9a9a;
+        letter-spacing: 0.03em;
+    }
+}
+
 // Font management inside ProjectInspector
 .font-preview {
     background: #1a1a1a;

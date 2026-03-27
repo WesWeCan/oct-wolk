@@ -16,6 +16,7 @@ import type { MotionBlockPlugin } from '@/front-end/motion-blocks/core/plugin-ty
 import { SubtitleRenderer } from '@/front-end/motion-blocks/subtitle/renderer/SubtitleRenderer';
 import SubtitleInspector from '@/front-end/motion-blocks/subtitle/inspector/SubtitleInspector.vue';
 import type { MotionTrack, WolkProjectFont } from '@/types/project_types';
+import { DEFAULT_TEXT_REVEAL_PARAMS, resolveTextRevealParams } from '@/front-end/utils/motion/textReveal';
 
 function inheritProjectFont(track: MotionTrack, projectFont?: WolkProjectFont) {
     const style = track.block.style || { ...DEFAULT_SUBTITLE_STYLE };
@@ -71,7 +72,7 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
                 enter: createDefaultSubtitleEnter(),
                 exit: createDefaultSubtitleExit(),
                 overrides: [],
-                params: {},
+                params: { ...DEFAULT_TEXT_REVEAL_PARAMS },
                 propertyTracks: [],
             },
         };
@@ -91,6 +92,10 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
                 ...track.block,
                 type: 'subtitle',
                 style: inheritProjectFont(track, projectFont),
+                params: {
+                    ...(track.block.params || {}),
+                    ...resolveTextRevealParams(track.block.params),
+                },
                 propertyTracks,
             },
         };
