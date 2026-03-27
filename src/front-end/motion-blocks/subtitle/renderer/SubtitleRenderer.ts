@@ -1,7 +1,8 @@
 import type { MotionStyle, MotionTransform, TextAlign, BoundsMode, WrapMode, OverflowBehavior } from '@/types/project_types';
 import type { MotionBlockRenderer, MotionRenderContext, ResolvedItem, RendererBounds } from '@/front-end/motion-blocks/core/types';
-import { applyEnterExitToAlpha, applyEnterExitToTransform, normalizeEnterExit } from '@/front-end/utils/motion/enterExitAnimation';
+import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
 import { buildFont, spansFromRichText, spansFromWordStyleMap } from '@/front-end/utils/motion/renderTipTapSpans';
+import { applyTextRevealToSpans, textRevealConfigFromParams } from '@/front-end/utils/motion/textReveal';
 import type { StyledSpan } from '@/front-end/utils/motion/parseTipTapToSpans';
 
 const clamp01 = (value: unknown, fallback = 1): number => {
@@ -301,80 +302,6 @@ function applyOverflow(
     return truncated;
 }
 
-interface RenderUnit {
-    span: StyledSpan;
-    text: string;
-    width: number;
-    addWordSpacingAfter: boolean;
-}
-
-interface PositionedRenderUnit extends RenderUnit {
-    x: number;
-    y: number;
-}
-
-const graphemeSegmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
-    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
-    : null;
-
-const splitIntoGraphemes = (text: string): string[] => {
-    if (!text) return [];
-    if (graphemeSegmenter) {
-        return Array.from(graphemeSegmenter.segment(text), (segment) => segment.segment);
-    }
-    return Array.from(text);
-};
-
-function splitMetricIntoUnits(
-    ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-    metric: SpanMetric,
-    resolvedStyle: MotionStyle,
-): RenderUnit[] {
-    const segments = splitIntoGraphemes(metric.span.text);
-    if (segments.length === 0) return [];
-
-    ctx.font = buildFont(resolvedStyle, metric.span);
-    const rawWidths = segments.map((segment) => ctx.measureText(segment).width);
-    const rawTotal = rawWidths.reduce((sum, width) => sum + width, 0);
-    const fallbackWidth = segments.length > 0 ? metric.width / segments.length : metric.width;
-    const widths = rawTotal > 0
-        ? rawWidths.map((width) => width * (metric.width / rawTotal))
-        : segments.map(() => fallbackWidth);
-    const shouldAddWordSpacingAfter = /^\s+$/.test(metric.span.text);
-
-    return segments.map((segment, index) => ({
-        span: { ...metric.span, text: segment },
-        text: segment,
-        width: widths[index] ?? 0,
-        addWordSpacingAfter: shouldAddWordSpacingAfter && index === segments.length - 1,
-    }));
-}
-
-function resolveTypewriterCursorAnchor(
-    units: PositionedRenderUnit[],
-    boundaryIndex: number,
-): { x: number; y: number; span: StyledSpan } | null {
-    if (units.length === 0) return null;
-
-    const nextUnit = units[boundaryIndex];
-    if (nextUnit) {
-        return {
-            x: nextUnit.x,
-            y: nextUnit.y,
-            span: nextUnit.span,
-        };
-    }
-
-    const previousUnit = units[Math.max(0, boundaryIndex - 1)];
-    if (!previousUnit) return null;
-
-    return {
-        x: previousUnit.x + previousUnit.width,
-        y: previousUnit.y,
-        span: previousUnit.span,
-    };
-}
-
 export class SubtitleRenderer implements MotionBlockRenderer {
     lastBounds: RendererBounds | null = null;
 
@@ -399,13 +326,23 @@ export class SubtitleRenderer implements MotionBlockRenderer {
 
         const resolvedStyle = applyAnimatedStyle(item.style, animatedProps);
         const resolvedTransform = applyAnimatedTransform(item.transform, animatedProps);
+        const revealConfig = textRevealConfigFromParams(context.block.params, item?.enter, item?.exit);
 
         const displayText = applyTextCase(item.text, resolvedStyle.textCase);
-        let spans = spansFromRichText(item.richText, displayText);
-        if (spans.length === 1 && !item.richText && item.wordStyleMap && Object.keys(item.wordStyleMap).length > 0) {
-            spans = spansFromWordStyleMap(displayText, item.wordStyleMap);
+        let fullSpans = spansFromRichText(item.richText, displayText);
+        if (fullSpans.length === 1 && !item.richText && item.wordStyleMap && Object.keys(item.wordStyleMap).length > 0) {
+            fullSpans = spansFromWordStyleMap(displayText, item.wordStyleMap);
         }
-        if (!displayText && spans.length === 0) return;
+        if (!displayText && fullSpans.length === 0) return;
+
+        const revealResult = applyTextRevealToSpans(
+            fullSpans,
+            item.textRevealEnterProgress ?? item.enterProgress,
+            item.textRevealExitProgress ?? item.exitProgress,
+            revealConfig,
+        );
+        const spans = revealResult.spans;
+        if (spans.length === 0 && revealResult.cursorCharIndex === null) return;
 
         const enterExitAlpha = applyEnterExitToAlpha(
             item.enterProgress,
@@ -453,6 +390,9 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             : Infinity;
 
         let lines = wrapSpans(ctx, spanMetrics, availableWidth, resolvedStyle, wrapMode);
+        if (lines.length === 0 && revealResult.cursorCharIndex !== null) {
+            lines = [{ metrics: [], width: 0 }];
+        }
 
         if (wrapMode !== 'none') {
             lines = applyOverflow(lines, maxLines, overflowBehavior, ctx, resolvedStyle);
@@ -536,8 +476,6 @@ export class SubtitleRenderer implements MotionBlockRenderer {
             width: baseLocalBox.width,
             height: baseLocalBox.height,
         };
-        const enterUsesTypewriter = normalizeEnterExit(item.enter).style === 'typewriter';
-        const exitUsesTypewriter = normalizeEnterExit(item.exit).style === 'typewriter';
 
         ctx.save();
         ctx.translate(drawReferenceX, drawReferenceY);
@@ -578,7 +516,7 @@ export class SubtitleRenderer implements MotionBlockRenderer {
         }
 
         const baseAlpha = ctx.globalAlpha;
-        const positionedLines: PositionedRenderUnit[][] = [];
+        let revealCursorAnchor: { x: number; y: number; span: StyledSpan } | null = null;
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
             const line = lines[lineIdx];
             const lineY = shiftedContentTop + lineIdx * lineHeightPx;
@@ -605,98 +543,67 @@ export class SubtitleRenderer implements MotionBlockRenderer {
 
             ctx.textAlign = 'left';
             let cursorX = startX;
-            const positionedUnits: PositionedRenderUnit[] = [];
+            if (revealResult.cursorCharIndex !== null) {
+                revealCursorAnchor = {
+                    x: cursorX,
+                    y: lineY,
+                    span: line.metrics[0]?.span ?? fullSpans[0] ?? { text: '|' },
+                };
+            }
 
             for (const metric of line.metrics) {
-                const units = enterUsesTypewriter || exitUsesTypewriter
-                    ? splitMetricIntoUnits(ctx, metric, resolvedStyle)
-                    : [{
-                        span: metric.span,
-                        text: metric.span.text,
-                        width: metric.width,
-                        addWordSpacingAfter: justifyThisLine && /^\s+$/.test(metric.span.text),
-                    }];
+                ctx.font = buildFont(resolvedStyle, metric.span);
 
-                for (const unit of units) {
-                    positionedUnits.push({
-                        ...unit,
-                        x: cursorX,
-                        y: lineY,
-                    });
-                    cursorX += unit.width;
-                    if (justifyThisLine && unit.addWordSpacingAfter) {
-                        cursorX += extraWordSpacing;
-                    }
+                if (outlineWidth > 0) {
+                    ctx.globalAlpha = baseAlpha;
+                    ctx.strokeStyle = outlineColor;
+                    ctx.lineWidth = outlineWidth;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(metric.span.text, cursorX, lineY);
                 }
-            }
-            positionedLines.push(positionedUnits);
-        }
 
-        const flattenedUnits = positionedLines.flat();
-        const totalUnits = flattenedUnits.length;
-        const enterVisibleCount = enterUsesTypewriter
-            ? Math.max(0, Math.min(totalUnits, Math.floor(clamp01(item.enterProgress, 0) * totalUnits)))
-            : totalUnits;
-        const exitVisibleLimit = exitUsesTypewriter
-            ? Math.max(0, totalUnits - Math.floor(clamp01(item.exitProgress, 0) * totalUnits))
-            : totalUnits;
-        const showEnterCursor = enterUsesTypewriter && !!item.enter.showCursor && clamp01(item.enterProgress, 0) < 1;
-        const showExitCursor = exitUsesTypewriter
-            && !!item.exit.showCursor
-            && clamp01(item.exitProgress, 0) > 0
-            && clamp01(item.exitProgress, 0) < 1;
-
-        flattenedUnits.forEach((unit, index) => {
-            if ((enterUsesTypewriter && index >= enterVisibleCount) || (exitUsesTypewriter && index >= exitVisibleLimit)) {
-                return;
-            }
-
-            ctx.font = buildFont(resolvedStyle, unit.span);
-
-            if (outlineWidth > 0) {
-                ctx.globalAlpha = baseAlpha;
-                ctx.strokeStyle = outlineColor;
-                ctx.lineWidth = outlineWidth;
-                ctx.lineJoin = 'round';
-                ctx.strokeText(unit.text, unit.x, unit.y);
-            }
-
-            const spanColor = item.forceStyleColor ? resolvedStyle.color : (unit.span.color || resolvedStyle.color);
-            if (textOpacity > 0) {
-                ctx.globalAlpha = baseAlpha * textOpacity;
-                ctx.fillStyle = spanColor;
-                ctx.fillText(unit.text, unit.x, unit.y);
-            }
-
-            if (unit.span.underline || resolvedStyle.underline) {
+                const spanColor = item.forceStyleColor ? resolvedStyle.color : (metric.span.color || resolvedStyle.color);
                 if (textOpacity > 0) {
                     ctx.globalAlpha = baseAlpha * textOpacity;
-                    ctx.strokeStyle = spanColor;
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.moveTo(unit.x, unit.y + fontSize * 0.35);
-                    ctx.lineTo(unit.x + unit.width, unit.y + fontSize * 0.35);
-                    ctx.stroke();
+                    ctx.fillStyle = spanColor;
+                    ctx.fillText(metric.span.text, cursorX, lineY);
+                }
+
+                if (metric.span.underline || resolvedStyle.underline) {
+                    if (textOpacity > 0) {
+                        ctx.globalAlpha = baseAlpha * textOpacity;
+                        ctx.strokeStyle = spanColor;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(cursorX, lineY + fontSize * 0.35);
+                        ctx.lineTo(cursorX + metric.width, lineY + fontSize * 0.35);
+                        ctx.stroke();
+                    }
+                }
+                ctx.globalAlpha = baseAlpha;
+                cursorX += metric.width;
+                if (justifyThisLine && /^\s+$/.test(metric.span.text)) {
+                    cursorX += extraWordSpacing;
+                }
+                if (revealResult.cursorCharIndex !== null) {
+                    revealCursorAnchor = {
+                        x: cursorX,
+                        y: lineY,
+                        span: metric.span,
+                    };
                 }
             }
-            ctx.globalAlpha = baseAlpha;
-        });
+        }
 
-        const cursorBoundaryIndex = showExitCursor
-            ? exitVisibleLimit
-            : showEnterCursor
-                ? enterVisibleCount
-                : null;
-        if (cursorBoundaryIndex !== null) {
-            const cursorAnchor = resolveTypewriterCursorAnchor(flattenedUnits, cursorBoundaryIndex);
-            if (cursorAnchor && textOpacity > 0) {
-                const cursorColor = item.forceStyleColor ? resolvedStyle.color : (cursorAnchor.span.color || resolvedStyle.color);
-                ctx.font = buildFont(resolvedStyle, cursorAnchor.span);
-                ctx.globalAlpha = baseAlpha * textOpacity;
-                ctx.fillStyle = cursorColor;
-                ctx.fillText('|', cursorAnchor.x, cursorAnchor.y);
-                ctx.globalAlpha = baseAlpha;
-            }
+        if (revealCursorAnchor && textOpacity > 0) {
+            const cursorColor = item.forceStyleColor
+                ? resolvedStyle.color
+                : (revealCursorAnchor.span.color || resolvedStyle.color);
+            ctx.font = buildFont(resolvedStyle, revealCursorAnchor.span);
+            ctx.globalAlpha = baseAlpha * textOpacity;
+            ctx.fillStyle = cursorColor;
+            ctx.fillText('|', revealCursorAnchor.x, revealCursorAnchor.y);
+            ctx.globalAlpha = baseAlpha;
         }
 
         ctx.restore();

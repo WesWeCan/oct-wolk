@@ -1,10 +1,14 @@
-import type { MotionStyle, MotionTransform } from '@/types/project_types';
+import type { MotionStyle } from '@/types/project_types';
 import type { MotionBlockRenderer, MotionRenderContext, RendererBounds, ResolvedItem } from '@/front-end/motion-blocks/core/types';
 import { buildFont, parseFontSize, spansFromRichText, spansFromWordStyleMap } from '@/front-end/utils/motion/renderTipTapSpans';
 import type { StyledSpan } from '@/front-end/utils/motion/parseTipTapToSpans';
-import { resolveReferencePointInRegion, resolveSafeAreaRegion } from '@/front-end/motion-blocks/core/safeArea';
+import { resolveSafeAreaRegion } from '@/front-end/motion-blocks/core/safeArea';
 import { layoutCloudItems } from '@/front-end/motion-blocks/cloud/layout';
+import type { CloudLayoutResult } from '@/front-end/motion-blocks/cloud/layout';
 import { resolveCloudLayoutParams } from '@/front-end/motion-blocks/cloud/params';
+import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
+import { applyTextRevealToSpans, textRevealConfigFromParams } from '@/front-end/utils/motion/textReveal';
+import type { TextRevealConfig } from '@/front-end/utils/motion/textReveal';
 
 interface SpanMetric {
     span: StyledSpan;
@@ -17,9 +21,11 @@ interface MeasuredCloudItem {
     style: MotionStyle;
     spans: SpanMetric[];
     width: number;
+    drawWidth: number;
     height: number;
     textY: number;
     pad: number;
+    cursor: { x: number; span: StyledSpan } | null;
 }
 
 const clamp01 = (value: unknown, fallback = 1): number => {
@@ -66,15 +72,6 @@ const applyAnimatedStyle = (base: MotionStyle, animatedProps: Record<string, any
     };
 };
 
-const applyAnimatedTransform = (base: MotionTransform, animatedProps: Record<string, any>): MotionTransform => {
-    return {
-        ...base,
-        offsetX: Number(animatedProps['transform.offsetX'] ?? base.offsetX),
-        offsetY: Number(animatedProps['transform.offsetY'] ?? base.offsetY),
-        scale: Number(animatedProps['transform.scale'] ?? base.scale),
-        rotation: Number(animatedProps['transform.rotation'] ?? base.rotation),
-    };
-};
 
 const measureSpans = (
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -115,80 +112,64 @@ const drawRoundedRect = (
     ctx.closePath();
 };
 
-const rotateScalePoint = (x: number, y: number, rotationDeg: number, scale: number) => {
-    const rad = (rotationDeg * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    return {
-        x: (x * cos - y * sin) * scale,
-        y: (x * sin + y * cos) * scale,
-    };
-};
-
-const computeRectAabb = (
-    localBoxX: number,
-    localBoxY: number,
-    localBoxWidth: number,
-    localBoxHeight: number,
-    rotationDeg: number,
-    scale: number,
-    referenceX: number,
-    referenceY: number,
-) => {
-    const corners = [
-        rotateScalePoint(localBoxX, localBoxY, rotationDeg, scale),
-        rotateScalePoint(localBoxX + localBoxWidth, localBoxY, rotationDeg, scale),
-        rotateScalePoint(localBoxX, localBoxY + localBoxHeight, rotationDeg, scale),
-        rotateScalePoint(localBoxX + localBoxWidth, localBoxY + localBoxHeight, rotationDeg, scale),
-    ];
-    const xs = corners.map((corner) => referenceX + corner.x);
-    const ys = corners.map((corner) => referenceY + corner.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    return {
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-    };
-};
-
 const measureCloudItem = (
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
     item: ResolvedItem,
     animatedProps: Record<string, any>,
+    revealConfig: TextRevealConfig,
 ): MeasuredCloudItem | null => {
     const style = applyAnimatedStyle(item.style, animatedProps);
     const text = applyTextCase(item.text ?? '', style.textCase);
     if (!text.trim()) return null;
 
-    const spans = item.wordStyleMap
+    const fullSpans = item.wordStyleMap
         ? spansFromWordStyleMap(text, item.wordStyleMap)
         : spansFromRichText(item.richText, text);
-    const metrics = measureSpans(ctx, spans, style);
-    const textWidth = metrics.reduce((sum, metric) => sum + metric.width, 0);
-    const tallestSpan = metrics.reduce((max, metric) => Math.max(max, metric.fontSize), style.fontSize);
+    const fullMetrics = measureSpans(ctx, fullSpans, style);
+
+    const revealResult = applyTextRevealToSpans(
+        fullSpans,
+        item.textRevealEnterProgress ?? item.enterProgress,
+        item.textRevealExitProgress ?? item.exitProgress,
+        revealConfig,
+    );
+    const visibleSpans = revealResult.spans;
+    const visibleMetrics = measureSpans(ctx, visibleSpans, style);
+
+    const textWidth = fullMetrics.reduce((sum, metric) => sum + metric.width, 0);
+    const visibleTextWidth = visibleMetrics.reduce((sum, metric) => sum + metric.width, 0);
+    const tallestSpan = fullMetrics.reduce((max, metric) => Math.max(max, metric.fontSize), style.fontSize);
     const pad = Math.max(0, style.backgroundPadding ?? 0);
     const lineHeightPx = Math.max(tallestSpan, tallestSpan * (style.lineHeight ?? 1));
     const width = Math.max(1, textWidth + pad * 2);
+    const cursorSpan = visibleMetrics.at(-1)?.span ?? fullSpans[0] ?? null;
+    let cursorWidth = 0;
+    if (revealResult.cursorCharIndex !== null && cursorSpan) {
+        ctx.font = buildFont(style, cursorSpan);
+        cursorWidth = ctx.measureText('|').width;
+    }
+    const drawWidth = Math.max(1, visibleTextWidth + cursorWidth + pad * 2);
     const height = Math.max(1, lineHeightPx + pad * 2);
     const textY = pad + tallestSpan + Math.max(0, (lineHeightPx - tallestSpan) / 2);
 
     return {
         item,
         style,
-        spans: metrics,
+        spans: visibleMetrics,
         width,
+        drawWidth,
         height,
         textY,
         pad,
+        cursor: revealResult.cursorCharIndex !== null && cursorSpan
+            ? { x: pad + visibleTextWidth, span: cursorSpan }
+            : null,
     };
 };
 
 export class CloudRenderer implements MotionBlockRenderer {
     lastBounds: RendererBounds | null = null;
+    private cachedLayout: { key: string; result: CloudLayoutResult } | null = null;
 
     prepare(): void {}
 
@@ -199,58 +180,55 @@ export class CloudRenderer implements MotionBlockRenderer {
         animatedProps: Record<string, any>,
     ): void {
         this.lastBounds = null;
+        const layoutParams = resolveCloudLayoutParams(context.block.params);
+        const revealConfig = (item: ResolvedItem): TextRevealConfig => textRevealConfigFromParams(layoutParams, item.enter, item.exit);
 
-        const transform = applyAnimatedTransform(context.block.transform, animatedProps);
         const measured = context.allItems
-            .map((item) => measureCloudItem(ctx, item, animatedProps))
+            .map((item) => measureCloudItem(ctx, item, animatedProps, revealConfig(item)))
             .filter((item): item is MeasuredCloudItem => item !== null);
 
         if (measured.length === 0) return;
 
+        const animatedStyle = applyAnimatedStyle(context.block.style, animatedProps);
         const region = resolveSafeAreaRegion(
-            applyAnimatedStyle(context.block.style, animatedProps),
+            animatedStyle,
             context.canvasSize.width,
             context.canvasSize.height,
         );
-        const layoutParams = resolveCloudLayoutParams(context.block.params);
-        const layout = layoutCloudItems(
-            measured.map((item) => ({
-                id: item.item.id,
-                sortMs: item.item.startMs,
-                width: item.width,
-                height: item.height,
-            })),
-            context.deterministicRandomness,
-            Math.max(1, region.width),
-            Math.max(1, region.height),
+
+        const layoutKey = this.buildLayoutKey(
+            measured,
+            region.width,
+            region.height,
             layoutParams,
+            context.deterministicRandomness?.baseSeed ?? '',
+            context.deterministicRandomness?.scopeKey ?? '',
         );
+
+        if (!this.cachedLayout || this.cachedLayout.key !== layoutKey) {
+            this.cachedLayout = {
+                key: layoutKey,
+                result: layoutCloudItems(
+                    measured.map((m) => ({
+                        id: m.item.id,
+                        sortMs: m.item.startMs,
+                        width: m.width,
+                        height: m.height,
+                    })),
+                    context.deterministicRandomness,
+                    Math.max(1, region.width),
+                    Math.max(1, region.height),
+                    layoutParams,
+                ),
+            };
+        }
+
+        const layout = this.cachedLayout.result;
         if (layout.items.length === 0) return;
 
         const layoutById = new Map(layout.items.map((item) => [item.id, item]));
-        const bounds = layout.bounds;
-        const anchorLocalX = transform.anchorX === 'left'
-            ? bounds.minX
-            : transform.anchorX === 'right'
-                ? bounds.maxX
-                : (bounds.minX + bounds.maxX) / 2;
-        const anchorLocalY = transform.anchorY === 'top'
-            ? bounds.minY
-            : transform.anchorY === 'bottom'
-                ? bounds.maxY
-                : (bounds.minY + bounds.maxY) / 2;
-        const localBoxX = bounds.minX - anchorLocalX;
-        const localBoxY = bounds.minY - anchorLocalY;
-        const localBoxWidth = bounds.width;
-        const localBoxHeight = bounds.height;
-        const basePoint = resolveReferencePointInRegion(transform.anchorX, transform.anchorY, region);
-        const referenceX = basePoint.x + transform.offsetX;
-        const referenceY = basePoint.y + transform.offsetY;
 
         ctx.save();
-        ctx.translate(referenceX, referenceY);
-        ctx.rotate((transform.rotation * Math.PI) / 180);
-        ctx.scale(transform.scale, transform.scale);
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
 
@@ -258,17 +236,34 @@ export class CloudRenderer implements MotionBlockRenderer {
             const placed = layoutById.get(item.item.id);
             if (!placed) continue;
 
-            const drawX = placed.x - anchorLocalX;
-            const drawY = placed.y - anchorLocalY;
-            const baseAlpha = clamp01(item.style.opacity, 1) * clamp01(item.style.globalOpacity, 1);
+            if (item.item.enterProgress <= 0 && !item.item.isActive) continue;
+
+            const animAlpha = applyEnterExitToAlpha(
+                item.item.enterProgress,
+                item.item.exitProgress,
+                item.item.enter,
+                item.item.exit,
+            );
+            if (animAlpha <= 0) continue;
+
+            const animTransform = applyEnterExitToTransform(
+                item.item.enterProgress,
+                item.item.exitProgress,
+                item.item.enter,
+                item.item.exit,
+            );
+
+            const drawX = region.left + region.width / 2 + placed.x;
+            const drawY = region.top + region.height / 2 + placed.y;
+            const baseAlpha = clamp01(item.style.opacity, 1) * clamp01(item.style.globalOpacity, 1) * animAlpha;
             const backgroundOpacity = clamp01(item.style.backgroundOpacity, 0);
             const textOpacity = clamp01(item.style.opacity, 1);
 
             ctx.save();
-            ctx.translate(drawX, drawY);
-            ctx.scale(layout.contentScale, layout.contentScale);
+            ctx.translate(drawX + animTransform.translateX, drawY + animTransform.translateY);
+            ctx.scale(placed.itemScale * animTransform.scale, placed.itemScale * animTransform.scale);
 
-            if (item.style.backgroundColor && backgroundOpacity > 0) {
+            if (item.style.backgroundColor && backgroundOpacity > 0 && item.spans.length > 0) {
                 ctx.save();
                 ctx.globalAlpha = baseAlpha * backgroundOpacity;
                 ctx.fillStyle = item.style.backgroundColor;
@@ -276,7 +271,7 @@ export class CloudRenderer implements MotionBlockRenderer {
                     ctx,
                     0,
                     0,
-                    item.width,
+                    item.drawWidth,
                     item.height,
                     Number(item.style.backgroundBorderRadius ?? 0),
                 );
@@ -289,6 +284,11 @@ export class CloudRenderer implements MotionBlockRenderer {
             const cursorY = item.textY;
             const letterSpacing = item.style.letterSpacing ?? 0;
             (ctx as any).letterSpacing = letterSpacing !== 0 ? `${letterSpacing}px` : '0px';
+
+            if (item.spans.length === 0 && item.cursor === null) {
+                ctx.restore();
+                continue;
+            }
 
             for (const metric of item.spans) {
                 ctx.font = buildFont(item.style, metric.span);
@@ -327,36 +327,51 @@ export class CloudRenderer implements MotionBlockRenderer {
                 cursorX += metric.width;
             }
 
+            if (item.cursor && textOpacity > 0) {
+                ctx.font = buildFont(item.style, item.cursor.span);
+                ctx.save();
+                ctx.globalAlpha = baseAlpha * textOpacity;
+                ctx.fillStyle = item.cursor.span.color || item.style.color;
+                ctx.fillText('|', item.cursor.x, cursorY);
+                ctx.restore();
+            }
+
             ctx.restore();
         }
 
         ctx.restore();
 
-        const finalAabb = computeRectAabb(
-            localBoxX,
-            localBoxY,
-            localBoxWidth,
-            localBoxHeight,
-            transform.rotation,
-            transform.scale,
-            referenceX,
-            referenceY,
-        );
+        const referenceX = region.left + region.width / 2;
+        const referenceY = region.top + region.height / 2;
 
         this.lastBounds = {
-            x: finalAabb.x,
-            y: finalAabb.y,
-            width: finalAabb.width,
-            height: finalAabb.height,
+            x: region.left,
+            y: region.top,
+            width: region.width,
+            height: region.height,
             referenceX,
             referenceY,
-            localBoxX,
-            localBoxY,
-            localBoxWidth,
-            localBoxHeight,
-            rotation: transform.rotation,
-            scale: transform.scale,
+            localBoxX: -region.width / 2,
+            localBoxY: -region.height / 2,
+            localBoxWidth: region.width,
+            localBoxHeight: region.height,
+            rotation: 0,
+            scale: 1,
         };
+    }
+
+    private buildLayoutKey(
+        measured: MeasuredCloudItem[],
+        regionWidth: number,
+        regionHeight: number,
+        params: { gap: number; scatter: number; sizeVariation: number },
+        seed: string,
+        scopeKey: string,
+    ): string {
+        const items = measured
+            .map((m) => `${m.item.id}:${m.width.toFixed(1)}:${m.height.toFixed(1)}`)
+            .join(',');
+        return `${items}|${regionWidth.toFixed(0)}x${regionHeight.toFixed(0)}|${params.gap}:${params.scatter}:${params.sizeVariation}|${seed}:${scopeKey}`;
     }
 
     getLastBounds(): RendererBounds | null {
@@ -365,5 +380,6 @@ export class CloudRenderer implements MotionBlockRenderer {
 
     dispose(): void {
         this.lastBounds = null;
+        this.cachedLayout = null;
     }
 }

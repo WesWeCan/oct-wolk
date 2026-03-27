@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { markRaw, shallowRef } from 'vue';
 import type { Ref } from 'vue';
 import type { MotionBlockType, WolkProject } from '@/types/project_types';
 import type { MotionBlockRenderer, MotionFrameRuntimeScaffolds } from '@/front-end/motion-blocks/core/types';
@@ -31,7 +31,7 @@ const getProjectMotionFonts = (project: WolkProject) => {
 
 export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
     ensureMotionBlockPluginsRegistered();
-    const rendererByTrackId = ref<Map<string, { type: MotionBlockType; renderer: MotionBlockRenderer }>>(new Map());
+    const rendererByTrackId = shallowRef<Map<string, { type: MotionBlockType; renderer: MotionBlockRenderer }>>(new Map());
     const bgImageCache = new Map<string, HTMLImageElement>();
     const bgImageFailed = new Set<string>();
 
@@ -43,7 +43,7 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
             existing.renderer.dispose();
             rendererByTrackId.value.delete(trackId);
         }
-        const renderer = requireMotionBlockPlugin(type).createRenderer();
+        const renderer = markRaw(requireMotionBlockPlugin(type).createRenderer());
         rendererByTrackId.value.set(trackId, { type, renderer });
         return renderer;
     };
@@ -166,13 +166,14 @@ export function useMotionRenderer(renderCanvas: Ref<HTMLCanvasElement | null>) {
         const anySoloed = project.motionTracks.some((track) => track.solo && !track.muted && track.enabled);
         for (const track of project.motionTracks) {
             if (!track.enabled) continue;
-            if (anySoloed) {
+            const block = track.block;
+            const plugin = getMotionBlockPlugin(block.type);
+            const ignoreSolo = plugin?.meta.ignoreSolo === true;
+            if (anySoloed && !ignoreSolo) {
                 if (!track.solo || track.muted) continue;
             } else if (track.muted) {
                 continue;
             }
-            const block = track.block;
-            const plugin = getMotionBlockPlugin(block.type);
             if (!plugin) continue;
             const blockStart = msToFrame(block.startMs, fps);
             const blockEnd = msToFrame(block.endMs, fps);

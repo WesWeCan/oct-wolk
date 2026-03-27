@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { LyricTrack, MotionTrack } from '@/types/project_types';
 
 const props = defineProps<{
     lyricTracks: LyricTrack[];
     motionTracks: MotionTrack[];
     selectedTrackId: string | null;
-    plugins: Array<{ type: string; label: string }>;
+    plugins: Array<{ type: string; label: string; requiresSourceTrack: boolean }>;
 }>();
 
 const emit = defineEmits<{
@@ -34,6 +34,9 @@ watch(
 
 const renamingId = ref<string | null>(null);
 const renameValue = ref('');
+const selectedPlugin = computed(() => props.plugins.find((plugin) => plugin.type === addType.value) ?? null);
+const addRequiresSourceTrack = computed(() => selectedPlugin.value?.requiresSourceTrack !== false);
+const canAddSelectedPlugin = computed(() => !!addType.value && (!addRequiresSourceTrack.value || props.lyricTracks.length > 0));
 
 const startRename = (track: MotionTrack) => {
     renamingId.value = track.id;
@@ -62,21 +65,24 @@ const commitRename = (track: MotionTrack) => {
         <div class="inspector-row">
             <div class="inspector-field half">
                 <label>Block Type</label>
-                <select v-model="addType" class="inspector-input" :disabled="lyricTracks.length === 0">
+                <select v-model="addType" class="inspector-input" :disabled="!plugins.length">
                     <option v-for="plugin in plugins" :key="plugin.type" :value="plugin.type">{{ plugin.label }}</option>
                 </select>
             </div>
         </div>
 
-        <button class="btn-sm" :disabled="lyricTracks.length === 0 || !addType" @click="emit('add-track', { type: addType })">
+        <button class="btn-sm" :disabled="!canAddSelectedPlugin" @click="emit('add-track', { type: addType })">
             + Add Motion
         </button>
         <p class="track-list-panel__hint">
             In-repo motion block plugins register themselves here automatically.
         </p>
 
-        <div v-if="lyricTracks.length === 0" class="track-list-empty">
+        <div v-if="lyricTracks.length === 0 && addRequiresSourceTrack" class="track-list-empty">
             No lyric tracks available. Create one in Lyric mode first.
+        </div>
+        <div v-else-if="selectedPlugin && !addRequiresSourceTrack" class="track-list-empty">
+            This block creates its own scene and does not require a lyric source track.
         </div>
 
         <div class="track-list-panel__list" style="margin-top: 8px;">

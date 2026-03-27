@@ -18,6 +18,7 @@ import { SubtitleRenderer } from '@/front-end/motion-blocks/subtitle/renderer/Su
 import SubtitleInspector from '@/front-end/motion-blocks/subtitle/inspector/SubtitleInspector.vue';
 import type { MotionTrack, WolkProjectFont } from '@/types/project_types';
 import { subtitleMotionPresetAdapter } from '@/front-end/motion-blocks/subtitle/presets';
+import { DEFAULT_TEXT_REVEAL_PARAMS, resolveTextRevealParams } from '@/front-end/utils/motion/textReveal';
 
 function inheritProjectFont(track: MotionTrack, projectFont?: WolkProjectFont) {
     const style = track.block.style || { ...DEFAULT_SUBTITLE_STYLE };
@@ -73,7 +74,7 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
                 enter: createDefaultSubtitleEnter(),
                 exit: createDefaultSubtitleExit(),
                 overrides: [],
-                params: {},
+                params: { ...DEFAULT_TEXT_REVEAL_PARAMS },
                 propertyTracks: [],
             },
         };
@@ -83,6 +84,8 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
             if (!propertyTrack || propertyTrack.enabled === false) return false;
             return Array.isArray(propertyTrack.keyframes) && propertyTrack.keyframes.length > 0;
         });
+        const enter = normalizeSubtitleEnterExit(track.block.enter, 'enter');
+        const exit = normalizeSubtitleEnterExit(track.block.exit, 'exit');
         return {
             ...track,
             enabled: track.enabled !== false,
@@ -93,8 +96,12 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
                 ...track.block,
                 type: 'subtitle',
                 style: inheritProjectFont(track, projectFont),
-                enter: normalizeSubtitleEnterExit(track.block.enter, 'enter'),
-                exit: normalizeSubtitleEnterExit(track.block.exit, 'exit'),
+                enter,
+                exit,
+                params: {
+                    ...(track.block.params || {}),
+                    ...resolveTextRevealParams(track.block.params, enter, exit),
+                },
                 propertyTracks,
             },
         };

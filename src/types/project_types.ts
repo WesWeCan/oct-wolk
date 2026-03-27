@@ -176,6 +176,20 @@ export interface MotionTrack {
 
 // ---- Project Root ---------------------------------------------------------
 
+export interface Scene3DGlobalLighting {
+    ambientColor: string;
+    ambientIntensity: number;
+    directionalColor: string;
+    directionalIntensity: number;
+    directionalAzimuth: number;
+    directionalElevation: number;
+}
+
+export interface Scene3DSettings {
+    enabled: boolean;
+    globalLighting: Scene3DGlobalLighting;
+}
+
 export interface WolkProjectSong {
     title: string;
     subtitle?: string;
@@ -224,6 +238,7 @@ export interface WolkProject {
     backgroundImageY?: number;
     backgroundImageScale?: number;
     backgroundImageOpacity?: number;
+    scene3d?: Scene3DSettings;
     createdAt: number;
     updatedAt: number;
 }
@@ -243,6 +258,20 @@ export const DEFAULT_PROJECT_FONT: WolkProjectFont = {
     fallbacks: ['-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
     style: 'normal',
     weight: 400,
+};
+
+export const DEFAULT_SCENE3D_GLOBAL_LIGHTING: Scene3DGlobalLighting = {
+    ambientColor: '#ffffff',
+    ambientIntensity: 0.45,
+    directionalColor: '#ffffff',
+    directionalIntensity: 1.2,
+    directionalAzimuth: 35,
+    directionalElevation: 50,
+};
+
+export const DEFAULT_SCENE3D_SETTINGS: Scene3DSettings = {
+    enabled: false,
+    globalLighting: { ...DEFAULT_SCENE3D_GLOBAL_LIGHTING },
 };
 
 

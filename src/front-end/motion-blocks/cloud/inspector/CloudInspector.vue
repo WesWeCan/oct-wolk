@@ -1,24 +1,28 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { AnchorX, AnchorY, LyricTrack, MotionStyle, MotionTrack, MotionTransform, WolkProjectFont } from '@/types/project_types';
-import type { RendererBounds } from '@/front-end/motion-blocks/core/types';
+import type { LyricTrack, MotionEnterExit, MotionStyle, MotionTrack, WolkProjectFont } from '@/types/project_types';
 import MotionAppearanceTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionAppearanceTab.vue';
-import MotionPositionTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionPositionTab.vue';
 import CloudSafeAreaTab from '@/front-end/motion-blocks/cloud/inspector/tabs/CloudSafeAreaTab.vue';
+import MotionEnterExitEditor from '@/front-end/components/editor/motion/MotionEnterExitEditor.vue';
+import MotionTextRevealEditor from '@/front-end/components/editor/motion/MotionTextRevealEditor.vue';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import { applyFontSelectionToMotionStyle } from '@/front-end/utils/fonts/fontUtils';
 import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
 import { upsertKeyframe, removeKeyframeAtIndex, evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import {
-    clampOffsetToConstraintRegion,
-    resolveReferencePointInRegion,
-    resolveSafeAreaRegion,
-} from '@/front-end/motion-blocks/core/safeArea';
-import {
     isCloudSupportedSourceTrack,
     listCloudSupportedSourceTracks,
 } from '@/front-end/motion-blocks/cloud/source-tracks';
+import { createDefaultCloudEnter, createDefaultCloudExit } from '@/front-end/motion-blocks/cloud/defaults';
+import { resolveCloudLayoutParams } from '@/front-end/motion-blocks/cloud/params';
+import type { CloudExitMode } from '@/front-end/motion-blocks/cloud/params';
+import type { TextRevealParams } from '@/front-end/utils/motion/textReveal';
+import {
+    cloneMotionEnterExit,
+    createMotionVisualOffEnterExit,
+    motionEnterExitEquals,
+} from '@/front-end/utils/motion/motionEnterExitPresets';
 
 const props = defineProps<{
     motionTrack: MotionTrack | null;
@@ -28,7 +32,6 @@ const props = defineProps<{
     projectFont?: WolkProjectFont;
     renderWidth?: number;
     renderHeight?: number;
-    rendererBounds?: RendererBounds | null;
 }>();
 
 const emit = defineEmits<{
@@ -64,6 +67,11 @@ const sourceWarning = computed(() => {
     return null;
 });
 
+const layoutParams = computed(() => {
+    if (!props.motionTrack) return resolveCloudLayoutParams(null);
+    return resolveCloudLayoutParams(props.motionTrack.block.params);
+});
+
 const inRangeItems = computed(() => {
     if (!props.motionTrack || !hasSupportedSource.value || !sourceTrack.value) return [];
     return sourceTrack.value.items.filter((item) => item.endMs > props.motionTrack!.block.startMs && item.startMs < props.motionTrack!.block.endMs);
@@ -93,6 +101,44 @@ const autoKeyframe = (path: string, value: any, propertyTracks: any[]): any[] =>
     const updated = [...propertyTracks];
     updated[ptIdx] = upsertKeyframe(updated[ptIdx] as any, currentFrame.value, value, interp) as any;
     return updated;
+};
+
+const updateParam = (key: string, value: number | string) => {
+    if (!props.motionTrack || isLocked.value) return;
+    const block = { ...props.motionTrack.block };
+    block.params = { ...(block.params || {}), [key]: value };
+    emit('update-track', { ...props.motionTrack, block });
+};
+
+const updateExitMode = (mode: CloudExitMode) => updateParam('exitMode', mode);
+const blockMotionStillAtDefaults = (): boolean => {
+    if (!props.motionTrack) return false;
+    return motionEnterExitEquals(props.motionTrack.block.enter, createDefaultCloudEnter())
+        && motionEnterExitEquals(props.motionTrack.block.exit, createDefaultCloudExit());
+};
+
+const updateTextReveal = (value: TextRevealParams) => {
+    if (!props.motionTrack || isLocked.value) return;
+    const block = { ...props.motionTrack.block };
+    const shouldAutoApplyMotionOff = layoutParams.value.textRevealMode !== 'typewriter'
+        && value.textRevealMode === 'typewriter'
+        && blockMotionStillAtDefaults();
+    block.enter = shouldAutoApplyMotionOff
+        ? createMotionVisualOffEnterExit(block.enter)
+        : block.enter;
+    block.exit = shouldAutoApplyMotionOff
+        ? createMotionVisualOffEnterExit(block.exit)
+        : block.exit;
+    block.params = { ...(block.params || {}), ...value };
+    emit('update-track', { ...props.motionTrack, block });
+};
+
+const updateEnterExit = (which: 'enter' | 'exit', value: MotionEnterExit) => {
+    if (!props.motionTrack || isLocked.value) return;
+    emit('update-track', {
+        ...props.motionTrack,
+        block: { ...props.motionTrack.block, [which]: cloneMotionEnterExit(value) },
+    });
 };
 
 const updateSourceTrack = (sourceTrackId: string) => {
@@ -128,112 +174,6 @@ const updateFontSelection = (selection: MotionFontSelection) => {
     const block = { ...props.motionTrack.block };
     block.style = applyFontSelectionToMotionStyle(block.style, selection);
     block.propertyTracks = autoKeyframe('style.fontFamily', selection.family, [...(block.propertyTracks || [])]);
-    emit('update-track', { ...props.motionTrack, block });
-};
-
-const updateTransform = (key: keyof MotionTransform, value: any) => {
-    if (!props.motionTrack || isLocked.value) return;
-    const block = { ...props.motionTrack.block };
-    if ((key === 'offsetX' || key === 'offsetY') && (block.style.boundsMode ?? 'safeArea') === 'safeArea') {
-        const padding = block.style.safeAreaPadding ?? 40;
-        const regionOffsetX = block.style.safeAreaOffsetX ?? 0;
-        const regionOffsetY = block.style.safeAreaOffsetY ?? 0;
-        if (key === 'offsetX' && props.renderWidth) {
-            value = clampOffsetToConstraintRegion(value, block.transform.anchorX, padding, props.renderWidth, regionOffsetX);
-        }
-        if (key === 'offsetY' && props.renderHeight) {
-            value = clampOffsetToConstraintRegion(value, block.transform.anchorY, padding, props.renderHeight, regionOffsetY);
-        }
-    }
-    block.transform = { ...block.transform, [key]: value };
-    block.propertyTracks = autoKeyframe(`transform.${key}`, value, [...(block.propertyTracks || [])]);
-    emit('update-track', { ...props.motionTrack, block });
-};
-
-const rotateScalePoint = (x: number, y: number, rotationDeg: number, scale: number) => {
-    const rad = (rotationDeg * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    return {
-        x: (x * cos - y * sin) * scale,
-        y: (x * sin + y * cos) * scale,
-    };
-};
-
-const updateAnchor = (x: AnchorX, y: AnchorY) => {
-    if (!props.motionTrack || isLocked.value) return;
-    const nextTransform = { ...props.motionTrack.block.transform, anchorX: x, anchorY: y };
-
-    if (props.rendererBounds && props.renderWidth && props.renderHeight) {
-        const bounds = props.rendererBounds;
-        const targetLocalX = x === 'left'
-            ? bounds.localBoxX
-            : x === 'right'
-                ? bounds.localBoxX + bounds.localBoxWidth
-                : bounds.localBoxX + (bounds.localBoxWidth / 2);
-        const targetLocalY = y === 'top'
-            ? bounds.localBoxY
-            : y === 'bottom'
-                ? bounds.localBoxY + bounds.localBoxHeight
-                : bounds.localBoxY + (bounds.localBoxHeight / 2);
-        const targetDelta = rotateScalePoint(targetLocalX, targetLocalY, bounds.rotation, bounds.scale);
-        const desiredReferenceX = bounds.referenceX + targetDelta.x;
-        const desiredReferenceY = bounds.referenceY + targetDelta.y;
-        const region = resolveSafeAreaRegion(props.motionTrack.block.style, props.renderWidth, props.renderHeight);
-        const basePoint = resolveReferencePointInRegion(x, y, region);
-
-        nextTransform.offsetX = Math.round(desiredReferenceX - basePoint.x);
-        nextTransform.offsetY = Math.round(desiredReferenceY - basePoint.y);
-
-        if ((props.motionTrack.block.style.boundsMode ?? 'safeArea') === 'safeArea') {
-            const padding = props.motionTrack.block.style.safeAreaPadding ?? 40;
-            const regionOffsetX = props.motionTrack.block.style.safeAreaOffsetX ?? 0;
-            const regionOffsetY = props.motionTrack.block.style.safeAreaOffsetY ?? 0;
-            nextTransform.offsetX = clampOffsetToConstraintRegion(nextTransform.offsetX, x, padding, props.renderWidth, regionOffsetX);
-            nextTransform.offsetY = clampOffsetToConstraintRegion(nextTransform.offsetY, y, padding, props.renderHeight, regionOffsetY);
-        }
-    }
-
-    emit('update-track', {
-        ...props.motionTrack,
-        block: { ...props.motionTrack.block, transform: nextTransform },
-    });
-};
-
-const resetToDefaults = () => {
-    if (!props.motionTrack || isLocked.value) return;
-    const block = { ...props.motionTrack.block };
-    block.transform = {
-        ...block.transform,
-        offsetX: 0,
-        offsetY: 0,
-        scale: 1,
-        rotation: 0,
-    };
-    emit('update-track', { ...props.motionTrack, block });
-};
-
-const setDefaultKeyframe = () => {
-    if (!props.motionTrack || isLocked.value) return;
-    const block = { ...props.motionTrack.block };
-    let propertyTracks = [...(block.propertyTracks || [])];
-    const defaults: Record<string, number> = {
-        'transform.offsetX': 0,
-        'transform.offsetY': 0,
-        'transform.scale': 1,
-        'transform.rotation': 0,
-    };
-    for (const [path, value] of Object.entries(defaults)) {
-        propertyTracks = autoKeyframe(path, value, propertyTracks);
-    }
-    block.transform = {
-        ...block.transform,
-        offsetX: 0,
-        offsetY: 0,
-        scale: 1,
-        rotation: 0,
-    };
-    block.propertyTracks = propertyTracks;
     emit('update-track', { ...props.motionTrack, block });
 };
 
@@ -363,6 +303,42 @@ const togglePropertyKeyframing = (path: string) => {
                 </div>
             </details>
 
+            <details class="inspector-section" open>
+                <summary class="inspector-section__title">Layout</summary>
+                <div class="inspector-section__content">
+                    <AnimatableNumberField
+                        label="Gap"
+                        :model-value="layoutParams.gap"
+                        :min="0"
+                        :max="100"
+                        :step="1"
+                        :fallback-value="12"
+                        hint="Spacing between words in pixels. For tighter packing, lower Style -> Background Padding too."
+                        @update:model-value="(v: number) => updateParam('gap', v)"
+                    />
+                    <AnimatableNumberField
+                        label="Scatter"
+                        :model-value="layoutParams.scatter"
+                        :min="0"
+                        :max="1"
+                        :step="0.01"
+                        :fallback-value="0.7"
+                        hint="How spread out words are placed (0 = clustered center, 1 = fill region)."
+                        @update:model-value="(v: number) => updateParam('scatter', v)"
+                    />
+                    <AnimatableNumberField
+                        label="Size Variation"
+                        :model-value="layoutParams.sizeVariation"
+                        :min="0"
+                        :max="0.7"
+                        :step="0.01"
+                        :fallback-value="0.3"
+                        hint="Random per-word size variation (0 = all same size)."
+                        @update:model-value="(v: number) => updateParam('sizeVariation', v)"
+                    />
+                </div>
+            </details>
+
             <details class="inspector-section">
                 <summary class="inspector-section__title">Style</summary>
                 <div class="inspector-section__content">
@@ -379,24 +355,6 @@ const togglePropertyKeyframing = (path: string) => {
             </details>
 
             <details class="inspector-section">
-                <summary class="inspector-section__title">Position</summary>
-                <div class="inspector-section__content">
-                    <MotionPositionTab
-                        :track="motionTrack"
-                        :current-frame="currentFrame"
-                        :render-width="renderWidth"
-                        :render-height="renderHeight"
-                        @update-transform="updateTransform"
-                        @update-anchor="updateAnchor"
-                        @toggle-keyframe="toggleKeyframe"
-                        @toggle-property-keyframing="togglePropertyKeyframing"
-                        @reset-to-defaults="resetToDefaults"
-                        @set-default-keyframe="setDefaultKeyframe"
-                    />
-                </div>
-            </details>
-
-            <details class="inspector-section">
                 <summary class="inspector-section__title">Constraint Region</summary>
                 <div class="inspector-section__content">
                     <CloudSafeAreaTab
@@ -406,6 +364,62 @@ const togglePropertyKeyframing = (path: string) => {
                         @toggle-keyframe="toggleKeyframe"
                         @toggle-property-keyframing="togglePropertyKeyframing"
                     />
+                </div>
+            </details>
+
+            <details class="inspector-section">
+                <summary class="inspector-section__title">Animation</summary>
+                <div class="inspector-section__content">
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Text Reveal</summary>
+                        <MotionTextRevealEditor
+                            :value="layoutParams"
+                            :disabled="isLocked"
+                            @update-text-reveal="updateTextReveal"
+                        />
+                    </details>
+
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Lifecycle</summary>
+                        <div class="inspector-field">
+                            <span class="inspector-hint">Controls when each word starts exiting inside the cloud.</span>
+                        </div>
+
+                        <div class="inspector-field">
+                            <label>Exit Behavior</label>
+                            <div class="segmented-control">
+                                <button
+                                    :class="{ active: layoutParams.exitMode === 'stay' }"
+                                    @click="updateExitMode('stay')"
+                                >Stay Until Block Exit</button>
+                                <button
+                                    :class="{ active: layoutParams.exitMode === 'perItem' }"
+                                    @click="updateExitMode('perItem')"
+                                >Exit Per Word</button>
+                            </div>
+                        </div>
+
+                        <AnimatableNumberField
+                            v-if="layoutParams.exitMode === 'perItem'"
+                            label="Exit Delay (ms)"
+                            :model-value="layoutParams.exitDelayMs"
+                            :min="0"
+                            :max="60000"
+                            :step="50"
+                            :fallback-value="0"
+                            hint="Delay in milliseconds after a word ends before its exit animation begins."
+                            @update:model-value="(v: number) => updateParam('exitDelayMs', Math.max(0, v))"
+                        />
+                    </details>
+
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Motion</summary>
+                        <MotionEnterExitEditor
+                            :enter-value="motionTrack.block.enter"
+                            :exit-value="motionTrack.block.exit"
+                            @update-enter-exit="updateEnterExit"
+                        />
+                    </details>
                 </div>
             </details>
         </template>

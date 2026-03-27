@@ -29,7 +29,7 @@ const makeSourceTrack = () => ({
 });
 
 describe('subtitle motion block plugin', () => {
-    it('creates subtitle tracks from plugin defaults and project font settings', () => {
+    it('creates subtitle tracks from plugin defaults, project font settings, and shared reveal defaults', () => {
         const track = subtitleMotionBlockPlugin.createTrack({
             project: makeProject(),
             sourceTrack: makeSourceTrack(),
@@ -46,9 +46,14 @@ describe('subtitle motion block plugin', () => {
         expect(track.block.style.fontWeight).toBe(700);
         expect(track.block.enter.fade.opacityStart).toBe(0);
         expect(track.block.exit.fade.opacityEnd).toBe(0);
+        expect(track.block.params.textRevealMode).toBe('none');
+        expect(track.block.params.textRevealEnterWindow).toBe(0.3);
+        expect(track.block.params.textRevealExitWindow).toBe(0.2);
+        expect(track.block.params.textRevealEnterPortion).toBe(1);
+        expect(track.block.params.textRevealExitPortion).toBe(1);
     });
 
-    it('normalizes booleans, inherits project font metadata, and prunes empty keyframe tracks', () => {
+    it('normalizes booleans, inherits project font metadata, reveal params, and prunes empty keyframe tracks', () => {
         const project = makeProject();
         const track = subtitleMotionBlockPlugin.createTrack({
             project,
@@ -68,13 +73,21 @@ describe('subtitle motion block plugin', () => {
         track.block.style.fontFallbacks = undefined;
         track.block.style.fontName = undefined;
         track.block.style.fontLocalPath = undefined;
+        track.block.params = {
+            ...track.block.params,
+            textRevealMode: 'garbage',
+            textRevealEnterWindow: -1,
+            textRevealExitWindow: 5,
+            textRevealEnterPortion: -1,
+            textRevealExitPortion: 5,
+        };
         track.block.propertyTracks = [
             { propertyPath: 'transform.offsetX', keyframes: [], enabled: true } as any,
             { propertyPath: 'transform.offsetY', keyframes: [{ frame: 10, value: 10, interpolation: 'linear' }], enabled: true } as any,
             { propertyPath: 'transform.scale', keyframes: [{ frame: 10, value: 1, interpolation: 'linear' }], enabled: false } as any,
         ];
 
-        const normalized = subtitleMotionBlockPlugin.normalizeTrack(track, { project, projectFont: project.font });
+        const normalized = subtitleMotionBlockPlugin.normalizeTrack(track, { projectFont: project.font });
 
         expect(normalized.enabled).toBe(true);
         expect(normalized.muted).toBe(false);
@@ -83,6 +96,11 @@ describe('subtitle motion block plugin', () => {
         expect(normalized.block.style.fontFallbacks).toEqual(['Arial']);
         expect(normalized.block.style.fontName).toBe('Project Font');
         expect(normalized.block.style.fontLocalPath).toBe('/font.otf');
+        expect(normalized.block.params.textRevealMode).toBe('none');
+        expect(normalized.block.params.textRevealEnterWindow).toBe(0.01);
+        expect(normalized.block.params.textRevealExitWindow).toBe(1);
+        expect(normalized.block.params.textRevealEnterPortion).toBe(0.01);
+        expect(normalized.block.params.textRevealExitPortion).toBe(1);
         expect(normalized.block.propertyTracks).toHaveLength(1);
         expect(normalized.block.propertyTracks[0].propertyPath).toBe('transform.offsetY');
     });
@@ -124,6 +142,11 @@ describe('subtitle motion block plugin', () => {
         expect(normalized.block.exit.fade.enabled).toBe(false);
         expect(normalized.block.enter.showCursor).toBe(true);
         expect(normalized.block.exit.showCursor).toBe(true);
+        expect(normalized.block.params.textRevealMode).toBe('typewriter');
+        expect(normalized.block.params.textRevealEnterWindow).toBe(0.25);
+        expect(normalized.block.params.textRevealExitWindow).toBe(0.25);
+        expect(normalized.block.params.textRevealEnterPortion).toBe(1);
+        expect(normalized.block.params.textRevealExitPortion).toBe(1);
     });
 
     it('extracts subtitle presets without source links, overrides, or keyframes', () => {

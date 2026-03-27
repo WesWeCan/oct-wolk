@@ -18,6 +18,7 @@ import { CloudRenderer } from '@/front-end/motion-blocks/cloud/renderer/CloudRen
 import CloudInspector from '@/front-end/motion-blocks/cloud/inspector/CloudInspector.vue';
 import type { MotionTrack, WolkProjectFont } from '@/types/project_types';
 import { resolveCloudLayoutParams } from '@/front-end/motion-blocks/cloud/params';
+import { normalizeSubtitleEnterExit } from '@/front-end/motion-blocks/subtitle/defaults';
 
 function inheritProjectFont(track: MotionTrack, projectFont?: WolkProjectFont) {
     const style = track.block.style || { ...DEFAULT_CLOUD_STYLE };
@@ -40,11 +41,14 @@ export const cloudMotionBlockPlugin: MotionBlockPlugin = {
     type: 'cloud',
     meta: {
         label: 'Cloud',
-        description: 'Spreads the full in-range lyric dataset across a deterministic fitted cloud inside the constraint region.',
+        description: 'Scatters in-range lyric words at deterministic positions that accumulate over time inside the constraint region.',
         authorable: true,
         order: 2,
+        requiresSourceTrack: true,
+        renderSpace: '2d',
     },
     createTrack({ project, sourceTrack, startMs, endMs, color, trackId, blockId }) {
+        if (!sourceTrack) throw new Error('Cloud motion block requires a source track.');
         return {
             id: trackId,
             name: `cloud - ${sourceTrack.name}`,
@@ -83,6 +87,8 @@ export const cloudMotionBlockPlugin: MotionBlockPlugin = {
             if (!propertyTrack || propertyTrack.enabled === false) return false;
             return Array.isArray(propertyTrack.keyframes) && propertyTrack.keyframes.length > 0;
         });
+        const enter = normalizeSubtitleEnterExit(track.block.enter, 'enter');
+        const exit = normalizeSubtitleEnterExit(track.block.exit, 'exit');
         return {
             ...track,
             enabled: track.enabled !== false,
@@ -93,7 +99,9 @@ export const cloudMotionBlockPlugin: MotionBlockPlugin = {
                 ...track.block,
                 type: 'cloud',
                 style: inheritProjectFont(track, projectFont),
-                params: resolveCloudLayoutParams(track.block.params),
+                enter,
+                exit,
+                params: resolveCloudLayoutParams(track.block.params, enter, exit),
                 propertyTracks,
             },
         };
@@ -112,6 +120,6 @@ export const cloudMotionBlockPlugin: MotionBlockPlugin = {
         applyDelta(track, mode, dx, dy, context) {
             return applyCloudGizmoDelta(track, mode, dx, dy, context.renderWidth, context.renderHeight);
         },
-        supportsSafeAreaGuide: true,
+        supportsSafeAreaGuide: false,
     },
 };
