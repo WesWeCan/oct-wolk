@@ -54,6 +54,7 @@ describe('primitive3d inspector', () => {
         const button = wrapper.find('button[disabled]');
         expect(button.exists()).toBe(true);
         expect(wrapper.text()).toContain('Import Model (coming later)');
+        expect(wrapper.text()).not.toContain('Editor');
     });
 
     it('switches to local lighting controls', async () => {
@@ -67,7 +68,6 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        await wrapper.findAll('button').find((button) => button.text() === 'Lighting')?.trigger('click');
         await wrapper.findAll('button').find((button) => button.text() === 'Local')?.trigger('click');
 
         const updates = wrapper.emitted('update-track');
@@ -87,7 +87,6 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        await wrapper.findAll('button').find((button) => button.text() === 'Lighting')?.trigger('click');
         wrapper.findComponent(Scene3DInspector).vm.$emit('update-scene3d', {
             enabled: true,
             globalLighting: {
@@ -125,8 +124,7 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        await wrapper.findAll('button').find((button) => button.text() === 'Words')?.trigger('click');
-        const select = wrapper.find('select');
+        const select = wrapper.find('select[aria-label="Word track"]');
         await select.setValue('lyric-1');
 
         const updates = wrapper.emitted('update-track');
@@ -154,17 +152,43 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        await wrapper.findAll('button').find((button) => button.text() === 'Words')?.trigger('click');
-        const inlineFields = wrapper.findAll('.style-v2__field--inline');
-        const enableWordsField = inlineFields.find((field) => field.text().includes('Enable Word Sprites'));
-        await enableWordsField?.find('input[type="checkbox"]').setValue(true);
+        await wrapper.find('button[aria-label="Enable word sprites on"]').trigger('click');
         const firstUpdatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
         await wrapper.setProps({ motionTrack: firstUpdatedTrack });
-        const smoothFacingField = wrapper.findAll('.style-v2__field--inline').find((field) => field.text().includes('Smooth Facing'));
-        await smoothFacingField?.find('input[type="checkbox"]').setValue(false);
+        await wrapper.find('button[aria-label="Smooth facing off"]').trigger('click');
 
         const updates = wrapper.emitted('update-track');
         expect(updates).toBeTruthy();
         expect((updates?.at(-1)?.[0] as any).block.params.reaction.smoothFacing).toBe(false);
+    });
+
+    it('lets billboard rotation be toggled with segmented controls', async () => {
+        const wrapper = shallowMount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [{
+                    id: 'lyric-1',
+                    name: 'Word Track',
+                    color: '#fff',
+                    kind: 'word',
+                    items: [],
+                    muted: false,
+                    solo: false,
+                    locked: false,
+                }],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        await wrapper.find('button[aria-label="Enable word sprites on"]').trigger('click');
+        const firstUpdatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
+        await wrapper.setProps({ motionTrack: firstUpdatedTrack });
+        await wrapper.find('button[aria-label="Billboard rotation off"]').trigger('click');
+
+        const updates = wrapper.emitted('update-track');
+        expect(updates).toBeTruthy();
+        expect((updates?.at(-1)?.[0] as any).block.params.billboard.enabled).toBe(false);
     });
 });
