@@ -104,4 +104,67 @@ describe('primitive3d inspector', () => {
         expect(updates).toBeTruthy();
         expect((updates?.at(-1)?.[0] as any).globalLighting.ambientColor).toBe('#ff0000');
     });
+
+    it('lets word sprites bind to a word source track', async () => {
+        const wrapper = shallowMount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [{
+                    id: 'lyric-1',
+                    name: 'Word Track',
+                    color: '#fff',
+                    kind: 'word',
+                    items: [],
+                    muted: false,
+                    solo: false,
+                    locked: false,
+                }],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        await wrapper.findAll('button').find((button) => button.text() === 'Words')?.trigger('click');
+        const select = wrapper.find('select');
+        await select.setValue('lyric-1');
+
+        const updates = wrapper.emitted('update-track');
+        expect(updates).toBeTruthy();
+        expect((updates?.at(-1)?.[0] as any).block.sourceTrackId).toBe('lyric-1');
+    });
+
+    it('lets smoothing be toggled from the words tab', async () => {
+        const wrapper = shallowMount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [{
+                    id: 'lyric-1',
+                    name: 'Word Track',
+                    color: '#fff',
+                    kind: 'word',
+                    items: [],
+                    muted: false,
+                    solo: false,
+                    locked: false,
+                }],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        await wrapper.findAll('button').find((button) => button.text() === 'Words')?.trigger('click');
+        const inlineFields = wrapper.findAll('.style-v2__field--inline');
+        const enableWordsField = inlineFields.find((field) => field.text().includes('Enable Word Sprites'));
+        await enableWordsField?.find('input[type="checkbox"]').setValue(true);
+        const firstUpdatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
+        await wrapper.setProps({ motionTrack: firstUpdatedTrack });
+        const smoothFacingField = wrapper.findAll('.style-v2__field--inline').find((field) => field.text().includes('Smooth Facing'));
+        await smoothFacingField?.find('input[type="checkbox"]').setValue(false);
+
+        const updates = wrapper.emitted('update-track');
+        expect(updates).toBeTruthy();
+        expect((updates?.at(-1)?.[0] as any).block.params.reaction.smoothFacing).toBe(false);
+    });
 });

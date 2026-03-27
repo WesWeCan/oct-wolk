@@ -11,6 +11,8 @@ export type Primitive3DType =
     | 'octahedron'
     | 'dodecahedron';
 export type Primitive3DLightingMode = 'global' | 'local';
+export type Primitive3DMaterialRenderMode = 'solid' | 'wireframe' | 'solid-wireframe';
+export type Primitive3DWordPunctuationMode = 'keep' | 'strip';
 
 export interface Primitive3DGeometryParams {
     type: Primitive3DType;
@@ -38,6 +40,9 @@ export interface Primitive3DMaterialParams {
     roughness: number;
     metalness: number;
     opacity: number;
+    renderMode: Primitive3DMaterialRenderMode;
+    wireColor: string;
+    wireOpacity: number;
 }
 
 export interface Primitive3DLightingParams {
@@ -50,12 +55,38 @@ export interface Primitive3DLightingParams {
     directionalElevation: number;
 }
 
+export interface Primitive3DWordsParams {
+    enabled: boolean;
+    windowSize: number;
+    punctuationMode: Primitive3DWordPunctuationMode;
+    worldSize: number;
+    radialOffset: number;
+}
+
+export interface Primitive3DBillboardParams {
+    enabled: boolean;
+    rotationOffsetX: number;
+    rotationOffsetY: number;
+    rotationOffsetZ: number;
+}
+
+export interface Primitive3DReactionParams {
+    activePointOffsetX: number;
+    activePointOffsetY: number;
+    activePointOffsetZ: number;
+    smoothFacing: boolean;
+    smoothStrength: number;
+}
+
 export interface Primitive3DParams {
     primitive: Primitive3DGeometryParams;
     object: Primitive3DObjectParams;
     camera: Primitive3DCameraParams;
     material: Primitive3DMaterialParams;
     lighting: Primitive3DLightingParams;
+    words: Primitive3DWordsParams;
+    billboard: Primitive3DBillboardParams;
+    reaction: Primitive3DReactionParams;
 }
 
 export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
@@ -82,6 +113,9 @@ export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
         roughness: 0.32,
         metalness: 0.16,
         opacity: 1,
+        renderMode: 'solid',
+        wireColor: '#ffffff',
+        wireOpacity: 0.7,
     },
     lighting: {
         mode: 'global',
@@ -91,6 +125,26 @@ export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
         directionalIntensity: 1.2,
         directionalAzimuth: 35,
         directionalElevation: 50,
+    },
+    words: {
+        enabled: false,
+        windowSize: 4,
+        punctuationMode: 'keep',
+        worldSize: 1,
+        radialOffset: 0.35,
+    },
+    billboard: {
+        enabled: true,
+        rotationOffsetX: 0,
+        rotationOffsetY: 0,
+        rotationOffsetZ: 0,
+    },
+    reaction: {
+        activePointOffsetX: 0,
+        activePointOffsetY: 0,
+        activePointOffsetZ: 0,
+        smoothFacing: true,
+        smoothStrength: 0.08,
     },
 };
 
@@ -111,6 +165,9 @@ export const resolvePrimitive3DParams = (params: Record<string, any> | null | un
     const camera = raw.camera || {};
     const material = raw.material || {};
     const lighting = raw.lighting || {};
+    const words = raw.words || {};
+    const billboard = raw.billboard || {};
+    const reaction = raw.reaction || {};
 
     const primitiveType: Primitive3DType = (
         primitive.type === 'box'
@@ -127,6 +184,13 @@ export const resolvePrimitive3DParams = (params: Record<string, any> | null | un
         ? primitive.type
         : 'sphere';
     const lightingMode: Primitive3DLightingMode = lighting.mode === 'local' ? 'local' : 'global';
+    const renderMode: Primitive3DMaterialRenderMode = (
+        material.renderMode === 'wireframe'
+        || material.renderMode === 'solid-wireframe'
+    )
+        ? material.renderMode
+        : 'solid';
+    const punctuationMode: Primitive3DWordPunctuationMode = words.punctuationMode === 'strip' ? 'strip' : 'keep';
 
     return {
         primitive: {
@@ -152,6 +216,9 @@ export const resolvePrimitive3DParams = (params: Record<string, any> | null | un
             roughness: clamp(material.roughness, 0, 1, DEFAULT_PRIMITIVE3D_PARAMS.material.roughness),
             metalness: clamp(material.metalness, 0, 1, DEFAULT_PRIMITIVE3D_PARAMS.material.metalness),
             opacity: clamp(material.opacity, 0, 1, DEFAULT_PRIMITIVE3D_PARAMS.material.opacity),
+            renderMode,
+            wireColor: normalizeColor(material.wireColor, DEFAULT_PRIMITIVE3D_PARAMS.material.wireColor),
+            wireOpacity: clamp(material.wireOpacity, 0, 1, DEFAULT_PRIMITIVE3D_PARAMS.material.wireOpacity),
         },
         lighting: {
             mode: lightingMode,
@@ -161,6 +228,26 @@ export const resolvePrimitive3DParams = (params: Record<string, any> | null | un
             directionalIntensity: clamp(lighting.directionalIntensity, 0, 20, DEFAULT_PRIMITIVE3D_PARAMS.lighting.directionalIntensity),
             directionalAzimuth: clamp(lighting.directionalAzimuth, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.lighting.directionalAzimuth),
             directionalElevation: clamp(lighting.directionalElevation, -89, 89, DEFAULT_PRIMITIVE3D_PARAMS.lighting.directionalElevation),
+        },
+        words: {
+            enabled: words.enabled === true,
+            windowSize: clamp(words.windowSize, 1, 24, DEFAULT_PRIMITIVE3D_PARAMS.words.windowSize),
+            punctuationMode,
+            worldSize: clamp(words.worldSize, 0.05, 6, DEFAULT_PRIMITIVE3D_PARAMS.words.worldSize),
+            radialOffset: clamp(words.radialOffset, -4, 4, DEFAULT_PRIMITIVE3D_PARAMS.words.radialOffset),
+        },
+        billboard: {
+            enabled: billboard.enabled !== false,
+            rotationOffsetX: clamp(billboard.rotationOffsetX, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.billboard.rotationOffsetX),
+            rotationOffsetY: clamp(billboard.rotationOffsetY, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.billboard.rotationOffsetY),
+            rotationOffsetZ: clamp(billboard.rotationOffsetZ, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.billboard.rotationOffsetZ),
+        },
+        reaction: {
+            activePointOffsetX: clamp(reaction.activePointOffsetX ?? reaction.rotateByWordIndexX, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.reaction.activePointOffsetX),
+            activePointOffsetY: clamp(reaction.activePointOffsetY ?? reaction.rotateByWordIndexY, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.reaction.activePointOffsetY),
+            activePointOffsetZ: clamp(reaction.activePointOffsetZ ?? reaction.rotateByWordIndexZ, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.reaction.activePointOffsetZ),
+            smoothFacing: reaction.smoothFacing !== false,
+            smoothStrength: clamp(reaction.smoothStrength, 0.01, 1, DEFAULT_PRIMITIVE3D_PARAMS.reaction.smoothStrength),
         },
     };
 };

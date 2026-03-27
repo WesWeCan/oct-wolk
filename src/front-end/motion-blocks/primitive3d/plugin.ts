@@ -4,6 +4,7 @@ import {
     DEFAULT_PRIMITIVE3D_STYLE,
     DEFAULT_PRIMITIVE3D_TRANSFORM,
 } from '@/front-end/motion-blocks/primitive3d/defaults';
+import { collectPrimitive3DFonts } from '@/front-end/motion-blocks/primitive3d/fonts';
 import {
     cleanPrimitive3DOrphanedOverrides,
     resolvePrimitive3DActiveItems,
@@ -15,10 +16,28 @@ import { applyPrimitive3DGizmoDelta, getPrimitive3DFallbackBounds } from '@/fron
 import { Primitive3DRenderer } from '@/front-end/motion-blocks/primitive3d/renderer/Primitive3DRenderer';
 import type { MotionBlockPlugin } from '@/front-end/motion-blocks/core/plugin-types';
 import Primitive3DInspector from '@/front-end/motion-blocks/primitive3d/inspector/Primitive3DInspector.vue';
-import type { MotionTrack } from '@/types/project_types';
+import { normalizeSubtitleEnterExit } from '@/front-end/motion-blocks/subtitle/defaults';
+import type { MotionTrack, WolkProjectFont } from '@/types/project_types';
 
 const LEGACY_PIXELS_TO_WORLD = 0.01;
 const primitive3DKeyframePaths = new Set(PRIMITIVE3D_KEYFRAME_PROPERTIES.map((property) => property.path));
+
+function inheritProjectFont(track: MotionTrack, projectFont?: WolkProjectFont) {
+    const style = track.block.style || { ...DEFAULT_PRIMITIVE3D_STYLE };
+    const shouldInheritProjectFont = !style.fontLocalPath && (
+        !style.fontFamily
+        || style.fontFamily === projectFont?.family
+        || style.fontFamily === 'ProjectFont'
+    );
+
+    return {
+        ...DEFAULT_PRIMITIVE3D_STYLE,
+        ...style,
+        fontFallbacks: style.fontFallbacks ?? (shouldInheritProjectFont ? projectFont?.fallbacks || [] : []),
+        fontName: style.fontName ?? (shouldInheritProjectFont ? projectFont?.name : undefined),
+        fontLocalPath: style.fontLocalPath ?? (shouldInheritProjectFont ? projectFont?.localPath : undefined),
+    };
+}
 
 const collapseLegacyTransformIntoParams = (track: MotionTrack) => {
     const params = resolvePrimitive3DParams(track.block.params);
@@ -58,7 +77,7 @@ export const primitive3dMotionBlockPlugin: MotionBlockPlugin = {
         renderSpace: '3d',
         supportsMonitorGizmo: false,
     },
-    createTrack({ startMs, endMs, color, trackId, blockId }) {
+    createTrack({ project, sourceTrack, startMs, endMs, color, trackId, blockId }) {
         return {
             id: trackId,
             name: '3d primitive',
@@ -71,10 +90,18 @@ export const primitive3dMotionBlockPlugin: MotionBlockPlugin = {
             block: {
                 id: blockId,
                 type: 'primitive3d',
-                sourceTrackId: '',
+                sourceTrackId: sourceTrack?.id || '',
                 startMs,
                 endMs,
-                style: { ...DEFAULT_PRIMITIVE3D_STYLE },
+                style: {
+                    ...DEFAULT_PRIMITIVE3D_STYLE,
+                    fontFamily: project.font.family || DEFAULT_PRIMITIVE3D_STYLE.fontFamily,
+                    fontFallbacks: [...(project.font.fallbacks || [])],
+                    fontStyle: project.font.style || DEFAULT_PRIMITIVE3D_STYLE.fontStyle,
+                    fontWeight: project.font.weight || DEFAULT_PRIMITIVE3D_STYLE.fontWeight,
+                    fontName: project.font.name,
+                    fontLocalPath: project.font.localPath,
+                },
                 transform: { ...DEFAULT_PRIMITIVE3D_TRANSFORM },
                 enter: createDefaultPrimitive3DEnter(),
                 exit: createDefaultPrimitive3DExit(),
@@ -84,7 +111,7 @@ export const primitive3dMotionBlockPlugin: MotionBlockPlugin = {
             },
         };
     },
-    normalizeTrack(track) {
+    normalizeTrack(track, { projectFont }) {
         const propertyTracks = (track.block.propertyTracks || []).filter((propertyTrack) => {
             if (!propertyTrack || propertyTrack.enabled === false) return false;
             if (!primitive3DKeyframePaths.has(propertyTrack.propertyPath)) return false;
@@ -100,11 +127,10 @@ export const primitive3dMotionBlockPlugin: MotionBlockPlugin = {
             block: {
                 ...track.block,
                 type: 'primitive3d',
-                sourceTrackId: '',
-                style: {
-                    ...DEFAULT_PRIMITIVE3D_STYLE,
-                    ...(track.block.style || {}),
-                },
+                sourceTrackId: typeof track.block.sourceTrackId === 'string' ? track.block.sourceTrackId : '',
+                style: inheritProjectFont(track, projectFont),
+                enter: normalizeSubtitleEnterExit(track.block.enter, 'enter'),
+                exit: normalizeSubtitleEnterExit(track.block.exit, 'exit'),
                 // Collapse the old 2D wrapper into object-space params once, then keep the wrapper neutral.
                 transform: { ...DEFAULT_PRIMITIVE3D_TRANSFORM },
                 params: collapseLegacyTransformIntoParams(track) as any,
@@ -118,6 +144,7 @@ export const primitive3dMotionBlockPlugin: MotionBlockPlugin = {
     resolveActiveItems: resolvePrimitive3DActiveItems,
     resolveBlockItems: resolvePrimitive3DBlockItems,
     cleanOrphanedOverrides: cleanPrimitive3DOrphanedOverrides,
+    collectFonts: collectPrimitive3DFonts,
     getKeyframeProperties: () => PRIMITIVE3D_KEYFRAME_PROPERTIES,
     inspectorComponent: Primitive3DInspector,
     gizmo: {

@@ -1,48 +1,159 @@
 import type { ResolvedItem } from '@/front-end/motion-blocks/core/types';
-import type { LyricTrack, MotionBlock, WolkProject } from '@/types/project_types';
+import { getPrimitive3DAnchorCapacity } from '@/front-end/motion-blocks/primitive3d/anchor-points';
+import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
+import { computeEnterExitProgress, msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
+import type { ItemOverride, LyricTrack, MotionBlock, MotionEnterExit, TimelineItem, WolkProject } from '@/types/project_types';
 
-const resolvePrimitive3DItems = (
+const isItemWithinBlockRange = (item: TimelineItem, block: MotionBlock): boolean => {
+    return item.endMs > block.startMs && item.startMs < block.endMs;
+};
+
+const stripPunctuation = (value: string): string => {
+    return value.replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '').trim();
+};
+
+const resolveVisibleText = (text: string, punctuationMode: ReturnType<typeof resolvePrimitive3DParams>['words']['punctuationMode']): string => {
+    if (punctuationMode === 'strip') return stripPunctuation(text);
+    return text.trim();
+};
+
+const mergeEnterExit = (
+    base: MotionEnterExit,
+    override?: Partial<MotionEnterExit>,
+): MotionEnterExit => {
+    if (!override) return base;
+    return {
+        ...base,
+        ...override,
+        fade: {
+            ...(base.fade ?? {}),
+            ...(override.fade ?? {}),
+        },
+        move: {
+            ...(base.move ?? {}),
+            ...(override.move ?? {}),
+        },
+        scale: {
+            ...(base.scale ?? {}),
+            ...(override.scale ?? {}),
+        },
+    };
+};
+
+const buildResolvedWordItems = (
     block: MotionBlock,
+    sourceTrack: LyricTrack | null | undefined,
     currentFrame: number,
     fps: number,
     activeOnly: boolean,
 ): ResolvedItem[] => {
-    const startFrame = Math.round((block.startMs / 1000) * Math.max(1, fps));
-    const endFrame = Math.round((block.endMs / 1000) * Math.max(1, fps));
-    const isActive = currentFrame >= startFrame && currentFrame <= endFrame;
-    if (activeOnly && !isActive) return [];
+    const params = resolvePrimitive3DParams(block.params);
+    const slotCount = getPrimitive3DAnchorCapacity(params);
+    if (!params.words.enabled || !sourceTrack || slotCount <= 0) return [];
 
-    return [{
-        id: `${block.id}:primitive3d`,
-        text: '',
-        startMs: block.startMs,
-        endMs: block.endMs,
-        enterProgress: isActive ? 1 : 0,
-        exitProgress: 0,
-        isActive,
-        style: block.style,
-        transform: block.transform,
-        enter: block.enter,
-        exit: block.exit,
-    }];
+    const overrideMap = new Map(block.overrides.map((override) => [override.sourceItemId, override]));
+    const sourceItems = sourceTrack.items
+        .filter((item) => isItemWithinBlockRange(item, block))
+        .map((item) => {
+            const override = overrideMap.get(item.id);
+            if (override?.hidden) return null;
+            const textOverride = override?.textOverride?.trim();
+            const candidateText = textOverride && textOverride.length > 0 ? textOverride : item.text;
+            const visibleText = resolveVisibleText(candidateText, params.words.punctuationMode);
+            if (!visibleText) return null;
+            return { item, override, visibleText };
+        })
+        .filter((entry): entry is { item: TimelineItem; override?: ItemOverride; visibleText: string } => entry !== null);
+
+    return sourceItems
+        .map(({ item, override, visibleText }, sourceIndex) => {
+            const windowEndSource = sourceItems[sourceIndex + slotCount];
+            const visibleItem = {
+                ...item,
+                text: visibleText,
+                endMs: Math.max(item.endMs, Math.min(block.endMs, windowEndSource?.item.startMs ?? block.endMs)),
+            };
+            const startFrame = msToFrame(visibleItem.startMs, fps);
+            const endFrame = Math.max(startFrame + 1, msToFrame(visibleItem.endMs, fps));
+            const isActive = currentFrame >= startFrame && currentFrame < endFrame;
+            if (activeOnly && !isActive) return null;
+
+            const wordStyleOverride = override?.wordStyleMap?.[0] ?? {};
+            const resolvedEnter = mergeEnterExit(block.enter, override?.enterOverride);
+            const resolvedExit = mergeEnterExit(block.exit, override?.exitOverride);
+            const { enterProgress, exitProgress } = computeEnterExitProgress(
+                visibleItem,
+                currentFrame,
+                fps,
+                resolvedEnter,
+                resolvedExit,
+            );
+
+            return {
+                id: `${block.id}:primitive3d:word:${item.id}`,
+                text: visibleText,
+                richText: {
+                    primitive3dWord: {
+                        slotIndex: sourceIndex % slotCount,
+                        slotCount,
+                        sourceIndex,
+                        sourceItemId: item.id,
+                    },
+                },
+                startMs: visibleItem.startMs,
+                endMs: visibleItem.endMs,
+                enterProgress,
+                exitProgress,
+                isActive,
+                style: {
+                    ...block.style,
+                    ...(override?.styleOverride ?? {}),
+                    ...wordStyleOverride,
+                },
+                transform: {
+                    ...block.transform,
+                    ...(override?.transformOverride ?? {}),
+                },
+                enter: resolvedEnter,
+                exit: resolvedExit,
+                wordStyleMap: override?.wordStyleMap,
+                forceStyleColor: !!override?.styleOverride?.color || !!wordStyleOverride.color,
+            } as ResolvedItem;
+        })
+        .filter((item): item is ResolvedItem => item !== null);
 };
 
 export const resolvePrimitive3DActiveItems = (
     block: MotionBlock,
-    _sourceTrack: LyricTrack | null | undefined,
+    sourceTrack: LyricTrack | null | undefined,
     currentFrame: number,
     fps: number,
 ): ResolvedItem[] => {
-    return resolvePrimitive3DItems(block, currentFrame, fps, true);
+    return buildResolvedWordItems(block, sourceTrack, currentFrame, fps, true);
 };
 
 export const resolvePrimitive3DBlockItems = (
     block: MotionBlock,
-    _sourceTrack: LyricTrack | null | undefined,
+    sourceTrack: LyricTrack | null | undefined,
     currentFrame: number,
     fps: number,
 ): ResolvedItem[] => {
-    return resolvePrimitive3DItems(block, currentFrame, fps, false);
+    return buildResolvedWordItems(block, sourceTrack, currentFrame, fps, false);
 };
 
-export const cleanPrimitive3DOrphanedOverrides = (_project: WolkProject) => ({ removedCount: 0 });
+export const cleanPrimitive3DOrphanedOverrides = (project: WolkProject) => {
+    let removedCount = 0;
+    const trackById = new Map(project.lyricTracks.map((track) => [track.id, track]));
+
+    for (const motionTrack of project.motionTracks) {
+        if (motionTrack.block.type !== 'primitive3d') continue;
+        const sourceTrack = trackById.get(motionTrack.block.sourceTrackId);
+        if (!sourceTrack) continue;
+        const validItemIds = new Set(sourceTrack.items.map((item) => item.id));
+        const nextOverrides = (motionTrack.block.overrides || []).filter((override) => validItemIds.has(override.sourceItemId));
+        removedCount += (motionTrack.block.overrides || []).length - nextOverrides.length;
+        motionTrack.block.overrides = nextOverrides;
+    }
+
+    return { removedCount };
+};

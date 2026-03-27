@@ -53,6 +53,10 @@ describe('primitive3d motion block plugin', () => {
         expect(track.block.params.primitive.type).toBe('sphere');
         expect(track.block.params.camera.distance).toBe(5.5);
         expect(track.block.params.lighting.mode).toBe('global');
+        expect(track.block.params.material.renderMode).toBe('solid');
+        expect(track.block.params.words.windowSize).toBe(4);
+        expect(track.block.params.reaction.smoothFacing).toBe(true);
+        expect(track.block.style.fontFamily).toBe('system-ui');
     });
 
     it('normalizes params and prunes unsupported property tracks', () => {
@@ -73,6 +77,13 @@ describe('primitive3d motion block plugin', () => {
         (track.block.params as any).object.scale = 999;
         (track.block.params as any).camera.distance = 999;
         (track.block.params as any).lighting.mode = 'wat';
+        (track.block.params as any).material.renderMode = 'laser';
+        (track.block.params as any).material.wireOpacity = 999;
+        (track.block.params as any).words.windowSize = 999;
+        (track.block.params as any).words.worldSize = -5;
+        (track.block.params as any).words.radialOffset = 999;
+        (track.block.params as any).reaction.smoothFacing = 'wat';
+        (track.block.params as any).reaction.smoothStrength = 999;
         track.block.propertyTracks = [
             { propertyPath: 'params.object.positionX', keyframes: [], enabled: true } as any,
             { propertyPath: 'params.object.positionY', keyframes: [{ frame: 10, value: 1, interpolation: 'linear' }], enabled: true } as any,
@@ -88,6 +99,13 @@ describe('primitive3d motion block plugin', () => {
         expect(normalized.block.params.object.scale).toBe(10);
         expect(normalized.block.params.camera.distance).toBe(25);
         expect(normalized.block.params.lighting.mode).toBe('global');
+        expect(normalized.block.params.material.renderMode).toBe('solid');
+        expect(normalized.block.params.material.wireOpacity).toBe(1);
+        expect(normalized.block.params.words.windowSize).toBe(24);
+        expect(normalized.block.params.words.worldSize).toBe(0.05);
+        expect(normalized.block.params.words.radialOffset).toBe(4);
+        expect(normalized.block.params.reaction.smoothFacing).toBe(true);
+        expect(normalized.block.params.reaction.smoothStrength).toBe(1);
         expect(normalized.block.propertyTracks).toHaveLength(1);
         expect(normalized.block.propertyTracks[0].propertyPath).toBe('params.object.positionY');
     });
@@ -122,5 +140,76 @@ describe('primitive3d motion block plugin', () => {
 
     it('falls back unsupported primitive types to sphere', () => {
         expect(resolvePrimitive3DParams({ primitive: { type: 'banana' } }).primitive.type).toBe('sphere');
+    });
+
+    it('uses primitive point capacity for the word FIFO ring', () => {
+        const project = makeProject();
+        const sourceTrack = {
+            id: 'lyric-1',
+            name: 'Words',
+            color: '#ffffff',
+            kind: 'word' as const,
+            muted: false,
+            solo: false,
+            locked: false,
+            items: [
+                { id: 'w1', text: 'we', startMs: 0, endMs: 100 },
+                { id: 'w2', text: 'came', startMs: 100, endMs: 200 },
+                { id: 'w3', text: 'to', startMs: 200, endMs: 300 },
+                { id: 'w4', text: 'fight', startMs: 300, endMs: 400 },
+                { id: 'w5', text: 'tonight', startMs: 400, endMs: 500 },
+                { id: 'w6', text: 'with', startMs: 500, endMs: 600 },
+                { id: 'w7', text: 'all', startMs: 600, endMs: 700 },
+                { id: 'w8', text: 'we', startMs: 700, endMs: 800 },
+                { id: 'w9', text: 'have', startMs: 800, endMs: 900 },
+                { id: 'w10', text: 'left', startMs: 900, endMs: 1000 },
+            ],
+        };
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack,
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+        track.block.params = resolvePrimitive3DParams({
+            ...track.block.params,
+            primitive: {
+                ...track.block.params.primitive,
+                type: 'box',
+            },
+            words: {
+                enabled: true,
+            },
+        }) as any;
+
+        const activeItems = primitive3dMotionBlockPlugin.resolveActiveItems(track.block, sourceTrack, 59, 60);
+
+        expect(activeItems).toHaveLength(8);
+        expect(activeItems.map((item) => item.text)).toEqual(['to', 'fight', 'tonight', 'with', 'all', 'we', 'have', 'left']);
+        expect(activeItems.map((item) => item.richText?.primitive3dWord?.slotIndex)).toEqual([2, 3, 4, 5, 6, 7, 0, 1]);
+        expect(activeItems.at(-1)?.richText?.primitive3dWord?.slotCount).toBe(8);
+    });
+
+    it('returns no word items when source track is missing', () => {
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project: makeProject(),
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+        track.block.params = resolvePrimitive3DParams({
+            ...track.block.params,
+            words: {
+                enabled: true,
+                windowSize: 4,
+            },
+        }) as any;
+
+        expect(primitive3dMotionBlockPlugin.resolveActiveItems(track.block, null, 10, 60)).toEqual([]);
     });
 });

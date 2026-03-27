@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Primitive3DRenderer } from '@/front-end/motion-blocks/primitive3d/renderer/Primitive3DRenderer';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
+import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
 import { normalizeScene3DSettings } from '@/front-end/utils/projectScene3D';
 import type { MotionRenderContext } from '@/front-end/motion-blocks/core/types';
 
@@ -65,6 +66,58 @@ describe('Primitive3DRenderer', () => {
 
         renderer.prepare(track.block);
         renderer.render(ctx, primitive3dMotionBlockPlugin.resolveActiveItems(track.block, null, 0, 60), makeContext(), {});
+
+        expect(renderer.getLastBounds()).not.toBeNull();
+        renderer.dispose();
+    });
+
+    it('renders safely with wireframe and word sprites enabled', () => {
+        const renderer = new Primitive3DRenderer();
+        const project = makeProject();
+        const sourceTrack = {
+            id: 'lyric-1',
+            name: 'Words',
+            color: '#ffffff',
+            kind: 'word' as const,
+            muted: false,
+            solo: false,
+            locked: false,
+            items: [
+                { id: 'w1', text: 'hello', startMs: 0, endMs: 100 },
+                { id: 'w2', text: 'world', startMs: 100, endMs: 200 },
+            ],
+        };
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project: project as any,
+            sourceTrack,
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+        track.block.params = resolvePrimitive3DParams({
+            ...track.block.params,
+            material: {
+                ...track.block.params.material,
+                renderMode: 'solid-wireframe',
+            },
+            words: {
+                enabled: true,
+                windowSize: 2,
+                worldSize: 0.8,
+                radialOffset: 0.5,
+            },
+        }) as any;
+        const ctx = createMockCtx();
+        const activeItems = primitive3dMotionBlockPlugin.resolveActiveItems(track.block, sourceTrack, 12, 60);
+        const context = makeContext();
+        context.project = project as any;
+        context.track = track as any;
+        context.block = track.block as any;
+
+        renderer.prepare(track.block);
+        renderer.render(ctx, activeItems, context, {});
 
         expect(renderer.getLastBounds()).not.toBeNull();
         renderer.dispose();

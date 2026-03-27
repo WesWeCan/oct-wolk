@@ -41,47 +41,51 @@ export const DEFAULT_PRIMITIVE3D_TRANSFORM: MotionTransform = {
     rotation: 0,
 };
 
-const NOOP_FADE = {
-    enabled: false,
-    opacityStart: 1,
+const DEFAULT_FADE = {
+    enabled: true,
+    opacityStart: 0,
     opacityEnd: 1,
 };
 
 const NOOP_MOVE = {
     enabled: false,
     direction: 'up' as const,
-    distancePx: 0,
+    distancePx: 24,
 };
 
 const NOOP_SCALE = {
     enabled: false,
-    amount: 0,
+    amount: 0.12,
 };
 
 export const DEFAULT_PRIMITIVE3D_ENTER_EXIT: MotionEnterExit = {
-    fraction: 0.2,
-    minFrames: 1,
-    maxFrames: 24,
-    easing: 'linear',
+    fraction: 0.3,
+    minFrames: 3,
+    maxFrames: 30,
+    easing: 'easeOut',
     showCursor: false,
-    fade: { ...NOOP_FADE },
+    fade: { ...DEFAULT_FADE },
     move: { ...NOOP_MOVE },
     scale: { ...NOOP_SCALE },
-    style: 'none',
-    opacityStart: 1,
+    style: 'fade',
+    opacityStart: 0,
     opacityEnd: 1,
 };
 
 export const createDefaultPrimitive3DEnter = (): MotionEnterExit => ({
     ...DEFAULT_PRIMITIVE3D_ENTER_EXIT,
-    fade: { ...NOOP_FADE },
+    fade: { ...DEFAULT_FADE, enabled: true, opacityStart: 0, opacityEnd: 1 },
     move: { ...NOOP_MOVE },
     scale: { ...NOOP_SCALE },
+    opacityStart: 0,
+    opacityEnd: 1,
 });
 
 export const createDefaultPrimitive3DExit = (): MotionEnterExit => ({
     ...DEFAULT_PRIMITIVE3D_ENTER_EXIT,
-    fade: { ...NOOP_FADE },
+    fade: { ...DEFAULT_FADE, enabled: true, opacityStart: 1, opacityEnd: 0 },
     move: { ...NOOP_MOVE },
     scale: { ...NOOP_SCALE },
+    opacityStart: 1,
+    opacityEnd: 0,
 });
