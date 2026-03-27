@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shallowMount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import Primitive3DInspector from '@/front-end/motion-blocks/primitive3d/inspector/Primitive3DInspector.vue';
 import Scene3DInspector from '@/front-end/components/editor/Scene3DInspector.vue';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
@@ -41,7 +41,7 @@ const makeTrack = () => primitive3dMotionBlockPlugin.createTrack({
 
 describe('primitive3d inspector', () => {
     it('shows a disabled custom model control', () => {
-        const wrapper = shallowMount(Primitive3DInspector, {
+        const wrapper = mount(Primitive3DInspector, {
             props: {
                 motionTrack: makeTrack(),
                 lyricTracks: [],
@@ -58,7 +58,7 @@ describe('primitive3d inspector', () => {
     });
 
     it('switches to local lighting controls', async () => {
-        const wrapper = shallowMount(Primitive3DInspector, {
+        const wrapper = mount(Primitive3DInspector, {
             props: {
                 motionTrack: makeTrack(),
                 lyricTracks: [],
@@ -77,7 +77,7 @@ describe('primitive3d inspector', () => {
     });
 
     it('re-emits global scene lighting updates when in global mode', async () => {
-        const wrapper = shallowMount(Primitive3DInspector, {
+        const wrapper = mount(Primitive3DInspector, {
             props: {
                 motionTrack: makeTrack(),
                 lyricTracks: [],
@@ -105,7 +105,7 @@ describe('primitive3d inspector', () => {
     });
 
     it('lets word sprites bind to a word source track', async () => {
-        const wrapper = shallowMount(Primitive3DInspector, {
+        const wrapper = mount(Primitive3DInspector, {
             props: {
                 motionTrack: makeTrack(),
                 lyricTracks: [{
@@ -133,7 +133,7 @@ describe('primitive3d inspector', () => {
     });
 
     it('lets smoothing be toggled from the words tab', async () => {
-        const wrapper = shallowMount(Primitive3DInspector, {
+        const wrapper = mount(Primitive3DInspector, {
             props: {
                 motionTrack: makeTrack(),
                 lyricTracks: [{
@@ -163,7 +163,7 @@ describe('primitive3d inspector', () => {
     });
 
     it('lets billboard rotation be toggled with segmented controls', async () => {
-        const wrapper = shallowMount(Primitive3DInspector, {
+        const wrapper = mount(Primitive3DInspector, {
             props: {
                 motionTrack: makeTrack(),
                 lyricTracks: [{
