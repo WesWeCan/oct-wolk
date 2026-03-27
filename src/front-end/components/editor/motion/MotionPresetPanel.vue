@@ -32,9 +32,10 @@ const selectedPreset = computed(() => presets.value.find((preset) => preset.id =
 const actionDisabled = computed(() => !!props.disabled || loading.value || saving.value || applying.value || deleting.value);
 const canSave = computed(() => !actionDisabled.value && presetName.value.trim().length > 0);
 const hasSelection = computed(() => !!selectedPreset.value);
+const emptyStateMessage = 'No saved presets yet. Save the current look to create one.';
 const selectedPresetMeta = computed(() => {
     if (!selectedPreset.value) {
-        if (presets.value.length === 0) return 'No saved presets yet. Save the current subtitle look to create one.';
+        if (presets.value.length === 0) return emptyStateMessage;
         return `${presets.value.length} saved preset${presets.value.length === 1 ? '' : 's'}. Select one to apply or overwrite it.`;
     }
 
@@ -171,7 +172,7 @@ onMounted(() => {
                     v-model="presetName"
                     class="inspector-input"
                     type="text"
-                    placeholder="My subtitle preset"
+                    placeholder="My motion preset"
                     :disabled="actionDisabled"
                 />
                 <button class="btn-sm" :disabled="!canSave" @click="savePreset()">
@@ -195,7 +196,7 @@ onMounted(() => {
                 </button>
             </div>
             <p v-else class="inspector-hint motion-preset-panel__empty-state">
-                No saved presets yet. Save the current subtitle look to create one.
+                {{ emptyStateMessage }}
             </p>
             <span v-if="presets.length > 0" class="inspector-hint">
                 {{ selectedPresetMeta }}

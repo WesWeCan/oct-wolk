@@ -94,6 +94,11 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         return `Frame ${Math.max(0, Math.round(frame))} (${Math.max(0, Math.round(ms))} ms)`;
     };
 
+    const blockPresetDisabledMessage = computed(() => {
+        if (isLocked.value) return 'Unlock the motion track to apply or save presets.';
+        return '';
+    });
+
     const getPropertyTrack = (path: string) => {
         return props.motionTrack?.block.propertyTracks.find((track) => track.propertyPath === path) ?? null;
     };
@@ -196,6 +201,10 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
                 sourceTrackId: trackId,
             },
         });
+    };
+
+    const applyMotionPreset = (track: MotionTrack) => {
+        emit('update-track', track);
     };
 
     const updateEnterExit = (which: 'enter' | 'exit', value: MotionTrack['block']['enter']) => {
@@ -432,6 +441,7 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         modelUploadState,
         modelUploadError,
         formatFrameAndMs,
+        blockPresetDisabledMessage,
         hasKeyframing,
         hasAnyKeyframes,
         hasKeyAtCurrentFrame,
@@ -443,6 +453,7 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         updateStyle,
         updateFontSelection,
         updateSourceTrackId,
+        applyMotionPreset,
         updateEnterExit,
         updateTextReveal,
         updateLifecycleExitMode,

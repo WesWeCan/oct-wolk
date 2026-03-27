@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
+import MotionPresetPanel from '@/front-end/components/editor/motion/MotionPresetPanel.vue';
 import Primitive3DInspector from '@/front-end/motion-blocks/primitive3d/inspector/Primitive3DInspector.vue';
 import Scene3DInspector from '@/front-end/components/editor/Scene3DInspector.vue';
 import MotionTextRevealEditor from '@/front-end/components/editor/motion/MotionTextRevealEditor.vue';
@@ -52,6 +53,17 @@ const makeTrack = () => primitive3dMotionBlockPlugin.createTrack({
 });
 
 describe('primitive3d inspector', () => {
+    beforeEach(() => {
+        (window as any).electronAPI = {
+            motionPresets: {
+                list: vi.fn().mockResolvedValue([]),
+                load: vi.fn(),
+                save: vi.fn(),
+                delete: vi.fn(),
+            },
+        };
+    });
+
     const getTopLevelSections = (wrapper: ReturnType<typeof mount>) => (
         wrapper.find('.motion-inspector--primitive3d').findAll(':scope > .inspector-section')
     );
@@ -72,6 +84,7 @@ describe('primitive3d inspector', () => {
 
         expect(topLevelSections).toEqual([
             'Source & Timing',
+            'Presets',
             'Object',
             'Camera',
             'Material',
@@ -79,6 +92,28 @@ describe('primitive3d inspector', () => {
             'Words',
             'Animation',
         ]);
+    });
+
+    it('re-emits preset updates from the presets section', async () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        await flushPromises();
+
+        const updatedTrack = makeTrack();
+        updatedTrack.block.startMs = 320;
+
+        wrapper.findComponent(MotionPresetPanel).vm.$emit('update-track', updatedTrack);
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.emitted('update-track')).toEqual([[updatedTrack]]);
     });
 
     it('lists Model in the geometry dropdown', () => {
@@ -280,7 +315,7 @@ describe('primitive3d inspector', () => {
         expect(sourceSection.text()).toContain('Start Frame');
         expect(sourceSection.text()).toContain('End Frame');
 
-        const wordsSection = getTopLevelSections(wrapper).at(5)!;
+        const wordsSection = getTopLevelSections(wrapper).at(6)!;
         expect(wordsSection.text()).not.toContain('Word Track');
 
         const select = sourceSection.find('select[aria-label="Word track"]');
@@ -548,7 +583,7 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        const wordsSection = getTopLevelSections(wrapper).at(5)!;
+        const wordsSection = getTopLevelSections(wrapper).at(6)!;
         const subsectionTitles = wordsSection.findAll('.style-sub-section__header').map((section) => section.text());
 
         expect(subsectionTitles).toEqual([
@@ -571,7 +606,7 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        const wordsSection = getTopLevelSections(wrapper).at(5)!;
+        const wordsSection = getTopLevelSections(wrapper).at(6)!;
         expect(wordsSection.text()).toContain('can visually override rotation keyframes');
         expect(wordsSection.text()).toContain('Face Camera');
         expect(wordsSection.text()).toContain('Follow Active Word');

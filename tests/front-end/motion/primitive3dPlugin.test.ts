@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
 import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
+import type { Primitive3DMotionPresetDocument } from '@/types/motion_preset_types';
 import {
     createDefaultPrimitive3DEnter,
     createDefaultPrimitive3DExit,
@@ -455,5 +456,156 @@ describe('primitive3d motion block plugin', () => {
         const exitingItems = primitive3dMotionBlockPlugin.resolveBlockItems(track.block, sourceTrack, msToFrame(2900, 60), 60);
         expect(exitingItems).toHaveLength(1);
         expect(exitingItems[0].textRevealExitProgress).toBeGreaterThan(0);
+    });
+
+    it('extracts primitive3d presets without source links, overrides, or keyframes', () => {
+        const project = makeProject();
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project,
+            startMs: 250,
+            endMs: 1750,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.style.color = '#ff00ff';
+        track.block.transform.offsetX = 200;
+        track.block.params = resolvePrimitive3DParams({
+            ...track.block.params,
+            object: {
+                ...track.block.params.object,
+                positionX: 1.5,
+            },
+            camera: {
+                ...track.block.params.camera,
+                distance: 8,
+            },
+        }) as any;
+        track.block.overrides.push({ sourceItemId: 'item-1', hidden: false, textOverride: 'hello' });
+        track.block.propertyTracks.push({
+            propertyPath: 'params.object.positionX',
+            keyframes: [{ frame: 10, value: 1, interpolation: 'linear' }],
+            enabled: true,
+        } as any);
+
+        const payload = primitive3dMotionBlockPlugin.presets!.extractPayload(track, { project, projectFont: project.font });
+
+        expect(payload.startMs).toBe(250);
+        expect(payload.endMs).toBe(1750);
+        expect(payload.style.color).toBe('#ff00ff');
+        expect(payload.transform.offsetX).toBe(0);
+        expect(payload.params.object.positionX).toBeCloseTo(3.5);
+        expect(payload.params.camera.distance).toBe(8);
+        expect((payload as any).overrides).toBeUndefined();
+        expect((payload as any).propertyTracks).toBeUndefined();
+        expect((payload as any).sourceTrackId).toBeUndefined();
+    });
+
+    it('applies primitive3d presets while preserving source track, overrides, and keyframes', () => {
+        const project = makeProject();
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project,
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.overrides.push({ sourceItemId: 'item-1', hidden: false, textOverride: 'hello' });
+        track.block.propertyTracks.push({
+            propertyPath: 'params.object.positionY',
+            keyframes: [{ frame: 10, value: 25, interpolation: 'linear' }],
+            enabled: true,
+        } as any);
+
+        const preset: Primitive3DMotionPresetDocument = {
+            id: 'preset-1',
+            blockType: 'primitive3d',
+            version: 1,
+            name: 'Punchy',
+            createdAt: 1,
+            updatedAt: 1,
+            payload: {
+                startMs: 300,
+                endMs: 1200,
+                style: {
+                    ...track.block.style,
+                    color: '#00ffcc',
+                    fontFamily: '',
+                    fontFallbacks: undefined,
+                    fontName: undefined,
+                    fontLocalPath: undefined,
+                },
+                transform: {
+                    ...track.block.transform,
+                    offsetX: 200,
+                },
+                enter: {
+                    ...track.block.enter,
+                    style: 'typewriter',
+                    showCursor: true,
+                },
+                exit: {
+                    ...track.block.exit,
+                    style: 'typewriter',
+                    showCursor: true,
+                },
+                params: resolvePrimitive3DParams({
+                    ...track.block.params,
+                    object: {
+                        ...track.block.params.object,
+                        positionX: 1,
+                    },
+                    material: {
+                        ...track.block.params.material,
+                        color: '#00ffcc',
+                    },
+                    camera: {
+                        ...track.block.params.camera,
+                        distance: 9,
+                    },
+                }),
+            },
+        };
+
+        const applied = primitive3dMotionBlockPlugin.presets!.applyPreset(track, preset, { project, projectFont: project.font });
+
+        expect(applied.block.sourceTrackId).toBe(track.block.sourceTrackId);
+        expect(applied.block.overrides).toEqual(track.block.overrides);
+        expect(applied.block.propertyTracks).toEqual(track.block.propertyTracks);
+        expect(applied.block.startMs).toBe(300);
+        expect(applied.block.endMs).toBe(1200);
+        expect(applied.block.style.color).toBe('#00ffcc');
+        expect(applied.block.style.fontFallbacks).toEqual(['sans-serif']);
+        expect(applied.block.enter.style).toBe('typewriter');
+        expect(applied.block.exit.style).toBe('typewriter');
+        expect(applied.block.transform.offsetX).toBe(0);
+        expect(applied.block.params.object.positionX).toBeCloseTo(3);
+        expect(applied.block.params.material.color).toBe('#00ffcc');
+        expect(applied.block.params.camera.distance).toBe(9);
+    });
+
+    it('rejects unsupported primitive3d preset versions', () => {
+        const project = makeProject();
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project,
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        expect(() => primitive3dMotionBlockPlugin.presets!.applyPreset(track, {
+            id: 'preset-1',
+            blockType: 'primitive3d',
+            version: 999,
+            name: 'Bad',
+            createdAt: 1,
+            updatedAt: 1,
+            payload: primitive3dMotionBlockPlugin.presets!.extractPayload(track, { project, projectFont: project.font }),
+        }, { project, projectFont: project.font })).toThrow('Unsupported primitive3d preset version');
     });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { shallowMount } from '@vue/test-utils';
+import MotionPresetPanel from '@/front-end/components/editor/motion/MotionPresetPanel.vue';
 import CloudInspector from '@/front-end/motion-blocks/cloud/inspector/CloudInspector.vue';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import MotionEnterExitEditor from '@/front-end/components/editor/motion/MotionEnterExitEditor.vue';
@@ -88,6 +89,23 @@ describe('cloud inspector', () => {
         const gapField = wrapper.findAllComponents(AnimatableNumberField)
             .find((component) => component.props('label') === 'Gap');
         expect(gapField?.props('hint')).toContain('For tighter packing, lower Style -> Background Padding too.');
+    });
+
+    it('renders presets after source and timing, then re-emits preset updates', async () => {
+        const wrapper = mountCloudInspector(makeTrack(wordTrack), [wordTrack]);
+
+        const sectionTitles = wrapper.findAll('.inspector-section__title').map((section) => section.text());
+        expect(sectionTitles.slice(0, 3)).toEqual(['Source & Timing', 'Presets', 'Layout']);
+
+        const presetPanel = wrapper.findComponent(MotionPresetPanel);
+        expect(presetPanel.exists()).toBe(true);
+
+        const updatedTrack = makeTrack(wordTrack);
+        updatedTrack.block.startMs = 320;
+        presetPanel.vm.$emit('update-track', updatedTrack);
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.emitted('update-track')).toEqual([[updatedTrack]]);
     });
 
     it('renders the animation section with the shared enter/exit editor', () => {

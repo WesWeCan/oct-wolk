@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cloudMotionBlockPlugin } from '@/front-end/motion-blocks';
+import type { CloudMotionPresetDocument } from '@/types/motion_preset_types';
 
 const makeProject = () => ({
     id: 'project-1',
@@ -165,5 +166,143 @@ describe('cloud motion block plugin', () => {
         expect(normalized.block.params.textRevealExitWindow).toBe(0.2);
         expect(normalized.block.params.textRevealEnterPortion).toBe(1);
         expect(normalized.block.params.textRevealExitPortion).toBe(1);
+    });
+
+    it('extracts cloud presets without source links, overrides, or keyframes', () => {
+        const project = makeProject();
+        const track = cloudMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack: makeSourceTrack(),
+            startMs: 250,
+            endMs: 1750,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.style.color = '#ff00ff';
+        track.block.transform.offsetX = 42;
+        track.block.params = {
+            ...track.block.params,
+            gap: 22,
+            exitMode: 'perItem',
+            exitDelayMs: 900,
+        };
+        track.block.overrides.push({ sourceItemId: 'item-1', hidden: false, textOverride: 'hello' });
+        track.block.propertyTracks.push({
+            propertyPath: 'transform.offsetX',
+            keyframes: [{ frame: 10, value: 10, interpolation: 'linear' }],
+            enabled: true,
+        } as any);
+
+        const payload = cloudMotionBlockPlugin.presets!.extractPayload(track, { project, projectFont: project.font });
+
+        expect(payload.startMs).toBe(250);
+        expect(payload.endMs).toBe(1750);
+        expect(payload.style.color).toBe('#ff00ff');
+        expect(payload.transform.offsetX).toBe(42);
+        expect(payload.params.gap).toBe(22);
+        expect(payload.params.exitMode).toBe('perItem');
+        expect((payload as any).overrides).toBeUndefined();
+        expect((payload as any).propertyTracks).toBeUndefined();
+        expect((payload as any).sourceTrackId).toBeUndefined();
+    });
+
+    it('applies cloud presets while preserving source track, overrides, and keyframes', () => {
+        const project = makeProject();
+        const track = cloudMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack: makeSourceTrack(),
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.overrides.push({ sourceItemId: 'item-1', hidden: false, textOverride: 'hello' });
+        track.block.propertyTracks.push({
+            propertyPath: 'transform.offsetY',
+            keyframes: [{ frame: 10, value: 25, interpolation: 'linear' }],
+            enabled: true,
+        } as any);
+
+        const preset: CloudMotionPresetDocument = {
+            id: 'preset-1',
+            blockType: 'cloud',
+            version: 1,
+            name: 'Punchy',
+            createdAt: 1,
+            updatedAt: 1,
+            payload: {
+                startMs: 300,
+                endMs: 1200,
+                style: {
+                    ...track.block.style,
+                    color: '#00ffcc',
+                    fontFamily: '',
+                    fontFallbacks: undefined,
+                    fontName: undefined,
+                    fontLocalPath: undefined,
+                },
+                transform: {
+                    ...track.block.transform,
+                    offsetX: 88,
+                },
+                enter: {
+                    ...track.block.enter,
+                    style: 'typewriter',
+                    showCursor: true,
+                },
+                exit: {
+                    ...track.block.exit,
+                    style: 'typewriter',
+                    showCursor: true,
+                },
+                params: {
+                    ...track.block.params,
+                    gap: 24,
+                    exitMode: 'perItem',
+                    exitDelayMs: 400,
+                },
+            },
+        };
+
+        const applied = cloudMotionBlockPlugin.presets!.applyPreset(track, preset, { project, projectFont: project.font });
+
+        expect(applied.block.sourceTrackId).toBe(track.block.sourceTrackId);
+        expect(applied.block.overrides).toEqual(track.block.overrides);
+        expect(applied.block.propertyTracks).toEqual(track.block.propertyTracks);
+        expect(applied.block.startMs).toBe(300);
+        expect(applied.block.endMs).toBe(1200);
+        expect(applied.block.style.color).toBe('#00ffcc');
+        expect(applied.block.style.fontFallbacks).toEqual(['Arial']);
+        expect(applied.block.enter.style).toBe('typewriter');
+        expect(applied.block.exit.style).toBe('typewriter');
+        expect(applied.block.params.gap).toBe(24);
+        expect(applied.block.params.exitMode).toBe('perItem');
+        expect(applied.block.params.exitDelayMs).toBe(400);
+    });
+
+    it('rejects unsupported cloud preset versions', () => {
+        const track = cloudMotionBlockPlugin.createTrack({
+            project: makeProject(),
+            sourceTrack: makeSourceTrack(),
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        expect(() => cloudMotionBlockPlugin.presets!.applyPreset(track, {
+            id: 'preset-1',
+            blockType: 'cloud',
+            version: 999,
+            name: 'Bad',
+            createdAt: 1,
+            updatedAt: 1,
+            payload: cloudMotionBlockPlugin.presets!.extractPayload(track, { projectFont: makeProject().font }),
+        }, { projectFont: makeProject().font })).toThrow('Unsupported cloud preset version');
     });
 });

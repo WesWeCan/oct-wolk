@@ -4,6 +4,7 @@ import Primitive3DCameraSection from '@/front-end/motion-blocks/primitive3d/insp
 import Primitive3DLightingSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DLightingSection.vue';
 import Primitive3DMaterialSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DMaterialSection.vue';
 import Primitive3DObjectSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DObjectSection.vue';
+import Primitive3DPresetsSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DPresetsSection.vue';
 import Primitive3DSourceTimingSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DSourceTimingSection.vue';
 import Primitive3DWordsSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DWordsSection.vue';
 import { usePrimitive3DInspector } from '@/front-end/motion-blocks/primitive3d/inspector/usePrimitive3DInspector';
@@ -39,6 +40,7 @@ const api = usePrimitive3DInspector(props, emit);
 
         <template v-else>
             <Primitive3DSourceTimingSection :motion-track="motionTrack" :api="api" />
+            <Primitive3DPresetsSection :motion-track="motionTrack" :api="api" />
             <Primitive3DObjectSection :api="api" />
             <Primitive3DCameraSection :api="api" />
             <Primitive3DMaterialSection :api="api" />

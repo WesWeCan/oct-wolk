@@ -4,6 +4,7 @@ import type { LyricTrack, MotionEnterExit, MotionStyle, MotionTrack, WolkProject
 import MotionAppearanceTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionAppearanceTab.vue';
 import CloudSafeAreaTab from '@/front-end/motion-blocks/cloud/inspector/tabs/CloudSafeAreaTab.vue';
 import MotionEnterExitEditor from '@/front-end/components/editor/motion/MotionEnterExitEditor.vue';
+import MotionPresetPanel from '@/front-end/components/editor/motion/MotionPresetPanel.vue';
 import MotionTextRevealEditor from '@/front-end/components/editor/motion/MotionTextRevealEditor.vue';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import { applyFontSelectionToMotionStyle } from '@/front-end/utils/fonts/fontUtils';
@@ -23,6 +24,7 @@ import {
     createMotionVisualOffEnterExit,
     motionEnterExitEquals,
 } from '@/front-end/utils/motion/motionEnterExitPresets';
+import { cloudMotionPresetAdapter } from '@/front-end/motion-blocks/cloud/presets';
 
 const props = defineProps<{
     motionTrack: MotionTrack | null;
@@ -90,6 +92,11 @@ const endFrame = computed(() => {
 const formatFrameAndMs = (frame: number, ms: number): string => {
     return `Frame ${Math.max(0, Math.round(frame))} (${Math.max(0, Math.round(ms))} ms)`;
 };
+
+const blockPresetDisabledMessage = computed(() => {
+    if (isLocked.value) return 'Unlock the motion track to apply or save presets.';
+    return '';
+});
 
 const autoKeyframe = (path: string, value: any, propertyTracks: any[]): any[] => {
     const ptIdx = propertyTracks.findIndex((propertyTrack: any) => propertyTrack.propertyPath === path);
@@ -159,6 +166,10 @@ const updateEndFrame = (frame: number) => {
     const endMs = Math.round((frame / fpsVal.value) * 1000);
     const minEnd = props.motionTrack.block.startMs + 100;
     emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, endMs: Math.max(minEnd, endMs) } });
+};
+
+const applyMotionPreset = (track: MotionTrack) => {
+    emit('update-track', track);
 };
 
 const updateStyle = (key: keyof MotionStyle, value: any) => {
@@ -299,6 +310,20 @@ const togglePropertyKeyframing = (path: string) => {
                         :hint="formatFrameAndMs(endFrame, motionTrack.block.endMs)"
                         :scrub-per-px="0.2"
                         @update:model-value="updateEndFrame"
+                    />
+                </div>
+            </details>
+
+            <details class="inspector-section">
+                <summary class="inspector-section__title">Presets</summary>
+                <div class="inspector-section__content">
+                    <MotionPresetPanel
+                        :motion-track="motionTrack"
+                        :preset-adapter="cloudMotionPresetAdapter"
+                        :project-font="projectFont"
+                        :disabled="isLocked"
+                        :disabled-message="blockPresetDisabledMessage"
+                        @update-track="applyMotionPreset"
                     />
                 </div>
             </details>

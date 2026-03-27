@@ -6,7 +6,7 @@ import type { MotionTrack } from '@/types/project_types';
 
 const track: MotionTrack = {
     id: 'track-1',
-    name: 'subtitle - Verse',
+    name: 'cloud - Verse',
     color: '#4fc3f7',
     enabled: true,
     muted: false,
@@ -15,7 +15,7 @@ const track: MotionTrack = {
     collapsed: false,
     block: {
         id: 'block-1',
-        type: 'subtitle',
+        type: 'cloud',
         sourceTrackId: 'lyric-1',
         startMs: 0,
         endMs: 1000,
@@ -67,8 +67,8 @@ describe('motion preset panel', () => {
 
     it('renders presets as wrapped chips and selects one on click', async () => {
         listMock.mockResolvedValue([
-            { id: 'preset-a', blockType: 'subtitle', version: 1, name: 'Alpha', createdAt: 1, updatedAt: 2 },
-            { id: 'preset-b', blockType: 'subtitle', version: 1, name: 'Beta', createdAt: 1, updatedAt: 3 },
+            { id: 'preset-a', blockType: 'cloud', version: 1, name: 'Alpha', createdAt: 1, updatedAt: 2 },
+            { id: 'preset-b', blockType: 'cloud', version: 1, name: 'Beta', createdAt: 1, updatedAt: 3 },
         ]);
 
         const wrapper = mount(MotionPresetPanel, {
@@ -84,6 +84,7 @@ describe('motion preset panel', () => {
         expect(chips).toHaveLength(2);
         expect(wrapper.find('select').exists()).toBe(false);
         expect(chips[0].classes()).toContain('motion-preset-panel__chip--selected');
+        expect((wrapper.get('input').element as HTMLInputElement).placeholder).toBe('My motion preset');
 
         await chips[1].trigger('click');
 
@@ -93,11 +94,11 @@ describe('motion preset panel', () => {
 
     it('applies the selected preset through update-track', async () => {
         listMock.mockResolvedValue([
-            { id: 'preset-a', blockType: 'subtitle', version: 1, name: 'Alpha', createdAt: 1, updatedAt: 2 },
+            { id: 'preset-a', blockType: 'cloud', version: 1, name: 'Alpha', createdAt: 1, updatedAt: 2 },
         ]);
         loadMock.mockResolvedValue({
             id: 'preset-a',
-            blockType: 'subtitle',
+            blockType: 'cloud',
             version: 1,
             name: 'Alpha',
             createdAt: 1,
@@ -118,7 +119,7 @@ describe('motion preset panel', () => {
         await flushPromises();
         await wrapper.get('.motion-preset-panel__action-row .btn-sm').trigger('click');
 
-        expect(loadMock).toHaveBeenCalledWith('subtitle', 'preset-a');
+        expect(loadMock).toHaveBeenCalledWith('cloud', 'preset-a');
         expect(presetAdapter.applyPreset).toHaveBeenCalled();
         expect(wrapper.emitted('update-track')).toEqual([[
             expect.objectContaining({
@@ -127,5 +128,20 @@ describe('motion preset panel', () => {
                 }),
             }),
         ]]);
+    });
+
+    it('shows generic empty-state copy for non-subtitle blocks', async () => {
+        listMock.mockResolvedValue([]);
+
+        const wrapper = mount(MotionPresetPanel, {
+            props: {
+                motionTrack: track,
+                presetAdapter,
+            },
+        });
+
+        await flushPromises();
+
+        expect(wrapper.text()).toContain('No saved presets yet. Save the current look to create one.');
     });
 });
