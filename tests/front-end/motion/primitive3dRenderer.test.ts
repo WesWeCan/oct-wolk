@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Primitive3DRenderer } from '@/front-end/motion-blocks/primitive3d/renderer/Primitive3DRenderer';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
+import {
+    createDefaultPrimitive3DEnter,
+    createDefaultPrimitive3DExit,
+} from '@/front-end/motion-blocks/primitive3d/defaults';
 import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
+import { createMotionAllOffEnterExit } from '@/front-end/utils/motion/motionEnterExitPresets';
 import { normalizeScene3DSettings } from '@/front-end/utils/projectScene3D';
-import type { MotionRenderContext } from '@/front-end/motion-blocks/core/types';
+import type { MotionRenderContext, ResolvedItem } from '@/front-end/motion-blocks/core/types';
 
 const makeProject = () => ({
     id: 'project-1',
@@ -57,6 +62,23 @@ const makeContext = (): MotionRenderContext => {
         allItems: [],
     };
 };
+
+const makeResolvedItem = (track = makeTrack(), overrides: Partial<ResolvedItem> = {}): ResolvedItem => ({
+    id: 'item-1',
+    text: 'HELLO',
+    startMs: 0,
+    endMs: 1000,
+    enterProgress: 1,
+    exitProgress: 0,
+    textRevealEnterProgress: 1,
+    textRevealExitProgress: 0,
+    isActive: true,
+    style: { ...track.block.style },
+    transform: { ...track.block.transform },
+    enter: createDefaultPrimitive3DEnter(),
+    exit: createDefaultPrimitive3DExit(),
+    ...overrides,
+});
 
 describe('Primitive3DRenderer', () => {
     it('renders safely and reports bounds', () => {
@@ -121,5 +143,35 @@ describe('Primitive3DRenderer', () => {
 
         expect(renderer.getLastBounds()).not.toBeNull();
         renderer.dispose();
+    });
+
+    it('reveals only part of the visible word text during typewriter enter', () => {
+        const renderer = new Primitive3DRenderer();
+        const item = makeResolvedItem(undefined, {
+            textRevealEnterProgress: 0.4,
+            textRevealExitProgress: 0,
+        });
+
+        const visibleText = (renderer as any).resolveVisibleWordText(item, resolvePrimitive3DParams({
+            textReveal: { textRevealMode: 'typewriter' },
+        }));
+
+        expect(visibleText).toBe('HE');
+    });
+
+    it('keeps typewriter reveal working when primitive3d motion visuals are off', () => {
+        const renderer = new Primitive3DRenderer();
+        const item = makeResolvedItem(undefined, {
+            textRevealEnterProgress: 0.4,
+            textRevealExitProgress: 0,
+            enter: createMotionAllOffEnterExit(createDefaultPrimitive3DEnter()),
+            exit: createMotionAllOffEnterExit(createDefaultPrimitive3DExit()),
+        });
+
+        const visibleText = (renderer as any).resolveVisibleWordText(item, resolvePrimitive3DParams({
+            textReveal: { textRevealMode: 'typewriter' },
+        }));
+
+        expect(visibleText).toBe('HE');
     });
 });

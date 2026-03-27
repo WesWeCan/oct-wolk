@@ -207,7 +207,8 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             'XYZ',
         ));
         let targetQuaternion = baseQuaternion.clone();
-        if (activeAnchor && this.camera && activeAnchor.lengthSq() > 0.000001) {
+        const shouldFollowActiveWord = params.reaction.enabled && activeAnchor && this.camera && activeAnchor.lengthSq() > 0.000001;
+        if (shouldFollowActiveWord) {
             const anchorDirection = activeAnchor.clone().normalize();
             const currentWorldDirection = anchorDirection.clone().applyQuaternion(baseQuaternion).normalize();
             const desiredDirection = this.camera.position.clone().sub(this.mesh.position).normalize();
@@ -222,7 +223,7 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             MathUtils.degToRad(params.reaction.activePointOffsetZ),
             'XYZ',
         )));
-        if (params.reaction.smoothFacing) {
+        if (params.reaction.enabled && params.reaction.smoothFacing) {
             if (!this.smoothedQuaternion) this.smoothedQuaternion = targetQuaternion.clone();
             else this.smoothedQuaternion.slerp(targetQuaternion, params.reaction.smoothStrength);
             this.mesh.quaternion.copy(this.smoothedQuaternion);

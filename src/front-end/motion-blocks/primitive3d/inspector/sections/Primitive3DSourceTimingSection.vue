@@ -14,8 +14,35 @@ defineProps<{
         <summary class="inspector-section__title">Source &amp; Timing</summary>
         <div class="inspector-section__content">
             <div class="motion-tab style-v2">
+                <div class="style-v2__field">
+                    <span class="style-v2__field-label">Enable Word Sprites</span>
+                    <div class="segmented-control">
+                        <button type="button" aria-label="Enable word sprites off" :class="{ active: !api.params.words.enabled }" :disabled="api.isLocked" @click="api.updatePathValue('params.words.enabled', false)">Off</button>
+                        <button type="button" aria-label="Enable word sprites on" :class="{ active: api.params.words.enabled }" :disabled="api.isLocked" @click="api.updatePathValue('params.words.enabled', true)">On</button>
+                    </div>
+                </div>
+                <div class="style-v2__field">
+                    <span class="style-v2__field-label">Word Track</span>
+                    <select aria-label="Word track" class="inspector-input" :disabled="api.isLocked" :value="motionTrack.block.sourceTrackId" @change="api.updateSourceTrackId(($event.target as HTMLSelectElement).value)">
+                        <option value="">No source track</option>
+                        <option v-for="track in api.wordTracks" :key="track.id" :value="track.id">
+                            {{ track.name }}
+                        </option>
+                    </select>
+                </div>
                 <div class="inspector-note">
-                    Configure the word source in the Words section below. Timing stays editable here like the other motion inspectors.
+                    <template v-if="api.selectedWordTrack">
+                        Using `{{ api.selectedWordTrack.name }}` with {{ api.anchorCapacity }} geometry-driven slots.
+                    </template>
+                    <template v-else-if="api.wordTracks.length > 0">
+                        Select a `word` lyric track to render billboarded word sprites on the primitive.
+                    </template>
+                    <template v-else>
+                        No `word` lyric tracks found yet. Create one first so the sprites have timing data.
+                    </template>
+                </div>
+                <div class="inspector-note">
+                    Start and end frames control the full primitive block on the timeline. Word sprite timing still comes from the selected word track.
                 </div>
                 <AnimatableNumberField
                     label="Start Frame"

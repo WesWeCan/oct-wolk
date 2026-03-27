@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
+import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import Primitive3DInspector from '@/front-end/motion-blocks/primitive3d/inspector/Primitive3DInspector.vue';
 import Scene3DInspector from '@/front-end/components/editor/Scene3DInspector.vue';
 import MotionTextRevealEditor from '@/front-end/components/editor/motion/MotionTextRevealEditor.vue';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
+import { createDefaultPrimitive3DEnter, createDefaultPrimitive3DExit } from '@/front-end/motion-blocks/primitive3d/defaults';
 
 const makeProject = () => ({
     id: 'project-1',
@@ -41,6 +43,35 @@ const makeTrack = () => primitive3dMotionBlockPlugin.createTrack({
 });
 
 describe('primitive3d inspector', () => {
+    const getTopLevelSections = (wrapper: ReturnType<typeof mount>) => (
+        wrapper.find('.motion-inspector--primitive3d').findAll(':scope > .inspector-section')
+    );
+
+    it('orders top-level sections like the other motion inspectors', () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        const topLevelSections = getTopLevelSections(wrapper)
+            .map((section) => section.find('.inspector-section__title').text());
+
+        expect(topLevelSections).toEqual([
+            'Source & Timing',
+            'Object',
+            'Camera',
+            'Material',
+            'Lighting',
+            'Words',
+            'Animation',
+        ]);
+    });
+
     it('shows a disabled custom model control', () => {
         const wrapper = mount(Primitive3DInspector, {
             props: {
@@ -125,7 +156,16 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        const select = wrapper.find('select[aria-label="Word track"]');
+        const sourceSection = getTopLevelSections(wrapper).at(0)!;
+        expect(sourceSection.text()).toContain('Enable Word Sprites');
+        expect(sourceSection.text()).toContain('Word Track');
+        expect(sourceSection.text()).toContain('Start Frame');
+        expect(sourceSection.text()).toContain('End Frame');
+
+        const wordsSection = getTopLevelSections(wrapper).at(5)!;
+        expect(wordsSection.text()).not.toContain('Word Track');
+
+        const select = sourceSection.find('select[aria-label="Word track"]');
         await select.setValue('lyric-1');
 
         const updates = wrapper.emitted('update-track');
@@ -147,6 +187,10 @@ describe('primitive3d inspector', () => {
         expect(wrapper.text()).toContain('Animation');
         expect(wrapper.text()).toContain('Text Reveal');
         expect(wrapper.text()).toContain('Typewriter');
+        expect(wrapper.text()).toContain('Lifecycle');
+        expect(wrapper.text()).toContain('Exit Behavior');
+        expect(wrapper.text()).toContain('Stay Until Replaced');
+        expect(wrapper.text()).toContain('Exit Per Word');
         expect(wrapper.text()).toContain('Motion');
     });
 
@@ -182,6 +226,109 @@ describe('primitive3d inspector', () => {
         expect(updatedTrack.block.params.textReveal.textRevealShowCursor).toBe(true);
     });
 
+    it('auto-applies motion-off visuals when switching to typewriter from default motion', async () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        wrapper.findComponent(MotionTextRevealEditor).vm.$emit('update-text-reveal', {
+            textRevealMode: 'typewriter',
+            textRevealEnterWindow: 0.3,
+            textRevealExitWindow: 0.2,
+            textRevealEnterPortion: 1,
+            textRevealExitPortion: 1,
+            textRevealShowCursor: false,
+        });
+        await wrapper.vm.$nextTick();
+
+        const updates = wrapper.emitted('update-track');
+        expect(updates).toBeTruthy();
+        const updatedTrack = updates?.at(-1)?.[0] as any;
+        const expectedDefault = createDefaultPrimitive3DEnter();
+
+        expect(updatedTrack.block.params.textReveal.textRevealMode).toBe('typewriter');
+        expect(updatedTrack.block.enter.fraction).toBe(expectedDefault.fraction);
+        expect(updatedTrack.block.enter.fade.enabled).toBe(false);
+        expect(updatedTrack.block.enter.move.enabled).toBe(false);
+        expect(updatedTrack.block.enter.scale.enabled).toBe(false);
+        expect(updatedTrack.block.exit.fade.enabled).toBe(false);
+        expect(updatedTrack.block.exit.move.enabled).toBe(false);
+        expect(updatedTrack.block.exit.scale.enabled).toBe(false);
+    });
+
+    it('derives text reveal editor values from legacy typewriter enter and exit settings', () => {
+        const track = makeTrack();
+        track.block.enter = {
+            ...createDefaultPrimitive3DEnter(),
+            style: 'typewriter',
+            fraction: 0.55,
+            showCursor: true,
+        };
+        track.block.exit = {
+            ...createDefaultPrimitive3DExit(),
+            style: 'typewriter',
+            fraction: 0.45,
+            showCursor: false,
+        };
+
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: track,
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        const revealEditor = wrapper.findComponent(MotionTextRevealEditor);
+        expect(revealEditor.props('value')).toMatchObject({
+            textRevealMode: 'typewriter',
+            textRevealEnterWindow: 0.55,
+            textRevealExitWindow: 0.45,
+            textRevealShowCursor: true,
+        });
+    });
+
+    it('updates primitive3d lifecycle params from the animation section', async () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        await wrapper.findAll('button').find((button) => button.text() === 'Exit Per Word')?.trigger('click');
+
+        const firstUpdates = wrapper.emitted('update-track');
+        expect(firstUpdates).toBeTruthy();
+        const firstTrack = firstUpdates?.at(-1)?.[0] as any;
+        expect(firstTrack.block.params.lifecycle.exitMode).toBe('perItem');
+
+        await wrapper.setProps({ motionTrack: firstTrack });
+
+        const exitDelayField = wrapper.findAllComponents(AnimatableNumberField)
+            .find((component) => component.props('label') === 'Exit Delay (ms)');
+        expect(exitDelayField).toBeTruthy();
+
+        exitDelayField!.vm.$emit('update:modelValue', 1200);
+        await wrapper.vm.$nextTick();
+
+        const secondUpdates = wrapper.emitted('update-track');
+        expect(secondUpdates).toBeTruthy();
+        const secondTrack = secondUpdates?.at(-1)?.[0] as any;
+        expect(secondTrack.block.params.lifecycle.exitDelayMs).toBe(1200);
+    });
+
     it('lets smoothing be toggled from the words tab', async () => {
         const wrapper = mount(Primitive3DInspector, {
             props: {
@@ -205,7 +352,7 @@ describe('primitive3d inspector', () => {
         await wrapper.find('button[aria-label="Enable word sprites on"]').trigger('click');
         const firstUpdatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
         await wrapper.setProps({ motionTrack: firstUpdatedTrack });
-        await wrapper.find('button[aria-label="Smooth facing off"]').trigger('click');
+        await wrapper.find('button[aria-label="Smooth follow off"]').trigger('click');
 
         const updates = wrapper.emitted('update-track');
         expect(updates).toBeTruthy();
@@ -235,10 +382,80 @@ describe('primitive3d inspector', () => {
         await wrapper.find('button[aria-label="Enable word sprites on"]').trigger('click');
         const firstUpdatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
         await wrapper.setProps({ motionTrack: firstUpdatedTrack });
-        await wrapper.find('button[aria-label="Billboard rotation off"]').trigger('click');
+        await wrapper.find('button[aria-label="Word facing off"]').trigger('click');
 
         const updates = wrapper.emitted('update-track');
         expect(updates).toBeTruthy();
         expect((updates?.at(-1)?.[0] as any).block.params.billboard.enabled).toBe(false);
+    });
+
+    it('lets object follow be turned off so the mesh keeps its own rotation', async () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [{
+                    id: 'lyric-1',
+                    name: 'Word Track',
+                    color: '#fff',
+                    kind: 'word',
+                    items: [],
+                    muted: false,
+                    solo: false,
+                    locked: false,
+                }],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        await wrapper.find('button[aria-label="Enable word sprites on"]').trigger('click');
+        const firstUpdatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
+        await wrapper.setProps({ motionTrack: firstUpdatedTrack });
+        await wrapper.find('button[aria-label="Object follow off"]').trigger('click');
+
+        const updates = wrapper.emitted('update-track');
+        expect(updates).toBeTruthy();
+        expect((updates?.at(-1)?.[0] as any).block.params.reaction.enabled).toBe(false);
+    });
+
+    it('groups word controls by placement and orientation', () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        const wordsSection = getTopLevelSections(wrapper).at(5)!;
+        const subsectionTitles = wordsSection.findAll('.style-sub-section__header').map((section) => section.text());
+
+        expect(subsectionTitles).toEqual([
+            'Placement',
+            'Word Facing',
+            'Object Follow',
+            'Typography',
+            'Background',
+        ]);
+    });
+
+    it('explains that object follow can visually override object rotation', () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        const wordsSection = getTopLevelSections(wrapper).at(5)!;
+        expect(wordsSection.text()).toContain('can visually override rotation keyframes');
+        expect(wordsSection.text()).toContain('Face Camera');
+        expect(wordsSection.text()).toContain('Follow Active Word');
     });
 });

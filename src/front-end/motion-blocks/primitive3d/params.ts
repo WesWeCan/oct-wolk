@@ -20,6 +20,7 @@ export type Primitive3DType =
 export type Primitive3DLightingMode = 'global' | 'local';
 export type Primitive3DMaterialRenderMode = 'solid' | 'wireframe' | 'solid-wireframe';
 export type Primitive3DWordPunctuationMode = 'keep' | 'strip';
+export type Primitive3DExitMode = 'stay' | 'perItem';
 
 export interface Primitive3DGeometryParams {
     type: Primitive3DType;
@@ -78,11 +79,17 @@ export interface Primitive3DBillboardParams {
 }
 
 export interface Primitive3DReactionParams {
+    enabled: boolean;
     activePointOffsetX: number;
     activePointOffsetY: number;
     activePointOffsetZ: number;
     smoothFacing: boolean;
     smoothStrength: number;
+}
+
+export interface Primitive3DLifecycleParams {
+    exitMode: Primitive3DExitMode;
+    exitDelayMs: number;
 }
 
 export interface Primitive3DParams {
@@ -94,6 +101,7 @@ export interface Primitive3DParams {
     words: Primitive3DWordsParams;
     billboard: Primitive3DBillboardParams;
     reaction: Primitive3DReactionParams;
+    lifecycle: Primitive3DLifecycleParams;
     textReveal: TextRevealParams;
 }
 
@@ -148,11 +156,16 @@ export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
         rotationOffsetZ: 0,
     },
     reaction: {
+        enabled: true,
         activePointOffsetX: 0,
         activePointOffsetY: 0,
         activePointOffsetZ: 0,
         smoothFacing: true,
         smoothStrength: 0.08,
+    },
+    lifecycle: {
+        exitMode: 'stay',
+        exitDelayMs: 0,
     },
     textReveal: {
         ...DEFAULT_TEXT_REVEAL_PARAMS,
@@ -169,6 +182,8 @@ const normalizeColor = (value: unknown, fallback: string): string => {
     return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
 };
 
+const isPrimitive3DExitMode = (value: unknown): value is Primitive3DExitMode => value === 'stay' || value === 'perItem';
+
 export const resolvePrimitive3DParams = (
     params: Record<string, any> | null | undefined,
     enter?: MotionEnterExit | null,
@@ -183,6 +198,7 @@ export const resolvePrimitive3DParams = (
     const words = raw.words || {};
     const billboard = raw.billboard || {};
     const reaction = raw.reaction || {};
+    const lifecycle = raw.lifecycle || {};
     const textReveal = resolveTextRevealParams(raw.textReveal, enter, exit);
 
     const primitiveType: Primitive3DType = (
@@ -259,11 +275,16 @@ export const resolvePrimitive3DParams = (
             rotationOffsetZ: clamp(billboard.rotationOffsetZ, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.billboard.rotationOffsetZ),
         },
         reaction: {
+            enabled: reaction.enabled !== false,
             activePointOffsetX: clamp(reaction.activePointOffsetX ?? reaction.rotateByWordIndexX, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.reaction.activePointOffsetX),
             activePointOffsetY: clamp(reaction.activePointOffsetY ?? reaction.rotateByWordIndexY, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.reaction.activePointOffsetY),
             activePointOffsetZ: clamp(reaction.activePointOffsetZ ?? reaction.rotateByWordIndexZ, -180, 180, DEFAULT_PRIMITIVE3D_PARAMS.reaction.activePointOffsetZ),
             smoothFacing: reaction.smoothFacing !== false,
             smoothStrength: clamp(reaction.smoothStrength, 0.01, 1, DEFAULT_PRIMITIVE3D_PARAMS.reaction.smoothStrength),
+        },
+        lifecycle: {
+            exitMode: isPrimitive3DExitMode(lifecycle.exitMode) ? lifecycle.exitMode : DEFAULT_PRIMITIVE3D_PARAMS.lifecycle.exitMode,
+            exitDelayMs: clamp(lifecycle.exitDelayMs, 0, 60_000, DEFAULT_PRIMITIVE3D_PARAMS.lifecycle.exitDelayMs),
         },
         textReveal,
     };

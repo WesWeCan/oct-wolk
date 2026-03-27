@@ -1,6 +1,10 @@
 import { computed, reactive } from 'vue';
 import { getPrimitive3DAnchorCapacity } from '@/front-end/motion-blocks/primitive3d/anchor-points';
-import { cloneMotionEnterExit } from '@/front-end/utils/motion/motionEnterExitPresets';
+import {
+    cloneMotionEnterExit,
+    createMotionVisualOffEnterExit,
+    motionEnterExitEquals,
+} from '@/front-end/utils/motion/motionEnterExitPresets';
 import type { TextRevealParams } from '@/front-end/utils/motion/textReveal';
 import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
 import { evalInterpolatedAtFrame, removeKeyframeAtIndex, upsertKeyframe } from '@/front-end/utils/tracks';
@@ -8,11 +12,16 @@ import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import { getMotionBlockPropertyValue, setMotionBlockPropertyValue } from '@/front-end/utils/motion/blockPropertyPaths';
 import {
     resolvePrimitive3DParams,
+    type Primitive3DExitMode,
     type Primitive3DLightingMode,
     type Primitive3DMaterialRenderMode,
     type Primitive3DType,
     type Primitive3DWordPunctuationMode,
 } from '@/front-end/motion-blocks/primitive3d/params';
+import {
+    createDefaultPrimitive3DEnter,
+    createDefaultPrimitive3DExit,
+} from '@/front-end/motion-blocks/primitive3d/defaults';
 import type { RendererBounds } from '@/front-end/motion-blocks/core/types';
 import { normalizeScene3DSettings } from '@/front-end/utils/projectScene3D';
 import type { LyricTrack, MotionStyle, MotionTrack, Scene3DSettings, WolkProjectFont } from '@/types/project_types';
@@ -41,7 +50,11 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
     const fpsValue = computed(() => Math.max(1, props.fps ?? 60));
     const currentFrame = computed(() => Math.round(((props.playheadMs ?? 0) / 1000) * fpsValue.value));
     const isLocked = computed(() => !!props.motionTrack?.locked);
-    const params = computed(() => resolvePrimitive3DParams(props.motionTrack?.block.params));
+    const params = computed(() => resolvePrimitive3DParams(
+        props.motionTrack?.block.params,
+        props.motionTrack?.block.enter,
+        props.motionTrack?.block.exit,
+    ));
     const scene3d = computed(() => normalizeScene3DSettings(props.scene3d));
     const style = computed(() => props.motionTrack?.block.style || null);
     const wordTracks = computed(() => props.lyricTracks.filter((track) => track.kind === 'word'));
@@ -158,14 +171,59 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         });
     };
 
+    const blockMotionStillAtDefaults = (): boolean => {
+        if (!props.motionTrack) return false;
+        return motionEnterExitEquals(props.motionTrack.block.enter, createDefaultPrimitive3DEnter())
+            && motionEnterExitEquals(props.motionTrack.block.exit, createDefaultPrimitive3DExit());
+    };
+
     const updateTextReveal = (value: TextRevealParams) => {
+        if (!props.motionTrack || isLocked.value) return;
+        const shouldAutoApplyMotionOff = params.value.textReveal.textRevealMode !== 'typewriter'
+            && value.textRevealMode === 'typewriter'
+            && blockMotionStillAtDefaults();
+        const nextEnter = shouldAutoApplyMotionOff
+            ? createMotionVisualOffEnterExit(props.motionTrack.block.enter)
+            : props.motionTrack.block.enter;
+        const nextExit = shouldAutoApplyMotionOff
+            ? createMotionVisualOffEnterExit(props.motionTrack.block.exit)
+            : props.motionTrack.block.exit;
+        emitUpdatedBlock({
+            ...props.motionTrack.block,
+            enter: nextEnter,
+            exit: nextExit,
+            params: resolvePrimitive3DParams({
+                ...props.motionTrack.block.params,
+                textReveal: value,
+            }, nextEnter, nextExit) as any,
+        });
+    };
+
+    const updateLifecycleExitMode = (value: Primitive3DExitMode) => {
         if (!props.motionTrack || isLocked.value) return;
         emitUpdatedBlock({
             ...props.motionTrack.block,
             params: resolvePrimitive3DParams({
                 ...props.motionTrack.block.params,
-                textReveal: value,
-            }) as any,
+                lifecycle: {
+                    ...params.value.lifecycle,
+                    exitMode: value,
+                },
+            }, props.motionTrack.block.enter, props.motionTrack.block.exit) as any,
+        });
+    };
+
+    const updateLifecycleExitDelayMs = (value: number) => {
+        if (!props.motionTrack || isLocked.value) return;
+        emitUpdatedBlock({
+            ...props.motionTrack.block,
+            params: resolvePrimitive3DParams({
+                ...props.motionTrack.block.params,
+                lifecycle: {
+                    ...params.value.lifecycle,
+                    exitDelayMs: Math.max(0, value),
+                },
+            }, props.motionTrack.block.enter, props.motionTrack.block.exit) as any,
         });
     };
 
@@ -254,6 +312,8 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         updateSourceTrackId,
         updateEnterExit,
         updateTextReveal,
+        updateLifecycleExitMode,
+        updateLifecycleExitDelayMs,
         toggleKeyframe,
         togglePropertyKeyframing,
         updatePrimitiveType,

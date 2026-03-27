@@ -16,34 +16,7 @@ defineProps<{
         <div class="inspector-section__content">
             <div class="motion-tab style-v2">
                 <details class="style-sub-section" open>
-                    <summary class="style-sub-section__header">Source</summary>
-                    <div class="style-v2__field">
-                        <span class="style-v2__field-label">Enable Word Sprites</span>
-                        <div class="segmented-control">
-                            <button type="button" aria-label="Enable word sprites off" :class="{ active: !api.params.words.enabled }" :disabled="api.isLocked" @click="api.updatePathValue('params.words.enabled', false)">Off</button>
-                            <button type="button" aria-label="Enable word sprites on" :class="{ active: api.params.words.enabled }" :disabled="api.isLocked" @click="api.updatePathValue('params.words.enabled', true)">On</button>
-                        </div>
-                    </div>
-                    <div class="style-v2__field">
-                        <span class="style-v2__field-label">Word Track</span>
-                        <select aria-label="Word track" class="inspector-input" :disabled="api.isLocked" :value="motionTrack.block.sourceTrackId" @change="api.updateSourceTrackId(($event.target as HTMLSelectElement).value)">
-                            <option value="">No source track</option>
-                            <option v-for="track in api.wordTracks" :key="track.id" :value="track.id">
-                                {{ track.name }}
-                            </option>
-                        </select>
-                    </div>
-                    <div class="inspector-note">
-                        <template v-if="api.selectedWordTrack">
-                            Using `{{ api.selectedWordTrack.name }}` with {{ api.anchorCapacity }} geometry-driven slots.
-                        </template>
-                        <template v-else-if="api.wordTracks.length > 0">
-                            Select a `word` lyric track to render billboarded word sprites.
-                        </template>
-                        <template v-else>
-                            No `word` lyric tracks found yet. Create one first so the sprites have timing data.
-                        </template>
-                    </div>
+                    <summary class="style-sub-section__header">Placement</summary>
                     <div class="style-v2__field">
                         <span class="style-v2__field-label">Visible Slots</span>
                         <div class="inspector-note">
@@ -57,41 +30,54 @@ defineProps<{
                             <button type="button" :class="{ active: api.params.words.punctuationMode === 'strip' }" @click="api.updatePunctuationMode('strip')">Strip</button>
                         </div>
                     </div>
-                </details>
-
-                <details class="style-sub-section">
-                    <summary class="style-sub-section__header">Rotation</summary>
-                    <div class="style-v2__field">
-                        <span class="style-v2__field-label">Billboard Rotation</span>
-                        <div class="segmented-control">
-                            <button type="button" aria-label="Billboard rotation off" :class="{ active: !api.params.billboard.enabled }" :disabled="api.isLocked || !api.params.words.enabled" @click="api.updatePathValue('params.billboard.enabled', false)">Off</button>
-                            <button type="button" aria-label="Billboard rotation on" :class="{ active: api.params.billboard.enabled }" :disabled="api.isLocked || !api.params.words.enabled" @click="api.updatePathValue('params.billboard.enabled', true)">On</button>
-                        </div>
-                    </div>
-                    <div class="inspector-note">
-                        Turn this on to rotate each word toward the camera before applying the offsets below.
-                    </div>
                     <AnimatableNumberField label="Radial Offset" :model-value="api.params.words.radialOffset" :min="-4" :max="4" :step="0.01" :display-decimals="2" :disabled="api.isLocked || !api.params.words.enabled" @update:model-value="api.updatePathValue('params.words.radialOffset', $event)" />
-                    <AnimatableNumberField label="Rotation Offset X" :model-value="api.params.billboard.rotationOffsetX" :min="-180" :max="180" :step="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.billboard.enabled" @update:model-value="api.updatePathValue('params.billboard.rotationOffsetX', $event)" />
-                    <AnimatableNumberField label="Rotation Offset Y" :model-value="api.params.billboard.rotationOffsetY" :min="-180" :max="180" :step="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.billboard.enabled" @update:model-value="api.updatePathValue('params.billboard.rotationOffsetY', $event)" />
-                    <AnimatableNumberField label="Rotation Offset Z" :model-value="api.params.billboard.rotationOffsetZ" :min="-180" :max="180" :step="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.billboard.enabled" @update:model-value="api.updatePathValue('params.billboard.rotationOffsetZ', $event)" />
+                    <div class="inspector-note">
+                        Push each word outward from its anchor point on the primitive surface.
+                    </div>
                 </details>
 
                 <details class="style-sub-section">
-                    <summary class="style-sub-section__header">Response</summary>
-                    <AnimatableNumberField label="Active Point Offset X" :model-value="api.params.reaction.activePointOffsetX" :min="-180" :max="180" :step="0.1" :display-decimals="1" :disabled="api.isLocked || !api.params.words.enabled" @update:model-value="api.updatePathValue('params.reaction.activePointOffsetX', $event)" />
-                    <AnimatableNumberField label="Active Point Offset Y" :model-value="api.params.reaction.activePointOffsetY" :min="-180" :max="180" :step="0.1" :display-decimals="1" :disabled="api.isLocked || !api.params.words.enabled" @update:model-value="api.updatePathValue('params.reaction.activePointOffsetY', $event)" />
-                    <AnimatableNumberField label="Active Point Offset Z" :model-value="api.params.reaction.activePointOffsetZ" :min="-180" :max="180" :step="0.1" :display-decimals="1" :disabled="api.isLocked || !api.params.words.enabled" @update:model-value="api.updatePathValue('params.reaction.activePointOffsetZ', $event)" />
+                    <summary class="style-sub-section__header">Word Facing</summary>
                     <div class="style-v2__field">
-                        <span class="style-v2__field-label">Smooth Facing</span>
+                        <span class="style-v2__field-label">Face Camera</span>
                         <div class="segmented-control">
-                            <button type="button" aria-label="Smooth facing off" :class="{ active: !api.params.reaction.smoothFacing }" :disabled="api.isLocked || !api.params.words.enabled" @click="api.updatePathValue('params.reaction.smoothFacing', false)">Off</button>
-                            <button type="button" aria-label="Smooth facing on" :class="{ active: api.params.reaction.smoothFacing }" :disabled="api.isLocked || !api.params.words.enabled" @click="api.updatePathValue('params.reaction.smoothFacing', true)">On</button>
+                            <button type="button" aria-label="Word facing off" :class="{ active: !api.params.billboard.enabled }" :disabled="api.isLocked || !api.params.words.enabled" @click="api.updatePathValue('params.billboard.enabled', false)">Off</button>
+                            <button type="button" aria-label="Word facing on" :class="{ active: api.params.billboard.enabled }" :disabled="api.isLocked || !api.params.words.enabled" @click="api.updatePathValue('params.billboard.enabled', true)">On</button>
                         </div>
                     </div>
-                    <AnimatableNumberField label="Smooth Strength" :model-value="api.params.reaction.smoothStrength" :min="0.01" :max="1" :step="0.01" :display-decimals="2" :disabled="api.isLocked || !api.params.words.enabled || !api.params.reaction.smoothFacing" @update:model-value="api.updatePathValue('params.reaction.smoothStrength', $event)" />
                     <div class="inspector-note">
-                        Lower values feel softer and less jumpy. Higher values react faster.
+                        Turn this on to rotate each word toward the camera before applying the extra rotation below.
+                    </div>
+                    <AnimatableNumberField label="Extra Rotation X" :model-value="api.params.billboard.rotationOffsetX" :min="-180" :max="180" :step="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.billboard.enabled" @update:model-value="api.updatePathValue('params.billboard.rotationOffsetX', $event)" />
+                    <AnimatableNumberField label="Extra Rotation Y" :model-value="api.params.billboard.rotationOffsetY" :min="-180" :max="180" :step="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.billboard.enabled" @update:model-value="api.updatePathValue('params.billboard.rotationOffsetY', $event)" />
+                    <AnimatableNumberField label="Extra Rotation Z" :model-value="api.params.billboard.rotationOffsetZ" :min="-180" :max="180" :step="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.billboard.enabled" @update:model-value="api.updatePathValue('params.billboard.rotationOffsetZ', $event)" />
+                </details>
+
+                <details class="style-sub-section">
+                    <summary class="style-sub-section__header">Object Follow</summary>
+                    <div class="style-v2__field">
+                        <span class="style-v2__field-label">Follow Active Word</span>
+                        <div class="segmented-control">
+                            <button type="button" aria-label="Object follow off" :class="{ active: !api.params.reaction.enabled }" :disabled="api.isLocked || !api.params.words.enabled" @click="api.updatePathValue('params.reaction.enabled', false)">Off</button>
+                            <button type="button" aria-label="Object follow on" :class="{ active: api.params.reaction.enabled }" :disabled="api.isLocked || !api.params.words.enabled" @click="api.updatePathValue('params.reaction.enabled', true)">On</button>
+                        </div>
+                    </div>
+                    <div class="inspector-note">
+                        When this is on, the object rotates its active anchor toward the camera. This adds on top of Object rotation and can visually override rotation keyframes while a word is active.
+                    </div>
+                    <AnimatableNumberField label="Follow Offset X" :model-value="api.params.reaction.activePointOffsetX" :min="-180" :max="180" :step="0.1" :display-decimals="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.reaction.enabled" @update:model-value="api.updatePathValue('params.reaction.activePointOffsetX', $event)" />
+                    <AnimatableNumberField label="Follow Offset Y" :model-value="api.params.reaction.activePointOffsetY" :min="-180" :max="180" :step="0.1" :display-decimals="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.reaction.enabled" @update:model-value="api.updatePathValue('params.reaction.activePointOffsetY', $event)" />
+                    <AnimatableNumberField label="Follow Offset Z" :model-value="api.params.reaction.activePointOffsetZ" :min="-180" :max="180" :step="0.1" :display-decimals="1" :disabled="api.isLocked || !api.params.words.enabled || !api.params.reaction.enabled" @update:model-value="api.updatePathValue('params.reaction.activePointOffsetZ', $event)" />
+                    <div class="style-v2__field">
+                        <span class="style-v2__field-label">Smooth Follow</span>
+                        <div class="segmented-control">
+                            <button type="button" aria-label="Smooth follow off" :class="{ active: !api.params.reaction.smoothFacing }" :disabled="api.isLocked || !api.params.words.enabled || !api.params.reaction.enabled" @click="api.updatePathValue('params.reaction.smoothFacing', false)">Off</button>
+                            <button type="button" aria-label="Smooth follow on" :class="{ active: api.params.reaction.smoothFacing }" :disabled="api.isLocked || !api.params.words.enabled || !api.params.reaction.enabled" @click="api.updatePathValue('params.reaction.smoothFacing', true)">On</button>
+                        </div>
+                    </div>
+                    <AnimatableNumberField label="Follow Strength" :model-value="api.params.reaction.smoothStrength" :min="0.01" :max="1" :step="0.01" :display-decimals="2" :disabled="api.isLocked || !api.params.words.enabled || !api.params.reaction.enabled || !api.params.reaction.smoothFacing" @update:model-value="api.updatePathValue('params.reaction.smoothStrength', $event)" />
+                    <div class="inspector-note">
+                        Lower values feel softer and slower. Higher values react faster.
                     </div>
                 </details>
 

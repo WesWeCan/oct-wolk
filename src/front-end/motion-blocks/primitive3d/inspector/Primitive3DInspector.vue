@@ -39,12 +39,12 @@ const api = usePrimitive3DInspector(props, emit);
 
         <template v-else>
             <Primitive3DSourceTimingSection :motion-track="motionTrack" :api="api" />
-            <Primitive3DAnimationSection :motion-track="motionTrack" :api="api" />
             <Primitive3DObjectSection :api="api" />
             <Primitive3DCameraSection :api="api" />
             <Primitive3DMaterialSection :api="api" />
-            <Primitive3DWordsSection :motion-track="motionTrack" :api="api" />
             <Primitive3DLightingSection :api="api" />
+            <Primitive3DWordsSection :motion-track="motionTrack" :api="api" />
+            <Primitive3DAnimationSection :motion-track="motionTrack" :api="api" />
         </template>
     </div>
 </template>

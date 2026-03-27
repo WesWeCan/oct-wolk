@@ -41,6 +41,26 @@ const mergeEnterExit = (
     };
 };
 
+const buildEffectiveTimingItem = (
+    item: TimelineItem,
+    block: MotionBlock,
+    slotReuseStartMs: number,
+    exitMode: ReturnType<typeof resolvePrimitive3DParams>['lifecycle']['exitMode'],
+    exitDelayMs: number,
+): TimelineItem => {
+    if (exitMode === 'stay') {
+        return {
+            ...item,
+            endMs: Math.max(item.endMs, slotReuseStartMs),
+        };
+    }
+
+    return {
+        ...item,
+        endMs: Math.max(item.endMs, Math.min(slotReuseStartMs, item.endMs + exitDelayMs, block.endMs)),
+    };
+};
+
 const buildResolvedWordItems = (
     block: MotionBlock,
     sourceTrack: LyricTrack | null | undefined,
@@ -69,13 +89,20 @@ const buildResolvedWordItems = (
     return sourceItems
         .map(({ item, override, visibleText }, sourceIndex) => {
             const windowEndSource = sourceItems[sourceIndex + slotCount];
+            const slotReuseStartMs = Math.min(block.endMs, windowEndSource?.item.startMs ?? block.endMs);
+            const effectiveItem = buildEffectiveTimingItem(
+                item,
+                block,
+                slotReuseStartMs,
+                params.lifecycle.exitMode,
+                params.lifecycle.exitDelayMs,
+            );
             const visibleItem = {
-                ...item,
+                ...effectiveItem,
                 text: visibleText,
-                endMs: Math.max(item.endMs, Math.min(block.endMs, windowEndSource?.item.startMs ?? block.endMs)),
             };
-            const startFrame = msToFrame(visibleItem.startMs, fps);
-            const endFrame = Math.max(startFrame + 1, msToFrame(visibleItem.endMs, fps));
+            const startFrame = msToFrame(effectiveItem.startMs, fps);
+            const endFrame = Math.max(startFrame + 1, msToFrame(effectiveItem.endMs, fps));
             const isActive = currentFrame >= startFrame && currentFrame < endFrame;
             if (activeOnly && !isActive) return null;
 
@@ -83,19 +110,24 @@ const buildResolvedWordItems = (
             const resolvedEnter = mergeEnterExit(block.enter, override?.enterOverride);
             const resolvedExit = mergeEnterExit(block.exit, override?.exitOverride);
             const { enterProgress, exitProgress } = computeEnterExitProgress(
-                visibleItem,
+                effectiveItem,
                 currentFrame,
                 fps,
                 resolvedEnter,
                 resolvedExit,
             );
             const textRevealProgress = computeTextRevealProgress(
-                visibleItem,
+                item,
                 currentFrame,
                 fps,
                 params.textReveal,
                 resolvedEnter,
                 resolvedExit,
+                {
+                    durationItem: item,
+                    enterStartMs: item.startMs,
+                    exitEndMs: effectiveItem.endMs,
+                },
             );
 
             return {

@@ -60,10 +60,13 @@ describe('primitive3d motion block plugin', () => {
         expect(track.block.params.camera.distance).toBe(5.5);
         expect(track.block.params.lighting.mode).toBe('global');
         expect(track.block.params.material.renderMode).toBe('solid');
+        expect(track.block.params.lifecycle.exitMode).toBe('stay');
+        expect(track.block.params.lifecycle.exitDelayMs).toBe(0);
         expect(track.block.params.textReveal.textRevealMode).toBe('none');
         expect(track.block.params.textReveal.textRevealEnterWindow).toBe(0.3);
         expect(track.block.params.textReveal.textRevealExitWindow).toBe(0.2);
         expect(track.block.params.words.windowSize).toBe(4);
+        expect(track.block.params.reaction.enabled).toBe(true);
         expect(track.block.params.reaction.smoothFacing).toBe(true);
         expect(track.block.style.fontFamily).toBe('system-ui');
     });
@@ -98,8 +101,13 @@ describe('primitive3d motion block plugin', () => {
         (track.block.params as any).words.windowSize = 999;
         (track.block.params as any).words.worldSize = -5;
         (track.block.params as any).words.radialOffset = 999;
+        (track.block.params as any).reaction.enabled = 'wat';
         (track.block.params as any).reaction.smoothFacing = 'wat';
         (track.block.params as any).reaction.smoothStrength = 999;
+        (track.block.params as any).lifecycle = {
+            exitMode: 'banana',
+            exitDelayMs: 999999,
+        };
         track.block.propertyTracks = [
             { propertyPath: 'params.object.positionX', keyframes: [], enabled: true } as any,
             { propertyPath: 'params.object.positionY', keyframes: [{ frame: 10, value: 1, interpolation: 'linear' }], enabled: true } as any,
@@ -125,10 +133,30 @@ describe('primitive3d motion block plugin', () => {
         expect(normalized.block.params.words.windowSize).toBe(24);
         expect(normalized.block.params.words.worldSize).toBe(0.05);
         expect(normalized.block.params.words.radialOffset).toBe(4);
+        expect(normalized.block.params.reaction.enabled).toBe(true);
         expect(normalized.block.params.reaction.smoothFacing).toBe(true);
         expect(normalized.block.params.reaction.smoothStrength).toBe(1);
+        expect(normalized.block.params.lifecycle.exitMode).toBe('stay');
+        expect(normalized.block.params.lifecycle.exitDelayMs).toBe(60000);
         expect(normalized.block.propertyTracks).toHaveLength(1);
         expect(normalized.block.propertyTracks[0].propertyPath).toBe('params.object.positionY');
+    });
+
+    it('preserves an explicit object follow off value during normalization', () => {
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project: makeProject(),
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        (track.block.params as any).reaction.enabled = false;
+
+        const normalized = primitive3dMotionBlockPlugin.normalizeTrack(track, { project: makeProject() });
+
+        expect(normalized.block.params.reaction.enabled).toBe(false);
     });
 
     it('collapses legacy transform values into object params during normalization', () => {
@@ -280,5 +308,63 @@ describe('primitive3d motion block plugin', () => {
         expect(activeItems).toHaveLength(1);
         expect(activeItems[0].enterProgress).toBe(1);
         expect(activeItems[0].textRevealEnterProgress).toBe(0);
+    });
+
+    it('treats primitive3d exit delay as hold time instead of slower typing', () => {
+        const project = makeProject();
+        const sourceTrack = {
+            id: 'lyric-1',
+            name: 'Words',
+            color: '#ffffff',
+            kind: 'word' as const,
+            muted: false,
+            solo: false,
+            locked: false,
+            items: [
+                { id: 'w1', text: 'hello', startMs: 0, endMs: 1000 },
+            ],
+        };
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack,
+            startMs: 0,
+            endMs: 5000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+        track.block.params = resolvePrimitive3DParams({
+            ...track.block.params,
+            words: {
+                ...track.block.params.words,
+                enabled: true,
+            },
+            lifecycle: {
+                exitMode: 'perItem',
+                exitDelayMs: 2000,
+            },
+            textReveal: {
+                textRevealMode: 'typewriter',
+                textRevealEnterWindow: 0.3,
+                textRevealExitWindow: 0.2,
+                textRevealEnterPortion: 1,
+                textRevealExitPortion: 1,
+                textRevealShowCursor: false,
+            },
+        }) as any;
+
+        const typingItems = primitive3dMotionBlockPlugin.resolveBlockItems(track.block, sourceTrack, msToFrame(250, 60), 60);
+        expect(typingItems).toHaveLength(1);
+        expect(typingItems[0].textRevealEnterProgress).toBeGreaterThan(0);
+        expect(typingItems[0].textRevealEnterProgress).toBeLessThan(1);
+
+        const heldItems = primitive3dMotionBlockPlugin.resolveBlockItems(track.block, sourceTrack, msToFrame(2000, 60), 60);
+        expect(heldItems).toHaveLength(1);
+        expect(heldItems[0].textRevealEnterProgress).toBe(1);
+        expect(heldItems[0].textRevealExitProgress).toBe(0);
+
+        const exitingItems = primitive3dMotionBlockPlugin.resolveBlockItems(track.block, sourceTrack, msToFrame(2900, 60), 60);
+        expect(exitingItems).toHaveLength(1);
+        expect(exitingItems[0].textRevealExitProgress).toBeGreaterThan(0);
     });
 });
