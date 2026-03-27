@@ -1,18 +1,8 @@
 import {
-    BoxGeometry,
-    CapsuleGeometry,
-    ConeGeometry,
-    CylinderGeometry,
-    DodecahedronGeometry,
-    IcosahedronGeometry,
     MathUtils,
-    OctahedronGeometry,
-    PlaneGeometry,
-    SphereGeometry,
-    TetrahedronGeometry,
-    TorusGeometry,
     Vector3,
 } from 'three';
+import { samplePrimitive3DGeometryVertices } from '@/front-end/motion-blocks/primitive3d/geometry';
 import type { Primitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
 
 const TWO_PI = Math.PI * 2;
@@ -39,25 +29,6 @@ const projectDirectionToBox = (direction: Vector3): Vector3 => {
     return direction.clone().divideScalar(maxAxis);
 };
 
-const sampleGeometryVertices = (geometry: { attributes?: { position?: { count: number; getX: (i: number) => number; getY: (i: number) => number; getZ: (i: number) => number } } }): Vector3[] => {
-    const position = geometry.attributes?.position;
-    if (!position) return [];
-    const unique = new Map<string, Vector3>();
-    for (let index = 0; index < position.count; index += 1) {
-        const point = new Vector3(position.getX(index), position.getY(index), position.getZ(index));
-        const key = `${point.x.toFixed(4)}:${point.y.toFixed(4)}:${point.z.toFixed(4)}`;
-        if (!unique.has(key)) unique.set(key, point);
-    }
-    return [...unique.values()];
-};
-
-const buildPlatonicPoints = (type: Primitive3DParams['primitive']['type']): Vector3[] => {
-    if (type === 'tetrahedron') return sampleGeometryVertices(new TetrahedronGeometry(1.4, 0));
-    if (type === 'octahedron') return sampleGeometryVertices(new OctahedronGeometry(1.3, 0));
-    if (type === 'dodecahedron') return sampleGeometryVertices(new DodecahedronGeometry(1.2, 0));
-    return sampleGeometryVertices(new IcosahedronGeometry(1.25, 0));
-};
-
 const sortAnchorPoints = (points: Vector3[]): Vector3[] => {
     return points
         .map((point) => point.clone())
@@ -71,28 +42,7 @@ const sortAnchorPoints = (points: Vector3[]): Vector3[] => {
 };
 
 const buildGeometryAnchorPoints = (params: Primitive3DParams): Vector3[] => {
-    switch (params.primitive.type) {
-    case 'box':
-        return sampleGeometryVertices(new BoxGeometry(2, 2, 2));
-    case 'plane':
-        return sampleGeometryVertices(new PlaneGeometry(params.primitive.planeWidth, params.primitive.planeHeight, 1, 1));
-    case 'cylinder':
-        return sampleGeometryVertices(new CylinderGeometry(1, 1, 2, 48, 1));
-    case 'cone':
-        return sampleGeometryVertices(new ConeGeometry(1, 2, 48, 1));
-    case 'torus':
-        return sampleGeometryVertices(new TorusGeometry(1, 0.35, 24, 64));
-    case 'capsule':
-        return sampleGeometryVertices(new CapsuleGeometry(0.7, 1.4, 8, 16));
-    case 'tetrahedron':
-    case 'octahedron':
-    case 'dodecahedron':
-    case 'icosahedron':
-        return buildPlatonicPoints(params.primitive.type);
-    case 'sphere':
-    default:
-        return sampleGeometryVertices(new SphereGeometry(1, params.primitive.sphereSegments, params.primitive.sphereSegments));
-    }
+    return samplePrimitive3DGeometryVertices(params.primitive);
 };
 
 export const getPrimitive3DAnchorPoints = (params: Primitive3DParams): Vector3[] => {
@@ -103,19 +53,22 @@ export const getPrimitive3DAnchorPoints = (params: Primitive3DParams): Vector3[]
     case 'box':
         return fibonacciSphere(8, 1).map(projectDirectionToBox);
     case 'capsule':
-        return fibonacciSphere(24, 0.7).map((point) => {
+        return fibonacciSphere(Math.max(24, params.primitive.capsuleRadialSegments * 2), params.primitive.capsuleRadius).map((point) => {
             const next = point.clone();
-            next.y += Math.sign(next.y || 1) * 0.7;
+            next.y += Math.sign(next.y || 1) * (params.primitive.capsuleLength / 2);
             return next;
         });
     case 'tetrahedron':
     case 'octahedron':
     case 'dodecahedron':
     case 'icosahedron':
-        return buildPlatonicPoints(params.primitive.type);
+        return samplePrimitive3DGeometryVertices(params.primitive);
     case 'sphere':
     default:
-        return fibonacciSphere(Math.max(8, params.primitive.sphereSegments * 2), 1);
+        return fibonacciSphere(
+            Math.max(8, Math.round((params.primitive.sphereWidthSegments + params.primitive.sphereHeightSegments))),
+            1,
+        );
     }
 };
 

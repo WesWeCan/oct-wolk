@@ -1,39 +1,30 @@
 import {
     AmbientLight,
     Box3,
-    BoxGeometry,
     CanvasTexture,
-    CapsuleGeometry,
     Color,
-    ConeGeometry,
-    CylinderGeometry,
     DirectionalLight,
     DoubleSide,
     Euler,
     FrontSide,
     Group,
-    IcosahedronGeometry,
     LinearFilter,
     MathUtils,
     Mesh,
     MeshBasicMaterial,
     MeshStandardMaterial,
-    OctahedronGeometry,
     PerspectiveCamera,
     PlaneGeometry,
     Quaternion,
     Scene,
-    SphereGeometry,
-    TetrahedronGeometry,
-    TorusGeometry,
     Vector3,
     WebGLRenderer,
-    DodecahedronGeometry,
 } from 'three';
 import type { MotionBlock, MotionStyle } from '@/types/project_types';
 import type { MotionBlockRenderer, MotionRenderContext, RendererBounds, ResolvedItem } from '@/front-end/motion-blocks/core/types';
 import { getPrimitive3DAnchorPoints } from '@/front-end/motion-blocks/primitive3d/anchor-points';
-import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
+import { createPrimitive3DGeometry, getPrimitive3DGeometryKey } from '@/front-end/motion-blocks/primitive3d/geometry';
+import { DEFAULT_PRIMITIVE3D_PARAMS, resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
 import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
 import { buildFont } from '@/front-end/utils/motion/renderTipTapSpans';
 import { applyTextRevealToSpans, textRevealConfigFromParams } from '@/front-end/utils/motion/textReveal';
@@ -45,6 +36,39 @@ const clamp01 = (value: unknown, fallback = 1): number => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return fallback;
     return Math.max(0, Math.min(1, numeric));
+};
+
+const getFallbackShapeSize = (params: ReturnType<typeof resolvePrimitive3DParams>): { width: number; height: number } => {
+    switch (params.primitive.type) {
+    case 'box':
+        return { width: params.primitive.boxWidth, height: params.primitive.boxHeight };
+    case 'plane':
+        return { width: params.primitive.planeWidth, height: params.primitive.planeHeight };
+    case 'cylinder':
+        return {
+            width: Math.max(params.primitive.cylinderRadiusTop, params.primitive.cylinderRadiusBottom) * 2,
+            height: params.primitive.cylinderHeight,
+        };
+    case 'cone':
+        return { width: params.primitive.coneRadius * 2, height: params.primitive.coneHeight };
+    case 'torus':
+        return {
+            width: (params.primitive.torusRadius * 2) + (params.primitive.torusTube * 2),
+            height: (params.primitive.torusRadius * 2) + (params.primitive.torusTube * 2),
+        };
+    case 'capsule':
+        return {
+            width: params.primitive.capsuleRadius * 2,
+            height: params.primitive.capsuleLength + (params.primitive.capsuleRadius * 2),
+        };
+    case 'sphere':
+    case 'icosahedron':
+    case 'tetrahedron':
+    case 'octahedron':
+    case 'dodecahedron':
+    default:
+        return { width: 2, height: 2 };
+    }
 };
 
 const buildRendererBoundsFromRect = (
@@ -120,7 +144,7 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             this.scene = new Scene();
             this.camera = new PerspectiveCamera(STATIC_CAMERA_FOV, 1, 0.1, 100);
             this.material = new MeshStandardMaterial({ color: '#9bc8ff', roughness: 0.32, metalness: 0.16, transparent: true });
-            this.mesh = new Mesh(new SphereGeometry(1, 48, 48), this.material);
+            this.mesh = new Mesh(createPrimitive3DGeometry(DEFAULT_PRIMITIVE3D_PARAMS.primitive), this.material);
             this.wireMaterial = new MeshBasicMaterial({ color: '#ffffff', wireframe: true, transparent: true, opacity: 0.7 });
             this.wireMesh = new Mesh(this.mesh.geometry, this.wireMaterial);
             this.wordGroup = new Group();
@@ -139,41 +163,14 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         }
     }
 
-    private buildGeometry(params: ReturnType<typeof resolvePrimitive3DParams>) {
-        switch (params.primitive.type) {
-        case 'box':
-            return new BoxGeometry(2, 2, 2);
-        case 'plane':
-            return new PlaneGeometry(params.primitive.planeWidth, params.primitive.planeHeight, 1, 1);
-        case 'cylinder':
-            return new CylinderGeometry(1, 1, 2, 48, 1);
-        case 'cone':
-            return new ConeGeometry(1, 2, 48, 1);
-        case 'torus':
-            return new TorusGeometry(1, 0.35, 24, 64);
-        case 'icosahedron':
-            return new IcosahedronGeometry(1.25, 0);
-        case 'capsule':
-            return new CapsuleGeometry(0.7, 1.4, 8, 16);
-        case 'tetrahedron':
-            return new TetrahedronGeometry(1.4, 0);
-        case 'octahedron':
-            return new OctahedronGeometry(1.3, 0);
-        case 'dodecahedron':
-            return new DodecahedronGeometry(1.2, 0);
-        default:
-            return new SphereGeometry(1, params.primitive.sphereSegments, params.primitive.sphereSegments);
-        }
-    }
-
     private ensureGeometry(params: ReturnType<typeof resolvePrimitive3DParams>): void {
         if (!this.mesh || !this.wireMesh) return;
 
-        const nextKey = `${params.primitive.type}:${params.primitive.sphereSegments}:${params.primitive.planeWidth}:${params.primitive.planeHeight}`;
+        const nextKey = getPrimitive3DGeometryKey(params.primitive);
         if (nextKey === this.lastGeometryKey) return;
 
         const previous = this.mesh.geometry;
-        const nextGeometry = this.buildGeometry(params);
+        const nextGeometry = createPrimitive3DGeometry(params.primitive);
         this.mesh.geometry = nextGeometry;
         this.wireMesh.geometry = nextGeometry;
         previous?.dispose();
@@ -495,6 +492,10 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         const baseSize = Math.min(viewportWidth, viewportHeight) * 0.45;
         const effectiveDistance = Math.max(1, params.camera.distance - params.object.positionZ);
         const projectedSize = baseSize * params.object.scale * (5.5 / effectiveDistance);
+        const shapeSize = getFallbackShapeSize(params);
+        const maxShapeDimension = Math.max(shapeSize.width, shapeSize.height, 0.0001);
+        const projectedWidth = projectedSize * (shapeSize.width / maxShapeDimension);
+        const projectedHeight = projectedSize * (shapeSize.height / maxShapeDimension);
         const centerX = (viewportWidth / 2) + (params.object.positionX * viewportWidth * 0.08);
         const centerY = (viewportHeight / 2) - (params.object.positionY * viewportHeight * 0.08);
 
@@ -505,24 +506,24 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         ctx.fillStyle = 'rgba(0,0,0,0.15)';
         ctx.beginPath();
         if (typeof (ctx as any).ellipse === 'function') {
-            (ctx as any).ellipse(0, projectedSize * 0.42, projectedSize * 0.62, projectedSize * 0.22, 0, 0, Math.PI * 2);
+            (ctx as any).ellipse(0, projectedHeight * 0.42, projectedWidth * 0.62, projectedHeight * 0.22, 0, 0, Math.PI * 2);
         } else {
-            ctx.arc(0, projectedSize * 0.42, projectedSize * 0.35, 0, Math.PI * 2);
+            ctx.arc(0, projectedHeight * 0.42, Math.max(projectedWidth, projectedHeight) * 0.35, 0, Math.PI * 2);
         }
         ctx.fill();
         ctx.fillStyle = fill;
 
         if (params.primitive.type === 'box') {
-            ctx.fillRect(-(projectedSize / 2), -(projectedSize / 2), projectedSize, projectedSize);
+            ctx.fillRect(-(projectedWidth / 2), -(projectedHeight / 2), projectedWidth, projectedHeight);
         } else if (params.primitive.type === 'plane') {
-            ctx.fillRect(-(projectedSize * 0.75), -(projectedSize * 0.5), projectedSize * 1.5, projectedSize);
+            ctx.fillRect(-(projectedWidth / 2), -(projectedHeight / 2), projectedWidth, projectedHeight);
         } else if (params.primitive.type === 'cylinder' || params.primitive.type === 'capsule') {
-            ctx.fillRect(-(projectedSize * 0.32), -(projectedSize * 0.6), projectedSize * 0.64, projectedSize * 1.2);
+            ctx.fillRect(-(projectedWidth * 0.32), -(projectedHeight * 0.5), projectedWidth * 0.64, projectedHeight);
         } else if (params.primitive.type === 'cone') {
             ctx.beginPath();
-            ctx.moveTo(0, -(projectedSize * 0.65));
-            ctx.lineTo(projectedSize * 0.55, projectedSize * 0.55);
-            ctx.lineTo(-(projectedSize * 0.55), projectedSize * 0.55);
+            ctx.moveTo(0, -(projectedHeight / 2));
+            ctx.lineTo(projectedWidth / 2, projectedHeight / 2);
+            ctx.lineTo(-(projectedWidth / 2), projectedHeight / 2);
             ctx.closePath();
             ctx.fill();
         } else if (
@@ -541,8 +542,8 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             ctx.beginPath();
             for (let index = 0; index < sides; index += 1) {
                 const angle = ((Math.PI * 2) / sides) * index - (Math.PI / 2);
-                const x = Math.cos(angle) * projectedSize * 0.55;
-                const y = Math.sin(angle) * projectedSize * 0.55;
+                const x = Math.cos(angle) * projectedWidth * 0.55;
+                const y = Math.sin(angle) * projectedHeight * 0.55;
                 if (index === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
@@ -550,29 +551,29 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             ctx.fill();
         } else if (params.primitive.type === 'torus') {
             if (typeof (ctx as any).ellipse === 'function') {
-                (ctx as any).ellipse(0, 0, projectedSize * 0.52, projectedSize * 0.52, 0, 0, Math.PI * 2);
-                ctx.lineWidth = Math.max(6, projectedSize * 0.18);
+                (ctx as any).ellipse(0, 0, projectedWidth * 0.5, projectedHeight * 0.5, 0, 0, Math.PI * 2);
+                ctx.lineWidth = Math.max(6, Math.min(projectedWidth, projectedHeight) * (params.primitive.torusTube / Math.max(0.01, params.primitive.torusRadius + params.primitive.torusTube)));
                 ctx.strokeStyle = fill;
                 ctx.stroke();
             } else {
                 ctx.beginPath();
-                ctx.arc(0, 0, projectedSize * 0.42, 0, Math.PI * 2);
+                ctx.arc(0, 0, Math.min(projectedWidth, projectedHeight) * 0.42, 0, Math.PI * 2);
                 ctx.strokeStyle = fill;
-                ctx.lineWidth = Math.max(6, projectedSize * 0.18);
+                ctx.lineWidth = Math.max(6, Math.min(projectedWidth, projectedHeight) * 0.18);
                 ctx.stroke();
             }
         } else {
             ctx.beginPath();
-            ctx.arc(0, 0, projectedSize / 2, 0, Math.PI * 2);
+            ctx.arc(0, 0, Math.min(projectedWidth, projectedHeight) / 2, 0, Math.PI * 2);
             ctx.fill();
         }
         ctx.restore();
 
         return buildRendererBoundsFromRect(
-            centerX - (projectedSize / 2),
-            centerY - (projectedSize / 2),
-            projectedSize,
-            projectedSize,
+            centerX - (projectedWidth / 2),
+            centerY - (projectedHeight / 2),
+            projectedWidth,
+            projectedHeight,
         );
     }
 

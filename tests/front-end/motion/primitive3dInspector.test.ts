@@ -89,6 +89,68 @@ describe('primitive3d inspector', () => {
         expect(wrapper.text()).not.toContain('Editor');
     });
 
+    it('groups primitives into core and advanced shape buckets', () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        const groups = wrapper.findAll('optgroup');
+        expect(groups.map((group) => group.attributes('label'))).toEqual(['Core Shapes', 'More Shapes']);
+        expect(groups[0]?.text()).toContain('Capsule');
+        expect(groups[1]?.text()).toContain('Icosahedron');
+        expect(wrapper.text()).toContain('Custom (to be implemented)');
+    });
+
+    it('shows per-shape geometry controls for core primitives', async () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        expect(wrapper.text()).toContain('Width Segments');
+        expect(wrapper.text()).toContain('Height Segments');
+
+        const primitiveSelect = wrapper.find('select[aria-label="Primitive type"]');
+        await primitiveSelect.setValue('box');
+        const boxTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
+        await wrapper.setProps({ motionTrack: boxTrack });
+        expect(wrapper.text()).toContain('Box Width');
+        expect(wrapper.text()).toContain('Box Depth');
+
+        await primitiveSelect.setValue('torus');
+        const torusTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
+        await wrapper.setProps({ motionTrack: torusTrack });
+        expect(wrapper.text()).toContain('Ring Radius');
+        expect(wrapper.text()).toContain('Tubular Segments');
+    });
+
+    it('explains that some shapes do not have extra geometry controls yet', async () => {
+        const track = makeTrack();
+        track.block.params.primitive.type = 'icosahedron';
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: track,
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        expect(wrapper.text()).toContain('does not have any extra geometry controls yet');
+    });
+
     it('switches to local lighting controls', async () => {
         const wrapper = mount(Primitive3DInspector, {
             props: {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { BoxGeometry, Mesh, MeshBasicMaterial } from 'three';
 import { Primitive3DRenderer } from '@/front-end/motion-blocks/primitive3d/renderer/Primitive3DRenderer';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
 import {
@@ -143,6 +144,61 @@ describe('Primitive3DRenderer', () => {
 
         expect(renderer.getLastBounds()).not.toBeNull();
         renderer.dispose();
+    });
+
+    it('rebuilds geometry when expanded primitive params change', () => {
+        const renderer = new Primitive3DRenderer() as any;
+        const initialGeometry = new BoxGeometry(1, 1, 1);
+        renderer.mesh = new Mesh(initialGeometry, new MeshBasicMaterial());
+        renderer.wireMesh = new Mesh(initialGeometry, new MeshBasicMaterial());
+
+        const boxParams = resolvePrimitive3DParams({
+            primitive: {
+                type: 'box',
+                boxWidth: 2,
+                boxHeight: 2,
+                boxDepth: 2,
+            },
+        });
+        renderer.ensureGeometry(boxParams);
+        const firstGeometry = renderer.mesh.geometry;
+
+        const updatedParams = resolvePrimitive3DParams({
+            primitive: {
+                type: 'box',
+                boxWidth: 4,
+                boxHeight: 1.5,
+                boxDepth: 3,
+            },
+        });
+        renderer.ensureGeometry(updatedParams);
+
+        expect(renderer.mesh.geometry).not.toBe(firstGeometry);
+        expect(renderer.mesh.geometry.parameters).toMatchObject({
+            width: 4,
+            height: 1.5,
+            depth: 3,
+        });
+    });
+
+    it('uses geometry dimensions for fallback bounds', () => {
+        const renderer = new Primitive3DRenderer() as any;
+        const ctx = createMockCtx();
+        const planeBounds = renderer.drawVisibleFallback(
+            ctx,
+            resolvePrimitive3DParams({
+                primitive: {
+                    type: 'plane',
+                    planeWidth: 6,
+                    planeHeight: 2,
+                },
+            }),
+            1920,
+            1080,
+            1,
+        );
+
+        expect(planeBounds.width).toBeGreaterThan(planeBounds.height);
     });
 
     it('reveals only part of the visible word text during typewriter enter', () => {

@@ -24,9 +24,30 @@ export type Primitive3DExitMode = 'stay' | 'perItem';
 
 export interface Primitive3DGeometryParams {
     type: Primitive3DType;
-    sphereSegments: number;
+    sphereWidthSegments: number;
+    sphereHeightSegments: number;
+    boxWidth: number;
+    boxHeight: number;
+    boxDepth: number;
     planeWidth: number;
     planeHeight: number;
+    planeWidthSegments: number;
+    planeHeightSegments: number;
+    cylinderRadiusTop: number;
+    cylinderRadiusBottom: number;
+    cylinderHeight: number;
+    cylinderRadialSegments: number;
+    coneRadius: number;
+    coneHeight: number;
+    coneRadialSegments: number;
+    torusRadius: number;
+    torusTube: number;
+    torusRadialSegments: number;
+    torusTubularSegments: number;
+    capsuleRadius: number;
+    capsuleLength: number;
+    capsuleCapSegments: number;
+    capsuleRadialSegments: number;
 }
 
 export interface Primitive3DObjectParams {
@@ -108,9 +129,30 @@ export interface Primitive3DParams {
 export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
     primitive: {
         type: 'sphere',
-        sphereSegments: 48,
+        sphereWidthSegments: 8,
+        sphereHeightSegments: 8,
+        boxWidth: 2,
+        boxHeight: 2,
+        boxDepth: 2,
         planeWidth: 2.5,
         planeHeight: 2.5,
+        planeWidthSegments: 1,
+        planeHeightSegments: 1,
+        cylinderRadiusTop: 1,
+        cylinderRadiusBottom: 1,
+        cylinderHeight: 2,
+        cylinderRadialSegments: 15,
+        coneRadius: 1,
+        coneHeight: 2,
+        coneRadialSegments: 15,
+        torusRadius: 1,
+        torusTube: 0.35,
+        torusRadialSegments: 10,
+        torusTubularSegments: 15,
+        capsuleRadius: 0.7,
+        capsuleLength: 1.4,
+        capsuleCapSegments: 9,
+        capsuleRadialSegments: 9,
     },
     object: {
         positionX: 0,
@@ -227,9 +269,40 @@ export const resolvePrimitive3DParams = (
     return {
         primitive: {
             type: primitiveType,
-            sphereSegments: clamp(primitive.sphereSegments, 8, 128, DEFAULT_PRIMITIVE3D_PARAMS.primitive.sphereSegments),
+            sphereWidthSegments: clamp(
+                primitive.sphereWidthSegments ?? primitive.sphereSegments,
+                8,
+                128,
+                DEFAULT_PRIMITIVE3D_PARAMS.primitive.sphereWidthSegments,
+            ),
+            sphereHeightSegments: clamp(
+                primitive.sphereHeightSegments ?? primitive.sphereSegments,
+                8,
+                128,
+                DEFAULT_PRIMITIVE3D_PARAMS.primitive.sphereHeightSegments,
+            ),
+            boxWidth: clamp(primitive.boxWidth, 0.25, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.boxWidth),
+            boxHeight: clamp(primitive.boxHeight, 0.25, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.boxHeight),
+            boxDepth: clamp(primitive.boxDepth, 0.25, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.boxDepth),
             planeWidth: clamp(primitive.planeWidth, 0.25, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.planeWidth),
             planeHeight: clamp(primitive.planeHeight, 0.25, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.planeHeight),
+            planeWidthSegments: clamp(primitive.planeWidthSegments, 1, 32, DEFAULT_PRIMITIVE3D_PARAMS.primitive.planeWidthSegments),
+            planeHeightSegments: clamp(primitive.planeHeightSegments, 1, 32, DEFAULT_PRIMITIVE3D_PARAMS.primitive.planeHeightSegments),
+            cylinderRadiusTop: clamp(primitive.cylinderRadiusTop, 0.05, 6, DEFAULT_PRIMITIVE3D_PARAMS.primitive.cylinderRadiusTop),
+            cylinderRadiusBottom: clamp(primitive.cylinderRadiusBottom, 0.05, 6, DEFAULT_PRIMITIVE3D_PARAMS.primitive.cylinderRadiusBottom),
+            cylinderHeight: clamp(primitive.cylinderHeight, 0.1, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.cylinderHeight),
+            cylinderRadialSegments: clamp(primitive.cylinderRadialSegments, 3, 128, DEFAULT_PRIMITIVE3D_PARAMS.primitive.cylinderRadialSegments),
+            coneRadius: clamp(primitive.coneRadius, 0.05, 6, DEFAULT_PRIMITIVE3D_PARAMS.primitive.coneRadius),
+            coneHeight: clamp(primitive.coneHeight, 0.1, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.coneHeight),
+            coneRadialSegments: clamp(primitive.coneRadialSegments, 3, 128, DEFAULT_PRIMITIVE3D_PARAMS.primitive.coneRadialSegments),
+            torusRadius: clamp(primitive.torusRadius, 0.1, 6, DEFAULT_PRIMITIVE3D_PARAMS.primitive.torusRadius),
+            torusTube: clamp(primitive.torusTube, 0.05, 3, DEFAULT_PRIMITIVE3D_PARAMS.primitive.torusTube),
+            torusRadialSegments: clamp(primitive.torusRadialSegments, 3, 64, DEFAULT_PRIMITIVE3D_PARAMS.primitive.torusRadialSegments),
+            torusTubularSegments: clamp(primitive.torusTubularSegments, 8, 128, DEFAULT_PRIMITIVE3D_PARAMS.primitive.torusTubularSegments),
+            capsuleRadius: clamp(primitive.capsuleRadius, 0.05, 6, DEFAULT_PRIMITIVE3D_PARAMS.primitive.capsuleRadius),
+            capsuleLength: clamp(primitive.capsuleLength, 0.1, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.capsuleLength),
+            capsuleCapSegments: clamp(primitive.capsuleCapSegments, 1, 32, DEFAULT_PRIMITIVE3D_PARAMS.primitive.capsuleCapSegments),
+            capsuleRadialSegments: clamp(primitive.capsuleRadialSegments, 3, 64, DEFAULT_PRIMITIVE3D_PARAMS.primitive.capsuleRadialSegments),
         },
         object: {
             positionX: clamp(object.positionX, -20, 20, DEFAULT_PRIMITIVE3D_PARAMS.object.positionX),

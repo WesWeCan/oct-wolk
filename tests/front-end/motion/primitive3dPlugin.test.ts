@@ -57,6 +57,17 @@ describe('primitive3d motion block plugin', () => {
         expect(track.block.type).toBe('primitive3d');
         expect(track.block.sourceTrackId).toBe('');
         expect(track.block.params.primitive.type).toBe('sphere');
+        expect(track.block.params.primitive.sphereWidthSegments).toBe(8);
+        expect(track.block.params.primitive.sphereHeightSegments).toBe(8);
+        expect(track.block.params.primitive.boxWidth).toBe(2);
+        expect(track.block.params.primitive.cylinderHeight).toBe(2);
+        expect(track.block.params.primitive.cylinderRadialSegments).toBe(15);
+        expect(track.block.params.primitive.coneRadialSegments).toBe(15);
+        expect(track.block.params.primitive.torusTube).toBe(0.35);
+        expect(track.block.params.primitive.torusRadialSegments).toBe(10);
+        expect(track.block.params.primitive.torusTubularSegments).toBe(15);
+        expect(track.block.params.primitive.capsuleCapSegments).toBe(9);
+        expect(track.block.params.primitive.capsuleRadialSegments).toBe(9);
         expect(track.block.params.camera.distance).toBe(5.5);
         expect(track.block.params.lighting.mode).toBe('global');
         expect(track.block.params.material.renderMode).toBe('solid');
@@ -91,6 +102,28 @@ describe('primitive3d motion block plugin', () => {
         (track.block.params as any).lighting.mode = 'wat';
         (track.block.params as any).material.renderMode = 'laser';
         (track.block.params as any).material.wireOpacity = 999;
+        (track.block.params as any).primitive = {
+            type: 'box',
+            boxWidth: -1,
+            boxHeight: 999,
+            boxDepth: 'garbage',
+            planeWidthSegments: 999,
+            cylinderRadiusTop: -1,
+            cylinderRadiusBottom: 999,
+            cylinderHeight: -1,
+            cylinderRadialSegments: 999,
+            coneRadius: -1,
+            coneHeight: 999,
+            coneRadialSegments: 1,
+            torusRadius: -1,
+            torusTube: 999,
+            torusRadialSegments: 1,
+            torusTubularSegments: 999,
+            capsuleRadius: -1,
+            capsuleLength: 999,
+            capsuleCapSegments: -1,
+            capsuleRadialSegments: 999,
+        };
         (track.block.params as any).textReveal = {
             textRevealMode: 'garbage',
             textRevealEnterWindow: -1,
@@ -121,6 +154,26 @@ describe('primitive3d motion block plugin', () => {
         expect(normalized.solo).toBe(false);
         expect(normalized.locked).toBe(false);
         expect(normalized.block.params.object.scale).toBe(10);
+        expect(normalized.block.params.primitive.type).toBe('box');
+        expect(normalized.block.params.primitive.boxWidth).toBe(0.25);
+        expect(normalized.block.params.primitive.boxHeight).toBe(10);
+        expect(normalized.block.params.primitive.boxDepth).toBe(2);
+        expect(normalized.block.params.primitive.planeWidthSegments).toBe(32);
+        expect(normalized.block.params.primitive.cylinderRadiusTop).toBe(0.05);
+        expect(normalized.block.params.primitive.cylinderRadiusBottom).toBe(6);
+        expect(normalized.block.params.primitive.cylinderHeight).toBe(0.1);
+        expect(normalized.block.params.primitive.cylinderRadialSegments).toBe(128);
+        expect(normalized.block.params.primitive.coneRadius).toBe(0.05);
+        expect(normalized.block.params.primitive.coneHeight).toBe(10);
+        expect(normalized.block.params.primitive.coneRadialSegments).toBe(3);
+        expect(normalized.block.params.primitive.torusRadius).toBe(0.1);
+        expect(normalized.block.params.primitive.torusTube).toBe(3);
+        expect(normalized.block.params.primitive.torusRadialSegments).toBe(3);
+        expect(normalized.block.params.primitive.torusTubularSegments).toBe(128);
+        expect(normalized.block.params.primitive.capsuleRadius).toBe(0.05);
+        expect(normalized.block.params.primitive.capsuleLength).toBe(10);
+        expect(normalized.block.params.primitive.capsuleCapSegments).toBe(1);
+        expect(normalized.block.params.primitive.capsuleRadialSegments).toBe(64);
         expect(normalized.block.params.camera.distance).toBe(25);
         expect(normalized.block.params.lighting.mode).toBe('global');
         expect(normalized.block.params.material.renderMode).toBe('solid');
@@ -189,6 +242,18 @@ describe('primitive3d motion block plugin', () => {
 
     it('falls back unsupported primitive types to sphere', () => {
         expect(resolvePrimitive3DParams({ primitive: { type: 'banana' } }).primitive.type).toBe('sphere');
+    });
+
+    it('maps legacy sphereSegments into the new sphere segment fields', () => {
+        const primitive = resolvePrimitive3DParams({
+            primitive: {
+                type: 'sphere',
+                sphereSegments: 24,
+            },
+        }).primitive;
+
+        expect(primitive.sphereWidthSegments).toBe(24);
+        expect(primitive.sphereHeightSegments).toBe(24);
     });
 
     it('uses primitive point capacity for the word FIFO ring', () => {
