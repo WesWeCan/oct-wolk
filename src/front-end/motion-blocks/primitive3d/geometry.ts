@@ -16,7 +16,7 @@ import {
 import type { Primitive3DGeometryParams, Primitive3DType } from '@/front-end/motion-blocks/primitive3d/params';
 
 export const PRIMITIVE3D_ADVANCED_TYPES = ['icosahedron', 'tetrahedron', 'octahedron', 'dodecahedron'] as const;
-export const PRIMITIVE3D_CORE_TYPES = ['sphere', 'box', 'plane', 'cylinder', 'cone', 'capsule', 'torus'] as const;
+export const PRIMITIVE3D_CORE_TYPES = ['sphere', 'box', 'plane', 'cylinder', 'cone', 'capsule', 'torus', 'model'] as const;
 
 const ADVANCED_TYPE_SET = new Set<Primitive3DType>(PRIMITIVE3D_ADVANCED_TYPES);
 
@@ -70,6 +70,8 @@ export const createPrimitive3DGeometry = (primitive: Primitive3DGeometryParams):
         return new OctahedronGeometry(1.3, 0);
     case 'dodecahedron':
         return new DodecahedronGeometry(1.2, 0);
+    case 'model':
+        return new BoxGeometry(primitive.modelBoundsWidth, primitive.modelBoundsHeight, primitive.modelBoundsDepth);
     case 'sphere':
     default:
         return new SphereGeometry(1, primitive.sphereWidthSegments, primitive.sphereHeightSegments);
@@ -103,10 +105,23 @@ export const getPrimitive3DGeometryKey = (primitive: Primitive3DGeometryParams):
         primitive.capsuleLength,
         primitive.capsuleCapSegments,
         primitive.capsuleRadialSegments,
+        primitive.modelObjUrl,
+        primitive.modelTextureUrl,
+        primitive.modelNormalUrl,
+        primitive.modelBoundsWidth,
+        primitive.modelBoundsHeight,
+        primitive.modelBoundsDepth,
+        primitive.modelAnchorPoints
+            .map((point) => `${point.x},${point.y},${point.z}`)
+            .join('|'),
     ].join(':');
 };
 
 export const samplePrimitive3DGeometryVertices = (primitive: Primitive3DGeometryParams): Vector3[] => {
+    if (primitive.type === 'model' && primitive.modelAnchorPoints.length > 0) {
+        return primitive.modelAnchorPoints.map((point) => new Vector3(point.x, point.y, point.z));
+    }
+
     const geometry = createPrimitive3DGeometry(primitive);
     const position = geometry.attributes?.position;
     if (!position) {

@@ -22,12 +22,23 @@ defineProps<{
                             <button type="button" :class="{ active: api.params.material.renderMode === 'solid-wireframe' }" @click="api.updateRenderMode('solid-wireframe')">Hybrid</button>
                         </div>
                     </div>
+                    <div v-if="api.params.primitive.type === 'model'" class="style-v2__field">
+                        <span class="style-v2__field-label">Texture Blend</span>
+                        <div class="segmented-control segmented-control--wrap">
+                            <button type="button" :class="{ active: api.params.material.textureMode === 'color-only' }" @click="api.updateTextureMode('color-only')">Color</button>
+                            <button type="button" :disabled="!api.params.primitive.modelTextureUrl" :class="{ active: api.params.material.textureMode === 'texture-only' }" @click="api.updateTextureMode('texture-only')">Texture</button>
+                            <button type="button" :disabled="!api.params.primitive.modelTextureUrl" :class="{ active: api.params.material.textureMode === 'texture-with-tint' }" @click="api.updateTextureMode('texture-with-tint')">Tinted Texture</button>
+                        </div>
+                    </div>
                     <div class="style-v2__field">
                         <span class="style-v2__field-label">Color</span>
                         <div class="color-field">
                             <input type="color" class="color-field__swatch" :value="api.params.material.color" :disabled="api.isLocked" @input="api.updatePathValue('params.material.color', ($event.target as HTMLInputElement).value)" />
                             <input type="text" class="color-field__hex inspector-input" :value="api.params.material.color" :disabled="api.isLocked" @change="api.updatePathValue('params.material.color', ($event.target as HTMLInputElement).value)" />
                         </div>
+                    </div>
+                    <div v-if="api.params.primitive.type === 'model'" class="inspector-note">
+                        Use Tinted Texture for the best “scanner texture plus art-directed highlight” balance.
                     </div>
                     <AnimatableNumberField label="Roughness" :model-value="api.valueForPath('params.material.roughness')" :min="0" :max="1" :step="0.01" :display-decimals="2" :disabled="api.isLocked" :show-keyframing="true" :keyframing-enabled="api.hasKeyframing('params.material.roughness')" :has-key-at-current-frame="api.hasKeyAtCurrentFrame('params.material.roughness')" :has-any-keyframes="api.hasAnyKeyframes('params.material.roughness')" @update:model-value="api.updatePathValue('params.material.roughness', $event)" @toggle-keyframe="api.toggleKeyframe('params.material.roughness', $event)" @remove-keyframes="api.togglePropertyKeyframing('params.material.roughness')" />
                     <AnimatableNumberField label="Metalness" :model-value="api.valueForPath('params.material.metalness')" :min="0" :max="1" :step="0.01" :display-decimals="2" :disabled="api.isLocked" :show-keyframing="true" :keyframing-enabled="api.hasKeyframing('params.material.metalness')" :has-key-at-current-frame="api.hasKeyAtCurrentFrame('params.material.metalness')" :has-any-keyframes="api.hasAnyKeyframes('params.material.metalness')" @update:model-value="api.updatePathValue('params.material.metalness', $event)" @toggle-keyframe="api.toggleKeyframe('params.material.metalness', $event)" @remove-keyframes="api.togglePropertyKeyframing('params.material.metalness')" />

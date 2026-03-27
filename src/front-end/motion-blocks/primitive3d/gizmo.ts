@@ -4,6 +4,39 @@ import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/
 
 const DEFAULT_CAMERA_DISTANCE = 5.5;
 
+const getFallbackShapeSize = (params: ReturnType<typeof resolvePrimitive3DParams>): { width: number; height: number } => {
+    switch (params.primitive.type) {
+    case 'box':
+        return { width: params.primitive.boxWidth, height: params.primitive.boxHeight };
+    case 'plane':
+        return { width: params.primitive.planeWidth, height: params.primitive.planeHeight };
+    case 'cylinder':
+        return {
+            width: Math.max(params.primitive.cylinderRadiusTop, params.primitive.cylinderRadiusBottom) * 2,
+            height: params.primitive.cylinderHeight,
+        };
+    case 'cone':
+        return { width: params.primitive.coneRadius * 2, height: params.primitive.coneHeight };
+    case 'torus':
+        return {
+            width: (params.primitive.torusRadius * 2) + (params.primitive.torusTube * 2),
+            height: (params.primitive.torusRadius * 2) + (params.primitive.torusTube * 2),
+        };
+    case 'capsule':
+        return {
+            width: params.primitive.capsuleRadius * 2,
+            height: params.primitive.capsuleLength + (params.primitive.capsuleRadius * 2),
+        };
+    case 'model':
+        return {
+            width: params.primitive.modelBoundsWidth,
+            height: params.primitive.modelBoundsHeight,
+        };
+    default:
+        return { width: 2, height: 2 };
+    }
+};
+
 const buildRendererBoundsFromRect = (
     x: number,
     y: number,
@@ -40,14 +73,18 @@ export const getPrimitive3DFallbackBounds = (
     const baseSize = Math.min(renderWidth, renderHeight) * 0.45;
     const effectiveDistance = Math.max(1, params.camera.distance - params.object.positionZ);
     const projectedSize = baseSize * params.object.scale * (DEFAULT_CAMERA_DISTANCE / effectiveDistance);
+    const shapeSize = getFallbackShapeSize(params);
+    const maxShapeDimension = Math.max(shapeSize.width, shapeSize.height, 0.0001);
+    const projectedWidth = projectedSize * (shapeSize.width / maxShapeDimension);
+    const projectedHeight = projectedSize * (shapeSize.height / maxShapeDimension);
     const centerX = (renderWidth / 2) + (params.object.positionX * renderWidth * 0.08);
     const centerY = (renderHeight / 2) - (params.object.positionY * renderHeight * 0.08);
 
     return buildRendererBoundsFromRect(
-        centerX - (projectedSize / 2),
-        centerY - (projectedSize / 2),
-        projectedSize,
-        projectedSize,
+        centerX - (projectedWidth / 2),
+        centerY - (projectedHeight / 2),
+        projectedWidth,
+        projectedHeight,
     );
 };
 

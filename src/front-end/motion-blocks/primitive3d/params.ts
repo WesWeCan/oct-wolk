@@ -16,11 +16,19 @@ export type Primitive3DType =
     | 'capsule'
     | 'tetrahedron'
     | 'octahedron'
-    | 'dodecahedron';
+    | 'dodecahedron'
+    | 'model';
 export type Primitive3DLightingMode = 'global' | 'local';
 export type Primitive3DMaterialRenderMode = 'solid' | 'wireframe' | 'solid-wireframe';
+export type Primitive3DTextureMode = 'color-only' | 'texture-only' | 'texture-with-tint';
 export type Primitive3DWordPunctuationMode = 'keep' | 'strip';
 export type Primitive3DExitMode = 'stay' | 'perItem';
+
+export interface Primitive3DStoredPoint {
+    x: number;
+    y: number;
+    z: number;
+}
 
 export interface Primitive3DGeometryParams {
     type: Primitive3DType;
@@ -48,6 +56,13 @@ export interface Primitive3DGeometryParams {
     capsuleLength: number;
     capsuleCapSegments: number;
     capsuleRadialSegments: number;
+    modelObjUrl: string;
+    modelTextureUrl: string;
+    modelNormalUrl: string;
+    modelBoundsWidth: number;
+    modelBoundsHeight: number;
+    modelBoundsDepth: number;
+    modelAnchorPoints: Primitive3DStoredPoint[];
 }
 
 export interface Primitive3DObjectParams {
@@ -70,6 +85,7 @@ export interface Primitive3DMaterialParams {
     metalness: number;
     opacity: number;
     renderMode: Primitive3DMaterialRenderMode;
+    textureMode: Primitive3DTextureMode;
     wireColor: string;
     wireOpacity: number;
 }
@@ -153,6 +169,13 @@ export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
         capsuleLength: 1.4,
         capsuleCapSegments: 9,
         capsuleRadialSegments: 9,
+        modelObjUrl: '',
+        modelTextureUrl: '',
+        modelNormalUrl: '',
+        modelBoundsWidth: 2,
+        modelBoundsHeight: 2,
+        modelBoundsDepth: 2,
+        modelAnchorPoints: [],
     },
     object: {
         positionX: 0,
@@ -172,6 +195,7 @@ export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
         metalness: 0.16,
         opacity: 1,
         renderMode: 'solid',
+        textureMode: 'color-only',
         wireColor: '#ffffff',
         wireOpacity: 0.7,
     },
@@ -224,6 +248,27 @@ const normalizeColor = (value: unknown, fallback: string): string => {
     return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
 };
 
+const normalizeAssetUrl = (value: unknown): string => {
+    return typeof value === 'string' ? value.trim() : '';
+};
+
+const normalizeStoredPoints = (value: unknown): Primitive3DStoredPoint[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+        .slice(0, 64)
+        .map((point) => ({
+            x: Number((point as Primitive3DStoredPoint)?.x),
+            y: Number((point as Primitive3DStoredPoint)?.y),
+            z: Number((point as Primitive3DStoredPoint)?.z),
+        }))
+        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z))
+        .map((point) => ({
+            x: clamp(point.x, -10, 10, 0),
+            y: clamp(point.y, -10, 10, 0),
+            z: clamp(point.z, -10, 10, 0),
+        }));
+};
+
 const isPrimitive3DExitMode = (value: unknown): value is Primitive3DExitMode => value === 'stay' || value === 'perItem';
 
 export const resolvePrimitive3DParams = (
@@ -254,6 +299,7 @@ export const resolvePrimitive3DParams = (
         || primitive.type === 'tetrahedron'
         || primitive.type === 'octahedron'
         || primitive.type === 'dodecahedron'
+        || primitive.type === 'model'
     )
         ? primitive.type
         : 'sphere';
@@ -264,6 +310,12 @@ export const resolvePrimitive3DParams = (
     )
         ? material.renderMode
         : 'solid';
+    const textureMode: Primitive3DTextureMode = (
+        material.textureMode === 'texture-only'
+        || material.textureMode === 'texture-with-tint'
+    )
+        ? material.textureMode
+        : 'color-only';
     const punctuationMode: Primitive3DWordPunctuationMode = words.punctuationMode === 'strip' ? 'strip' : 'keep';
 
     return {
@@ -303,6 +355,13 @@ export const resolvePrimitive3DParams = (
             capsuleLength: clamp(primitive.capsuleLength, 0.1, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.capsuleLength),
             capsuleCapSegments: clamp(primitive.capsuleCapSegments, 1, 32, DEFAULT_PRIMITIVE3D_PARAMS.primitive.capsuleCapSegments),
             capsuleRadialSegments: clamp(primitive.capsuleRadialSegments, 3, 64, DEFAULT_PRIMITIVE3D_PARAMS.primitive.capsuleRadialSegments),
+            modelObjUrl: normalizeAssetUrl(primitive.modelObjUrl),
+            modelTextureUrl: normalizeAssetUrl(primitive.modelTextureUrl),
+            modelNormalUrl: normalizeAssetUrl(primitive.modelNormalUrl),
+            modelBoundsWidth: clamp(primitive.modelBoundsWidth, 0.05, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.modelBoundsWidth),
+            modelBoundsHeight: clamp(primitive.modelBoundsHeight, 0.05, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.modelBoundsHeight),
+            modelBoundsDepth: clamp(primitive.modelBoundsDepth, 0.05, 10, DEFAULT_PRIMITIVE3D_PARAMS.primitive.modelBoundsDepth),
+            modelAnchorPoints: normalizeStoredPoints(primitive.modelAnchorPoints),
         },
         object: {
             positionX: clamp(object.positionX, -20, 20, DEFAULT_PRIMITIVE3D_PARAMS.object.positionX),
@@ -322,6 +381,7 @@ export const resolvePrimitive3DParams = (
             metalness: clamp(material.metalness, 0, 1, DEFAULT_PRIMITIVE3D_PARAMS.material.metalness),
             opacity: clamp(material.opacity, 0, 1, DEFAULT_PRIMITIVE3D_PARAMS.material.opacity),
             renderMode,
+            textureMode,
             wireColor: normalizeColor(material.wireColor, DEFAULT_PRIMITIVE3D_PARAMS.material.wireColor),
             wireOpacity: clamp(material.wireOpacity, 0, 1, DEFAULT_PRIMITIVE3D_PARAMS.material.wireOpacity),
         },

@@ -1,4 +1,6 @@
 import { computed, reactive } from 'vue';
+import { useRoute } from 'vue-router';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { getPrimitive3DAnchorCapacity } from '@/front-end/motion-blocks/primitive3d/anchor-points';
 import {
     cloneMotionEnterExit,
@@ -10,11 +12,13 @@ import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
 import { evalInterpolatedAtFrame, removeKeyframeAtIndex, upsertKeyframe } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import { getMotionBlockPropertyValue, setMotionBlockPropertyValue } from '@/front-end/utils/motion/blockPropertyPaths';
+import { ProjectService } from '@/front-end/services/ProjectService';
 import {
     resolvePrimitive3DParams,
     type Primitive3DExitMode,
     type Primitive3DLightingMode,
     type Primitive3DMaterialRenderMode,
+    type Primitive3DTextureMode,
     type Primitive3DType,
     type Primitive3DWordPunctuationMode,
 } from '@/front-end/motion-blocks/primitive3d/params';
@@ -23,6 +27,7 @@ import {
     createDefaultPrimitive3DExit,
 } from '@/front-end/motion-blocks/primitive3d/defaults';
 import type { RendererBounds } from '@/front-end/motion-blocks/core/types';
+import { extractPrimitive3DModelMetadata } from '@/front-end/motion-blocks/primitive3d/model-utils';
 import { normalizeScene3DSettings } from '@/front-end/utils/projectScene3D';
 import type { LyricTrack, MotionStyle, MotionTrack, Scene3DSettings, WolkProjectFont } from '@/types/project_types';
 
@@ -47,9 +52,14 @@ type Primitive3DInspectorEmit = {
 export type Primitive3DInspectorApi = ReturnType<typeof usePrimitive3DInspector>;
 
 export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: Primitive3DInspectorEmit) {
+    const route = useRoute();
     const fpsValue = computed(() => Math.max(1, props.fps ?? 60));
     const currentFrame = computed(() => Math.round(((props.playheadMs ?? 0) / 1000) * fpsValue.value));
     const isLocked = computed(() => !!props.motionTrack?.locked);
+    const projectId = computed(() => {
+        const candidate = route.params.projectId ?? route.params.songId ?? route.params.id;
+        return typeof candidate === 'string' ? candidate : '';
+    });
     const params = computed(() => resolvePrimitive3DParams(
         props.motionTrack?.block.params,
         props.motionTrack?.block.enter,
@@ -60,6 +70,15 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
     const wordTracks = computed(() => props.lyricTracks.filter((track) => track.kind === 'word'));
     const selectedWordTrack = computed(() => wordTracks.value.find((track) => track.id === props.motionTrack?.block.sourceTrackId) ?? null);
     const anchorCapacity = computed(() => getPrimitive3DAnchorCapacity(params.value));
+    const modelUploadState = reactive({
+        obj: false,
+        texture: false,
+        normal: false,
+    });
+    const uploadState = reactive<{ error: string | null }>({
+        error: null,
+    });
+    const modelUploadError = computed(() => uploadState.error);
 
     const startFrame = computed(() => {
         if (!props.motionTrack) return 0;
@@ -96,6 +115,22 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
     const emitUpdatedBlock = (nextBlock: MotionTrack['block']) => {
         if (!props.motionTrack) return;
         emit('update-track', { ...props.motionTrack, block: nextBlock });
+    };
+
+    const updateResolvedParams = (
+        nextParams: Record<string, any>,
+        overrides?: Partial<MotionTrack['block']>,
+    ) => {
+        if (!props.motionTrack) return;
+        emitUpdatedBlock({
+            ...props.motionTrack.block,
+            ...overrides,
+            params: resolvePrimitive3DParams(
+                nextParams,
+                overrides?.enter ?? props.motionTrack.block.enter,
+                overrides?.exit ?? props.motionTrack.block.exit,
+            ) as any,
+        });
     };
 
     const autoKeyframe = (path: string, value: any, propertyTracks: any[]): any[] => {
@@ -188,42 +223,34 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         const nextExit = shouldAutoApplyMotionOff
             ? createMotionVisualOffEnterExit(props.motionTrack.block.exit)
             : props.motionTrack.block.exit;
-        emitUpdatedBlock({
-            ...props.motionTrack.block,
+        updateResolvedParams({
+            ...props.motionTrack.block.params,
+            textReveal: value,
+        }, {
             enter: nextEnter,
             exit: nextExit,
-            params: resolvePrimitive3DParams({
-                ...props.motionTrack.block.params,
-                textReveal: value,
-            }, nextEnter, nextExit) as any,
         });
     };
 
     const updateLifecycleExitMode = (value: Primitive3DExitMode) => {
         if (!props.motionTrack || isLocked.value) return;
-        emitUpdatedBlock({
-            ...props.motionTrack.block,
-            params: resolvePrimitive3DParams({
-                ...props.motionTrack.block.params,
-                lifecycle: {
-                    ...params.value.lifecycle,
-                    exitMode: value,
-                },
-            }, props.motionTrack.block.enter, props.motionTrack.block.exit) as any,
+        updateResolvedParams({
+            ...props.motionTrack.block.params,
+            lifecycle: {
+                ...params.value.lifecycle,
+                exitMode: value,
+            },
         });
     };
 
     const updateLifecycleExitDelayMs = (value: number) => {
         if (!props.motionTrack || isLocked.value) return;
-        emitUpdatedBlock({
-            ...props.motionTrack.block,
-            params: resolvePrimitive3DParams({
-                ...props.motionTrack.block.params,
-                lifecycle: {
-                    ...params.value.lifecycle,
-                    exitDelayMs: Math.max(0, value),
-                },
-            }, props.motionTrack.block.enter, props.motionTrack.block.exit) as any,
+        updateResolvedParams({
+            ...props.motionTrack.block.params,
+            lifecycle: {
+                ...params.value.lifecycle,
+                exitDelayMs: Math.max(0, value),
+            },
         });
     };
 
@@ -279,8 +306,110 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
     const updatePrimitiveType = (type: Primitive3DType) => updatePathValue('params.primitive.type', type);
     const updateLightingMode = (mode: Primitive3DLightingMode) => updatePathValue('params.lighting.mode', mode);
     const updateRenderMode = (mode: Primitive3DMaterialRenderMode) => updatePathValue('params.material.renderMode', mode);
+    const updateTextureMode = (mode: Primitive3DTextureMode) => updatePathValue('params.material.textureMode', mode);
     const updatePunctuationMode = (mode: Primitive3DWordPunctuationMode) => updatePathValue('params.words.punctuationMode', mode);
     const updateScene3D = (value: Scene3DSettings) => emit('update-scene3d', value);
+
+    const getAssetLabel = (url: string | null | undefined): string => {
+        if (!url) return 'No file uploaded';
+        const fileName = url.split('/').pop() || url;
+        try {
+            return decodeURIComponent(fileName);
+        } catch {
+            return fileName;
+        }
+    };
+
+    const uploadModelAsset = async (kind: 'obj' | 'texture' | 'normal', file: File | null | undefined) => {
+        if (!props.motionTrack || isLocked.value || !file) return;
+        if (!projectId.value) {
+            uploadState.error = 'Project ID missing. Reload the editor before uploading model assets.';
+            return;
+        }
+
+        uploadState.error = null;
+        modelUploadState[kind] = true;
+
+        try {
+            if (kind === 'obj') {
+                const text = await file.text();
+                const parsed = new OBJLoader().parse(text);
+                const metadata = extractPrimitive3DModelMetadata(parsed);
+                const uploaded = await ProjectService.uploadAsset(projectId.value, file);
+                updateResolvedParams({
+                    ...props.motionTrack.block.params,
+                    primitive: {
+                        ...params.value.primitive,
+                        type: 'model',
+                        modelObjUrl: uploaded.url,
+                        modelBoundsWidth: metadata.boundsWidth,
+                        modelBoundsHeight: metadata.boundsHeight,
+                        modelBoundsDepth: metadata.boundsDepth,
+                        modelAnchorPoints: metadata.anchorPoints,
+                    },
+                });
+                return;
+            }
+
+            const uploaded = await ProjectService.uploadAsset(projectId.value, file);
+            const primitivePatch = kind === 'texture'
+                ? { modelTextureUrl: uploaded.url }
+                : { modelNormalUrl: uploaded.url };
+            const materialPatch = kind === 'texture' && params.value.material.textureMode === 'color-only'
+                ? { textureMode: 'texture-with-tint' as Primitive3DTextureMode }
+                : {};
+            updateResolvedParams({
+                ...props.motionTrack.block.params,
+                primitive: {
+                    ...params.value.primitive,
+                    ...primitivePatch,
+                },
+                material: {
+                    ...params.value.material,
+                    ...materialPatch,
+                },
+            });
+        } catch (error) {
+            uploadState.error = kind === 'obj'
+                ? 'Could not read or upload this OBJ file.'
+                : 'Could not upload this model texture.';
+            console.error(error);
+        } finally {
+            modelUploadState[kind] = false;
+        }
+    };
+
+    const clearModelAsset = (kind: 'obj' | 'texture' | 'normal') => {
+        if (!props.motionTrack || isLocked.value) return;
+
+        if (kind === 'obj') {
+            updateResolvedParams({
+                ...props.motionTrack.block.params,
+                primitive: {
+                    ...params.value.primitive,
+                    modelObjUrl: '',
+                    modelBoundsWidth: 2,
+                    modelBoundsHeight: 2,
+                    modelBoundsDepth: 2,
+                    modelAnchorPoints: [],
+                },
+            });
+            return;
+        }
+
+        const nextPrimitive = {
+            ...params.value.primitive,
+            [kind === 'texture' ? 'modelTextureUrl' : 'modelNormalUrl']: '',
+        };
+        const nextMaterial = kind === 'texture' && params.value.material.textureMode !== 'color-only'
+            ? { ...params.value.material, textureMode: 'color-only' as Primitive3DTextureMode }
+            : { ...params.value.material };
+        updateResolvedParams({
+            ...props.motionTrack.block.params,
+            primitive: nextPrimitive,
+            material: nextMaterial,
+        });
+    };
 
     const projectFont = computed(() => props.projectFont);
     const rendererBounds = computed(() => props.rendererBounds ?? null);
@@ -289,6 +418,7 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         fpsValue,
         currentFrame,
         isLocked,
+        projectId,
         params,
         scene3d,
         style,
@@ -299,11 +429,14 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         endFrame,
         projectFont,
         rendererBounds,
+        modelUploadState,
+        modelUploadError,
         formatFrameAndMs,
         hasKeyframing,
         hasAnyKeyframes,
         hasKeyAtCurrentFrame,
         valueForPath,
+        getAssetLabel,
         updateStartFrame,
         updateEndFrame,
         updatePathValue,
@@ -319,7 +452,10 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         updatePrimitiveType,
         updateLightingMode,
         updateRenderMode,
+        updateTextureMode,
         updatePunctuationMode,
         updateScene3D,
+        uploadModelAsset,
+        clearModelAsset,
     });
 }

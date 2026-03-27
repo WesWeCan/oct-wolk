@@ -1,11 +1,20 @@
-import { describe, expect, it } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import Primitive3DInspector from '@/front-end/motion-blocks/primitive3d/inspector/Primitive3DInspector.vue';
 import Scene3DInspector from '@/front-end/components/editor/Scene3DInspector.vue';
 import MotionTextRevealEditor from '@/front-end/components/editor/motion/MotionTextRevealEditor.vue';
+import { ProjectService } from '@/front-end/services/ProjectService';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
 import { createDefaultPrimitive3DEnter, createDefaultPrimitive3DExit } from '@/front-end/motion-blocks/primitive3d/defaults';
+
+vi.mock('vue-router', () => ({
+    useRoute: () => ({
+        params: {
+            projectId: 'project-1',
+        },
+    }),
+}));
 
 const makeProject = () => ({
     id: 'project-1',
@@ -72,7 +81,7 @@ describe('primitive3d inspector', () => {
         ]);
     });
 
-    it('shows a disabled custom model control', () => {
+    it('lists Model in the geometry dropdown', () => {
         const wrapper = mount(Primitive3DInspector, {
             props: {
                 motionTrack: makeTrack(),
@@ -83,10 +92,7 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        const button = wrapper.find('button[disabled]');
-        expect(button.exists()).toBe(true);
-        expect(wrapper.text()).toContain('Import Model (coming later)');
-        expect(wrapper.text()).not.toContain('Editor');
+        expect(wrapper.find('select[aria-label="Primitive type"]').text()).toContain('Model');
     });
 
     it('groups primitives into core and advanced shape buckets', () => {
@@ -103,8 +109,8 @@ describe('primitive3d inspector', () => {
         const groups = wrapper.findAll('optgroup');
         expect(groups.map((group) => group.attributes('label'))).toEqual(['Core Shapes', 'More Shapes']);
         expect(groups[0]?.text()).toContain('Capsule');
+        expect(groups[0]?.text()).toContain('Model');
         expect(groups[1]?.text()).toContain('Icosahedron');
-        expect(wrapper.text()).toContain('Custom (to be implemented)');
     });
 
     it('shows per-shape geometry controls for core primitives', async () => {
@@ -133,6 +139,56 @@ describe('primitive3d inspector', () => {
         await wrapper.setProps({ motionTrack: torusTrack });
         expect(wrapper.text()).toContain('Ring Radius');
         expect(wrapper.text()).toContain('Tubular Segments');
+    });
+
+    it('uploads OBJ and texture assets when Model is selected', async () => {
+        vi.spyOn(ProjectService, 'uploadAsset')
+            .mockResolvedValueOnce({ url: 'wolk://project-1/assets/test.obj', fileName: 'test.obj' })
+            .mockResolvedValueOnce({ url: 'wolk://project-1/assets/albedo.jpg', fileName: 'albedo.jpg' });
+
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        const primitiveSelect = wrapper.find('select[aria-label="Primitive type"]');
+        await primitiveSelect.setValue('model');
+        let updatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
+        await wrapper.setProps({ motionTrack: updatedTrack });
+
+        const objInput = wrapper.find('[data-testid="primitive3d-model-obj-input"]');
+        const objFile = new File([
+            'o test\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n',
+        ], 'test.obj', { type: 'text/plain' });
+        Object.defineProperty(objInput.element, 'files', {
+            value: [objFile],
+            configurable: true,
+        });
+        await objInput.trigger('change');
+        await flushPromises();
+        updatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
+        expect(updatedTrack.block.params.primitive.modelObjUrl).toBe('wolk://project-1/assets/test.obj');
+        expect(updatedTrack.block.params.primitive.type).toBe('model');
+        expect(updatedTrack.block.params.primitive.modelAnchorPoints.length).toBeGreaterThan(0);
+
+        await wrapper.setProps({ motionTrack: updatedTrack });
+
+        const textureInput = wrapper.find('[data-testid="primitive3d-model-texture-input"]');
+        const textureFile = new File(['jpeg'], 'albedo.jpg', { type: 'image/jpeg' });
+        Object.defineProperty(textureInput.element, 'files', {
+            value: [textureFile],
+            configurable: true,
+        });
+        await textureInput.trigger('change');
+        await flushPromises();
+        updatedTrack = wrapper.emitted('update-track')?.at(-1)?.[0] as any;
+        expect(updatedTrack.block.params.primitive.modelTextureUrl).toBe('wolk://project-1/assets/albedo.jpg');
+        expect(updatedTrack.block.params.material.textureMode).toBe('texture-with-tint');
     });
 
     it('explains that some shapes do not have extra geometry controls yet', async () => {

@@ -3,28 +3,33 @@ import {
     Box3,
     CanvasTexture,
     Color,
+    Group,
     DirectionalLight,
     DoubleSide,
     Euler,
     FrontSide,
-    Group,
+    Mesh,
     LinearFilter,
     MathUtils,
-    Mesh,
     MeshBasicMaterial,
     MeshStandardMaterial,
+    Object3D,
     PerspectiveCamera,
     PlaneGeometry,
     Quaternion,
     Scene,
+    Texture,
+    TextureLoader,
     Vector3,
     WebGLRenderer,
 } from 'three';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import type { MotionBlock, MotionStyle } from '@/types/project_types';
 import type { MotionBlockRenderer, MotionRenderContext, RendererBounds, ResolvedItem } from '@/front-end/motion-blocks/core/types';
 import { getPrimitive3DAnchorPoints } from '@/front-end/motion-blocks/primitive3d/anchor-points';
 import { createPrimitive3DGeometry, getPrimitive3DGeometryKey } from '@/front-end/motion-blocks/primitive3d/geometry';
 import { DEFAULT_PRIMITIVE3D_PARAMS, resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
+import { createNormalizedPrimitive3DModelGroup } from '@/front-end/motion-blocks/primitive3d/model-utils';
 import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
 import { buildFont } from '@/front-end/utils/motion/renderTipTapSpans';
 import { applyTextRevealToSpans, textRevealConfigFromParams } from '@/front-end/utils/motion/textReveal';
@@ -60,6 +65,11 @@ const getFallbackShapeSize = (params: ReturnType<typeof resolvePrimitive3DParams
         return {
             width: params.primitive.capsuleRadius * 2,
             height: params.primitive.capsuleLength + (params.primitive.capsuleRadius * 2),
+        };
+    case 'model':
+        return {
+            width: params.primitive.modelBoundsWidth,
+            height: params.primitive.modelBoundsHeight,
         };
     case 'sphere':
     case 'icosahedron':
@@ -124,6 +134,19 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
     private lastBounds: RendererBounds | null = null;
     private textTextureCache = new Map<string, { texture: CanvasTexture; aspect: number }>();
     private smoothedQuaternion: Quaternion | null = null;
+    private modelGroup: Group | null = null;
+    private modelSolidGroup: Group | null = null;
+    private modelWireGroup: Group | null = null;
+    private activeModelUrl = '';
+    private modelLoadPromise: Promise<void> | null = null;
+    private modelAnchorPoints: Vector3[] = [];
+    private modelBaseTextureUrl = '';
+    private modelBaseTexture: Texture | null = null;
+    private modelBaseTexturePromise: Promise<void> | null = null;
+    private modelNormalTextureUrl = '';
+    private modelNormalTexture: Texture | null = null;
+    private modelNormalTexturePromise: Promise<void> | null = null;
+    private readonly textureLoader = new TextureLoader();
 
     prepare(_block: MotionBlock): void {
         return;
@@ -147,9 +170,16 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             this.mesh = new Mesh(createPrimitive3DGeometry(DEFAULT_PRIMITIVE3D_PARAMS.primitive), this.material);
             this.wireMaterial = new MeshBasicMaterial({ color: '#ffffff', wireframe: true, transparent: true, opacity: 0.7 });
             this.wireMesh = new Mesh(this.mesh.geometry, this.wireMaterial);
+            this.modelGroup = new Group();
+            this.modelSolidGroup = new Group();
+            this.modelWireGroup = new Group();
+            this.modelGroup.add(this.modelSolidGroup);
+            this.modelGroup.add(this.modelWireGroup);
+            this.modelGroup.visible = false;
             this.wordGroup = new Group();
             this.scene.add(this.mesh);
             this.scene.add(this.wireMesh);
+            this.scene.add(this.modelGroup);
             this.scene.add(this.wordGroup);
 
             this.ambientLight = new AmbientLight('#ffffff', 0.45);
@@ -177,6 +207,199 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         this.lastGeometryKey = nextKey;
     }
 
+    private disposeObjectTree(root: Object3D): void {
+        root.traverse((child) => {
+            if (!(child instanceof Mesh)) return;
+            child.geometry?.dispose();
+            if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose());
+            else child.material?.dispose();
+        });
+    }
+
+    private clearModelGroups(): void {
+        if (this.modelSolidGroup) {
+            for (const child of [...this.modelSolidGroup.children]) {
+                this.disposeObjectTree(child);
+                this.modelSolidGroup.remove(child);
+            }
+        }
+        if (this.modelWireGroup) {
+            for (const child of [...this.modelWireGroup.children]) {
+                this.disposeObjectTree(child);
+                this.modelWireGroup.remove(child);
+            }
+        }
+        this.modelAnchorPoints = [];
+    }
+
+    private buildModelVariant(source: Group, variant: 'solid' | 'wire'): Group {
+        const clone = source.clone(true);
+        clone.traverse((child) => {
+            if (!(child instanceof Mesh)) return;
+            child.geometry = child.geometry.clone();
+            if (!child.geometry.getAttribute('normal')) child.geometry.computeVertexNormals();
+            child.material = variant === 'solid'
+                ? new MeshStandardMaterial({ transparent: true })
+                : new MeshBasicMaterial({ wireframe: true, transparent: true });
+        });
+        return clone;
+    }
+
+    private async loadModel(url: string): Promise<void> {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Failed to fetch OBJ: ${response.status}`);
+            const text = await response.text();
+            if (this.activeModelUrl !== url) return;
+
+            const parsed = new OBJLoader().parse(text);
+            const { group, metadata } = createNormalizedPrimitive3DModelGroup(parsed);
+            const solidVariant = this.buildModelVariant(group, 'solid');
+            const wireVariant = this.buildModelVariant(group, 'wire');
+            this.clearModelGroups();
+            this.modelSolidGroup?.add(solidVariant);
+            this.modelWireGroup?.add(wireVariant);
+            this.modelAnchorPoints = metadata.anchorPoints.map((point) => new Vector3(point.x, point.y, point.z));
+        } catch {
+            if (this.activeModelUrl === url) this.clearModelGroups();
+        } finally {
+            if (this.activeModelUrl === url) this.modelLoadPromise = null;
+        }
+    }
+
+    private ensureModel(params: ReturnType<typeof resolvePrimitive3DParams>): void {
+        if (!this.modelGroup) return;
+        const nextUrl = params.primitive.modelObjUrl;
+        if (!nextUrl) {
+            if (this.activeModelUrl) this.clearModelGroups();
+            this.activeModelUrl = '';
+            this.modelGroup.visible = false;
+            this.modelLoadPromise = null;
+            return;
+        }
+        if (this.activeModelUrl === nextUrl && (this.modelLoadPromise || this.modelSolidGroup?.children.length)) return;
+
+        this.activeModelUrl = nextUrl;
+        this.modelLoadPromise = this.loadModel(nextUrl);
+    }
+
+    private async loadTexture(url: string, target: 'base' | 'normal'): Promise<void> {
+        try {
+            const texture = await this.textureLoader.loadAsync(url);
+            if (target === 'base') {
+                if (this.modelBaseTextureUrl !== url) {
+                    texture.dispose();
+                    return;
+                }
+                this.modelBaseTexture?.dispose();
+                this.modelBaseTexture = texture;
+                this.modelBaseTexturePromise = null;
+                return;
+            }
+
+            if (this.modelNormalTextureUrl !== url) {
+                texture.dispose();
+                return;
+            }
+            this.modelNormalTexture?.dispose();
+            this.modelNormalTexture = texture;
+            this.modelNormalTexturePromise = null;
+        } catch {
+            if (target === 'base' && this.modelBaseTextureUrl === url) this.modelBaseTexturePromise = null;
+            if (target === 'normal' && this.modelNormalTextureUrl === url) this.modelNormalTexturePromise = null;
+        }
+    }
+
+    private ensureModelTextures(params: ReturnType<typeof resolvePrimitive3DParams>): void {
+        if (params.primitive.modelTextureUrl !== this.modelBaseTextureUrl) {
+            this.modelBaseTextureUrl = params.primitive.modelTextureUrl;
+            this.modelBaseTexture?.dispose();
+            this.modelBaseTexture = null;
+            this.modelBaseTexturePromise = params.primitive.modelTextureUrl
+                ? this.loadTexture(params.primitive.modelTextureUrl, 'base')
+                : null;
+        }
+
+        if (params.primitive.modelNormalUrl !== this.modelNormalTextureUrl) {
+            this.modelNormalTextureUrl = params.primitive.modelNormalUrl;
+            this.modelNormalTexture?.dispose();
+            this.modelNormalTexture = null;
+            this.modelNormalTexturePromise = params.primitive.modelNormalUrl
+                ? this.loadTexture(params.primitive.modelNormalUrl, 'normal')
+                : null;
+        }
+    }
+
+    private getObjectQuaternion(
+        objectPosition: Vector3,
+        params: ReturnType<typeof resolvePrimitive3DParams>,
+        activeAnchor: Vector3 | null,
+    ): Quaternion {
+        const baseQuaternion = new Quaternion().setFromEuler(new Euler(
+            MathUtils.degToRad(params.object.rotationX),
+            MathUtils.degToRad(params.object.rotationY),
+            MathUtils.degToRad(params.object.rotationZ),
+            'XYZ',
+        ));
+        let targetQuaternion = baseQuaternion.clone();
+        const shouldFollowActiveWord = params.reaction.enabled && activeAnchor && this.camera && activeAnchor.lengthSq() > 0.000001;
+        if (shouldFollowActiveWord) {
+            const anchorDirection = activeAnchor.clone().normalize();
+            const currentWorldDirection = anchorDirection.clone().applyQuaternion(baseQuaternion).normalize();
+            const desiredDirection = this.camera.position.clone().sub(objectPosition).normalize();
+            if (desiredDirection.lengthSq() > 0.000001) {
+                const alignQuaternion = new Quaternion().setFromUnitVectors(currentWorldDirection, desiredDirection);
+                targetQuaternion = alignQuaternion.multiply(baseQuaternion);
+            }
+        }
+        targetQuaternion.multiply(new Quaternion().setFromEuler(new Euler(
+            MathUtils.degToRad(params.reaction.activePointOffsetX),
+            MathUtils.degToRad(params.reaction.activePointOffsetY),
+            MathUtils.degToRad(params.reaction.activePointOffsetZ),
+            'XYZ',
+        )));
+        if (params.reaction.enabled && params.reaction.smoothFacing) {
+            if (!this.smoothedQuaternion) this.smoothedQuaternion = targetQuaternion.clone();
+            else this.smoothedQuaternion.slerp(targetQuaternion, params.reaction.smoothStrength);
+            return this.smoothedQuaternion.clone();
+        }
+        this.smoothedQuaternion = targetQuaternion.clone();
+        return targetQuaternion;
+    }
+
+    private applyModelMaterials(params: ReturnType<typeof resolvePrimitive3DParams>): void {
+        const useTexture = !!this.modelBaseTexture && params.material.textureMode !== 'color-only';
+        const effectiveTextureMode = useTexture ? params.material.textureMode : 'color-only';
+
+        this.modelSolidGroup?.traverse((child) => {
+            if (!(child instanceof Mesh) || !(child.material instanceof MeshStandardMaterial)) return;
+            child.material.color = new Color(
+                effectiveTextureMode === 'texture-only'
+                    ? '#ffffff'
+                    : params.material.color,
+            );
+            child.material.roughness = params.material.roughness;
+            child.material.metalness = params.material.metalness;
+            child.material.opacity = params.material.opacity;
+            child.material.transparent = params.material.opacity < 1;
+            child.material.side = FrontSide;
+            child.material.map = useTexture ? this.modelBaseTexture : null;
+            child.material.normalMap = this.modelNormalTexture;
+            child.material.needsUpdate = true;
+            child.visible = params.material.renderMode !== 'wireframe';
+        });
+
+        this.modelWireGroup?.traverse((child) => {
+            if (!(child instanceof Mesh) || !(child.material instanceof MeshBasicMaterial)) return;
+            child.material.color = new Color(params.material.wireColor);
+            child.material.opacity = params.material.wireOpacity;
+            child.material.transparent = params.material.wireOpacity < 1;
+            child.material.side = FrontSide;
+            child.material.needsUpdate = true;
+            child.visible = params.material.renderMode !== 'solid';
+        });
+    }
+
     private applyCamera(
         params: ReturnType<typeof resolvePrimitive3DParams>,
         viewportWidth: number,
@@ -195,39 +418,25 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
     private applyMesh(params: ReturnType<typeof resolvePrimitive3DParams>, activeAnchor: Vector3 | null): void {
         if (!this.mesh || !this.material || !this.wireMesh || !this.wireMaterial) return;
 
+        if (params.primitive.type === 'model') {
+            this.ensureModel(params);
+            this.ensureModelTextures(params);
+            if (!this.modelGroup) return;
+
+            this.mesh.visible = false;
+            this.wireMesh.visible = false;
+            this.modelGroup.visible = !!params.primitive.modelObjUrl;
+            this.modelGroup.position.set(params.object.positionX, params.object.positionY, params.object.positionZ);
+            this.modelGroup.quaternion.copy(this.getObjectQuaternion(this.modelGroup.position, params, activeAnchor));
+            this.modelGroup.scale.setScalar(params.object.scale);
+            this.applyModelMaterials(params);
+            return;
+        }
+
+        this.modelGroup && (this.modelGroup.visible = false);
         this.ensureGeometry(params);
         this.mesh.position.set(params.object.positionX, params.object.positionY, params.object.positionZ);
-        const baseQuaternion = new Quaternion().setFromEuler(new Euler(
-            MathUtils.degToRad(params.object.rotationX),
-            MathUtils.degToRad(params.object.rotationY),
-            MathUtils.degToRad(params.object.rotationZ),
-            'XYZ',
-        ));
-        let targetQuaternion = baseQuaternion.clone();
-        const shouldFollowActiveWord = params.reaction.enabled && activeAnchor && this.camera && activeAnchor.lengthSq() > 0.000001;
-        if (shouldFollowActiveWord) {
-            const anchorDirection = activeAnchor.clone().normalize();
-            const currentWorldDirection = anchorDirection.clone().applyQuaternion(baseQuaternion).normalize();
-            const desiredDirection = this.camera.position.clone().sub(this.mesh.position).normalize();
-            if (desiredDirection.lengthSq() > 0.000001) {
-                const alignQuaternion = new Quaternion().setFromUnitVectors(currentWorldDirection, desiredDirection);
-                targetQuaternion = alignQuaternion.multiply(baseQuaternion);
-            }
-        }
-        targetQuaternion.multiply(new Quaternion().setFromEuler(new Euler(
-            MathUtils.degToRad(params.reaction.activePointOffsetX),
-            MathUtils.degToRad(params.reaction.activePointOffsetY),
-            MathUtils.degToRad(params.reaction.activePointOffsetZ),
-            'XYZ',
-        )));
-        if (params.reaction.enabled && params.reaction.smoothFacing) {
-            if (!this.smoothedQuaternion) this.smoothedQuaternion = targetQuaternion.clone();
-            else this.smoothedQuaternion.slerp(targetQuaternion, params.reaction.smoothStrength);
-            this.mesh.quaternion.copy(this.smoothedQuaternion);
-        } else {
-            this.smoothedQuaternion = targetQuaternion.clone();
-            this.mesh.quaternion.copy(targetQuaternion);
-        }
+        this.mesh.quaternion.copy(this.getObjectQuaternion(this.mesh.position, params, activeAnchor));
         this.mesh.scale.setScalar(params.object.scale);
         this.wireMesh.position.copy(this.mesh.position);
         this.wireMesh.quaternion.copy(this.mesh.quaternion);
@@ -239,6 +448,8 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         this.material.opacity = params.material.opacity;
         this.material.transparent = params.material.opacity < 1;
         this.material.side = params.primitive.type === 'plane' ? DoubleSide : FrontSide;
+        this.material.map = null;
+        this.material.normalMap = null;
         this.material.needsUpdate = true;
         this.material.visible = params.material.renderMode !== 'wireframe';
 
@@ -410,7 +621,8 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         viewportWidth: number,
         viewportHeight: number,
     ): void {
-        if (!this.wordGroup || !this.camera || !this.mesh) return;
+        const anchorRoot = params.primitive.type === 'model' ? this.modelGroup : this.mesh;
+        if (!this.wordGroup || !this.camera || !anchorRoot) return;
         if (!params.words.enabled || activeItems.length === 0) {
             this.ensureWordPlanes(0);
             return;
@@ -442,7 +654,7 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             const slotIndex = Number(metadata.slotIndex ?? index) % Math.max(1, anchors.length);
             const anchor = anchors[slotIndex] ? anchors[slotIndex]!.clone() : new Vector3();
             const normal = anchor.clone().normalize();
-            const worldPosition = this.mesh!.localToWorld(anchor.add(normal.multiplyScalar(params.words.radialOffset)));
+            const worldPosition = anchorRoot.localToWorld(anchor.add(normal.multiplyScalar(params.words.radialOffset)));
             const transform = applyEnterExitToTransform(item.enterProgress, item.exitProgress, item.enter, item.exit);
             const distance = this.camera!.position.distanceTo(worldPosition);
             const worldHeight = 2 * Math.tan(MathUtils.degToRad(this.camera!.fov / 2)) * distance;
@@ -613,7 +825,9 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         const viewportWidth = Math.max(1, context.canvasSize.width);
         const viewportHeight = Math.max(1, context.canvasSize.height);
         const combinedOpacity = clamp01(context.block.style.globalOpacity ?? context.block.style.opacity ?? 1, 1);
-        const anchors = getPrimitive3DAnchorPoints(params);
+        const anchors = params.primitive.type === 'model' && this.modelAnchorPoints.length > 0
+            ? this.modelAnchorPoints.map((point) => point.clone())
+            : getPrimitive3DAnchorPoints(params);
         const activeSlotIndex = Number(activeItems.at(-1)?.richText?.primitive3dWord?.slotIndex ?? -1);
         const activeAnchor = activeSlotIndex >= 0 && activeSlotIndex < anchors.length ? anchors[activeSlotIndex]! : null;
 
@@ -625,8 +839,14 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
                 this.applyLighting(context, params);
                 this.applyCamera(params, viewportWidth, viewportHeight);
                 this.applyMesh(params, activeAnchor);
-                this.mesh.updateMatrixWorld(true);
-                this.wireMesh?.updateMatrixWorld(true);
+                const activeObject = params.primitive.type === 'model' ? this.modelGroup : this.mesh;
+                activeObject?.updateMatrixWorld(true);
+                if (params.primitive.type === 'model') {
+                    this.modelSolidGroup?.updateMatrixWorld(true);
+                    this.modelWireGroup?.updateMatrixWorld(true);
+                } else {
+                    this.wireMesh?.updateMatrixWorld(true);
+                }
                 this.camera.updateMatrixWorld(true);
                 this.applyWordPlanes(activeItems, params, anchors, viewportWidth, viewportHeight);
                 this.wordGroup?.updateMatrixWorld(true);
@@ -638,29 +858,31 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
                 ctx.drawImage(this.renderer.domElement, 0, 0, viewportWidth, viewportHeight);
                 ctx.restore();
 
-                const worldBounds = new Box3().setFromObject(this.mesh);
+                const worldBounds = activeObject ? new Box3().setFromObject(activeObject) : new Box3();
                 if (this.wordGroup && this.wordGroup.children.some((child) => child.visible)) {
                     worldBounds.union(new Box3().setFromObject(this.wordGroup));
                 }
-                const corners = [
-                    new Vector3(worldBounds.min.x, worldBounds.min.y, worldBounds.min.z),
-                    new Vector3(worldBounds.min.x, worldBounds.min.y, worldBounds.max.z),
-                    new Vector3(worldBounds.min.x, worldBounds.max.y, worldBounds.min.z),
-                    new Vector3(worldBounds.min.x, worldBounds.max.y, worldBounds.max.z),
-                    new Vector3(worldBounds.max.x, worldBounds.min.y, worldBounds.min.z),
-                    new Vector3(worldBounds.max.x, worldBounds.min.y, worldBounds.max.z),
-                    new Vector3(worldBounds.max.x, worldBounds.max.y, worldBounds.min.z),
-                    new Vector3(worldBounds.max.x, worldBounds.max.y, worldBounds.max.z),
-                ].map((corner) => corner.project(this.camera!));
+                if (!worldBounds.isEmpty()) {
+                    const corners = [
+                        new Vector3(worldBounds.min.x, worldBounds.min.y, worldBounds.min.z),
+                        new Vector3(worldBounds.min.x, worldBounds.min.y, worldBounds.max.z),
+                        new Vector3(worldBounds.min.x, worldBounds.max.y, worldBounds.min.z),
+                        new Vector3(worldBounds.min.x, worldBounds.max.y, worldBounds.max.z),
+                        new Vector3(worldBounds.max.x, worldBounds.min.y, worldBounds.min.z),
+                        new Vector3(worldBounds.max.x, worldBounds.min.y, worldBounds.max.z),
+                        new Vector3(worldBounds.max.x, worldBounds.max.y, worldBounds.min.z),
+                        new Vector3(worldBounds.max.x, worldBounds.max.y, worldBounds.max.z),
+                    ].map((corner) => corner.project(this.camera!));
 
-                projectedBounds = buildRendererBoundsFromPoints(
-                    corners
-                        .map((corner) => ({
-                            x: ((corner.x + 1) * 0.5 * viewportWidth),
-                            y: (1 - ((corner.y + 1) * 0.5)) * viewportHeight,
-                        }))
-                        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
-                );
+                    projectedBounds = buildRendererBoundsFromPoints(
+                        corners
+                            .map((corner) => ({
+                                x: ((corner.x + 1) * 0.5 * viewportWidth),
+                                y: (1 - ((corner.y + 1) * 0.5)) * viewportHeight,
+                            }))
+                            .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
+                    );
+                }
             } catch {
                 projectedBounds = this.drawVisibleFallback(
                     ctx,
@@ -692,9 +914,12 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
     }
 
     dispose(): void {
+        this.clearModelGroups();
         this.mesh?.geometry?.dispose();
         this.material?.dispose();
         this.wireMaterial?.dispose();
+        this.modelBaseTexture?.dispose();
+        this.modelNormalTexture?.dispose();
         for (const plane of this.wordPlanes) {
             plane.geometry.dispose();
             (plane.material as MeshBasicMaterial).dispose();
@@ -705,6 +930,9 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         this.material = null;
         this.wireMesh = null;
         this.wireMaterial = null;
+        this.modelGroup = null;
+        this.modelSolidGroup = null;
+        this.modelWireGroup = null;
         this.wordGroup = null;
         this.wordPlanes = [];
         this.ambientLight = null;
@@ -716,5 +944,14 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         this.lastGeometryKey = '';
         this.textTextureCache.clear();
         this.smoothedQuaternion = null;
+        this.activeModelUrl = '';
+        this.modelLoadPromise = null;
+        this.modelAnchorPoints = [];
+        this.modelBaseTextureUrl = '';
+        this.modelBaseTexture = null;
+        this.modelBaseTexturePromise = null;
+        this.modelNormalTextureUrl = '';
+        this.modelNormalTexture = null;
+        this.modelNormalTexturePromise = null;
     }
 }

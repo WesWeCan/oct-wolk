@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BoxGeometry, Mesh, MeshBasicMaterial } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture } from 'three';
 import { Primitive3DRenderer } from '@/front-end/motion-blocks/primitive3d/renderer/Primitive3DRenderer';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
 import {
@@ -199,6 +199,74 @@ describe('Primitive3DRenderer', () => {
         );
 
         expect(planeBounds.width).toBeGreaterThan(planeBounds.height);
+    });
+
+    it('uses stored model bounds for fallback dimensions', () => {
+        const renderer = new Primitive3DRenderer() as any;
+        const ctx = createMockCtx();
+        const modelBounds = renderer.drawVisibleFallback(
+            ctx,
+            resolvePrimitive3DParams({
+                primitive: {
+                    type: 'model',
+                    modelBoundsWidth: 6,
+                    modelBoundsHeight: 2,
+                    modelBoundsDepth: 3,
+                },
+            }),
+            1920,
+            1080,
+            1,
+        );
+
+        expect(modelBounds.width).toBeGreaterThan(modelBounds.height);
+    });
+
+    it('applies texture blend and wireframe settings to uploaded models', () => {
+        const renderer = new Primitive3DRenderer() as any;
+        const geometry = new BoxGeometry(1, 1, 1);
+        renderer.mesh = new Mesh(geometry, new MeshStandardMaterial());
+        renderer.material = renderer.mesh.material;
+        renderer.wireMesh = new Mesh(geometry.clone(), new MeshBasicMaterial());
+        renderer.wireMaterial = renderer.wireMesh.material;
+        renderer.modelGroup = new Group();
+        renderer.modelSolidGroup = new Group();
+        renderer.modelWireGroup = new Group();
+        renderer.modelGroup.add(renderer.modelSolidGroup);
+        renderer.modelGroup.add(renderer.modelWireGroup);
+        renderer.modelSolidGroup.add(new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial()));
+        renderer.modelWireGroup.add(new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial({ wireframe: true })));
+        renderer.activeModelUrl = 'wolk://project-1/assets/test.obj';
+        renderer.modelBaseTexture = new Texture();
+        renderer.modelBaseTextureUrl = 'wolk://project-1/assets/albedo.jpg';
+        renderer.modelNormalTexture = new Texture();
+        renderer.modelNormalTextureUrl = 'wolk://project-1/assets/normal.jpg';
+
+        const params = resolvePrimitive3DParams({
+            primitive: {
+                type: 'model',
+                modelObjUrl: 'wolk://project-1/assets/test.obj',
+                modelTextureUrl: 'wolk://project-1/assets/albedo.jpg',
+                modelNormalUrl: 'wolk://project-1/assets/normal.jpg',
+            },
+            material: {
+                textureMode: 'texture-with-tint',
+                renderMode: 'solid-wireframe',
+                color: '#ff0000',
+                wireColor: '#00ff00',
+                wireOpacity: 0.4,
+            },
+        });
+
+        renderer.applyMesh(params, null);
+
+        const solidMaterial = (renderer.modelSolidGroup.children[0] as Mesh).material as MeshStandardMaterial;
+        const wireMaterial = (renderer.modelWireGroup.children[0] as Mesh).material as MeshBasicMaterial;
+        expect(solidMaterial.map).toBe(renderer.modelBaseTexture);
+        expect(solidMaterial.normalMap).toBe(renderer.modelNormalTexture);
+        expect(solidMaterial.color.getHexString()).toBe('ff0000');
+        expect(wireMaterial.color.getHexString()).toBe('00ff00');
+        expect(wireMaterial.opacity).toBeCloseTo(0.4);
     });
 
     it('reveals only part of the visible word text during typewriter enter', () => {

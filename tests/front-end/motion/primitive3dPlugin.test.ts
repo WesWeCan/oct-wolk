@@ -37,6 +37,7 @@ describe('primitive3d motion block plugin', () => {
             'tetrahedron',
             'octahedron',
             'dodecahedron',
+            'model',
         ] as const;
 
         for (const type of supportedTypes) {
@@ -68,9 +69,13 @@ describe('primitive3d motion block plugin', () => {
         expect(track.block.params.primitive.torusTubularSegments).toBe(15);
         expect(track.block.params.primitive.capsuleCapSegments).toBe(9);
         expect(track.block.params.primitive.capsuleRadialSegments).toBe(9);
+        expect(track.block.params.primitive.modelObjUrl).toBe('');
+        expect(track.block.params.primitive.modelTextureUrl).toBe('');
+        expect(track.block.params.primitive.modelNormalUrl).toBe('');
         expect(track.block.params.camera.distance).toBe(5.5);
         expect(track.block.params.lighting.mode).toBe('global');
         expect(track.block.params.material.renderMode).toBe('solid');
+        expect(track.block.params.material.textureMode).toBe('color-only');
         expect(track.block.params.lifecycle.exitMode).toBe('stay');
         expect(track.block.params.lifecycle.exitDelayMs).toBe(0);
         expect(track.block.params.textReveal.textRevealMode).toBe('none');
@@ -101,6 +106,7 @@ describe('primitive3d motion block plugin', () => {
         (track.block.params as any).camera.distance = 999;
         (track.block.params as any).lighting.mode = 'wat';
         (track.block.params as any).material.renderMode = 'laser';
+        (track.block.params as any).material.textureMode = 'banana';
         (track.block.params as any).material.wireOpacity = 999;
         (track.block.params as any).primitive = {
             type: 'box',
@@ -123,6 +129,16 @@ describe('primitive3d motion block plugin', () => {
             capsuleLength: 999,
             capsuleCapSegments: -1,
             capsuleRadialSegments: 999,
+            modelObjUrl: '  wolk://project-1/assets/model.obj  ',
+            modelTextureUrl: '  wolk://project-1/assets/albedo.jpg  ',
+            modelNormalUrl: 42,
+            modelBoundsWidth: 999,
+            modelBoundsHeight: -1,
+            modelBoundsDepth: 'garbage',
+            modelAnchorPoints: [
+                { x: 0.5, y: -0.25, z: 0.75 },
+                { x: 'oops', y: 0, z: 0 },
+            ],
         };
         (track.block.params as any).textReveal = {
             textRevealMode: 'garbage',
@@ -174,9 +190,17 @@ describe('primitive3d motion block plugin', () => {
         expect(normalized.block.params.primitive.capsuleLength).toBe(10);
         expect(normalized.block.params.primitive.capsuleCapSegments).toBe(1);
         expect(normalized.block.params.primitive.capsuleRadialSegments).toBe(64);
+        expect(normalized.block.params.primitive.modelObjUrl).toBe('wolk://project-1/assets/model.obj');
+        expect(normalized.block.params.primitive.modelTextureUrl).toBe('wolk://project-1/assets/albedo.jpg');
+        expect(normalized.block.params.primitive.modelNormalUrl).toBe('');
+        expect(normalized.block.params.primitive.modelBoundsWidth).toBe(10);
+        expect(normalized.block.params.primitive.modelBoundsHeight).toBe(0.05);
+        expect(normalized.block.params.primitive.modelBoundsDepth).toBe(2);
+        expect(normalized.block.params.primitive.modelAnchorPoints).toEqual([{ x: 0.5, y: -0.25, z: 0.75 }]);
         expect(normalized.block.params.camera.distance).toBe(25);
         expect(normalized.block.params.lighting.mode).toBe('global');
         expect(normalized.block.params.material.renderMode).toBe('solid');
+        expect(normalized.block.params.material.textureMode).toBe('color-only');
         expect(normalized.block.params.material.wireOpacity).toBe(1);
         expect(normalized.block.params.textReveal.textRevealMode).toBe('none');
         expect(normalized.block.params.textReveal.textRevealEnterWindow).toBe(0.01);

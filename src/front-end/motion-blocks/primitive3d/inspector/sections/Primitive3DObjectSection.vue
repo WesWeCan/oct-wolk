@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
 import type { Primitive3DInspectorApi } from '@/front-end/motion-blocks/primitive3d/inspector/usePrimitive3DInspector';
 import type { Primitive3DType } from '@/front-end/motion-blocks/primitive3d/params';
@@ -11,6 +12,7 @@ const corePrimitiveOptions: Array<{ value: Primitive3DType; label: string }> = [
     { value: 'cone', label: 'Cone' },
     { value: 'capsule', label: 'Capsule' },
     { value: 'torus', label: 'Torus' },
+    { value: 'model', label: 'Model' },
 ];
 
 const morePrimitiveOptions: Array<{ value: Primitive3DType; label: string }> = [
@@ -23,6 +25,25 @@ const morePrimitiveOptions: Array<{ value: Primitive3DType; label: string }> = [
 defineProps<{
     api: Primitive3DInspectorApi;
 }>();
+
+const objInput = ref<HTMLInputElement | null>(null);
+const textureInput = ref<HTMLInputElement | null>(null);
+const normalInput = ref<HTMLInputElement | null>(null);
+
+const openPicker = (input: HTMLInputElement | null) => {
+    input?.click();
+};
+
+const onFileChange = async (
+    event: Event,
+    api: Primitive3DInspectorApi,
+    kind: 'obj' | 'texture' | 'normal',
+) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    await api.uploadModelAsset(kind, file);
+    input.value = '';
+};
 </script>
 
 <template>
@@ -45,7 +66,6 @@ defineProps<{
                                     {{ option.label }}
                                 </option>
                             </optgroup>
-                            <option disabled value="">Custom (to be implemented)</option>
                         </select>
                     </div>
                     <AnimatableNumberField v-if="api.params.primitive.type === 'sphere'" label="Width Segments" :model-value="api.params.primitive.sphereWidthSegments" :min="8" :max="128" :step="1" :disabled="api.isLocked" @update:model-value="api.updatePathValue('params.primitive.sphereWidthSegments', $event)" />
@@ -82,16 +102,106 @@ defineProps<{
                     <div v-if="['icosahedron', 'tetrahedron', 'octahedron', 'dodecahedron'].includes(api.params.primitive.type)" class="inspector-note">
                         This shape does not have any extra geometry controls yet.
                     </div>
+                    <template v-if="api.params.primitive.type === 'model'">
+                        <div class="style-v2__field">
+                            <span class="style-v2__field-label">OBJ Geometry</span>
+                            <div class="inspector-button-row">
+                                <button type="button" class="btn-sm" :disabled="api.isLocked || !api.projectId || api.modelUploadState.obj" @click="openPicker(objInput)">
+                                    {{ api.params.primitive.modelObjUrl ? 'Replace OBJ' : 'Upload OBJ' }}
+                                </button>
+                                <button
+                                    v-if="api.params.primitive.modelObjUrl"
+                                    type="button"
+                                    class="btn-sm btn-secondary"
+                                    :disabled="api.isLocked || api.modelUploadState.obj"
+                                    @click="api.clearModelAsset('obj')"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                            <input
+                                ref="objInput"
+                                data-testid="primitive3d-model-obj-input"
+                                type="file"
+                                accept=".obj,text/plain"
+                                hidden
+                                :disabled="api.isLocked || !api.projectId || api.modelUploadState.obj"
+                                @change="onFileChange($event, api, 'obj')"
+                            >
+                            <div class="inspector-note">
+                                {{ api.getAssetLabel(api.params.primitive.modelObjUrl) }}
+                            </div>
+                        </div>
+
+                        <div class="style-v2__field">
+                            <span class="style-v2__field-label">Base Texture</span>
+                            <div class="inspector-button-row">
+                                <button type="button" class="btn-sm" :disabled="api.isLocked || !api.projectId || api.modelUploadState.texture" @click="openPicker(textureInput)">
+                                    {{ api.params.primitive.modelTextureUrl ? 'Replace Texture' : 'Upload Texture' }}
+                                </button>
+                                <button
+                                    v-if="api.params.primitive.modelTextureUrl"
+                                    type="button"
+                                    class="btn-sm btn-secondary"
+                                    :disabled="api.isLocked || api.modelUploadState.texture"
+                                    @click="api.clearModelAsset('texture')"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                            <input
+                                ref="textureInput"
+                                data-testid="primitive3d-model-texture-input"
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp,image/avif"
+                                hidden
+                                :disabled="api.isLocked || !api.projectId || api.modelUploadState.texture"
+                                @change="onFileChange($event, api, 'texture')"
+                            >
+                            <div class="inspector-note">
+                                {{ api.getAssetLabel(api.params.primitive.modelTextureUrl) }}
+                            </div>
+                        </div>
+
+                        <div class="style-v2__field">
+                            <span class="style-v2__field-label">Normal Map</span>
+                            <div class="inspector-button-row">
+                                <button type="button" class="btn-sm" :disabled="api.isLocked || !api.projectId || api.modelUploadState.normal" @click="openPicker(normalInput)">
+                                    {{ api.params.primitive.modelNormalUrl ? 'Replace Normal Map' : 'Upload Normal Map' }}
+                                </button>
+                                <button
+                                    v-if="api.params.primitive.modelNormalUrl"
+                                    type="button"
+                                    class="btn-sm btn-secondary"
+                                    :disabled="api.isLocked || api.modelUploadState.normal"
+                                    @click="api.clearModelAsset('normal')"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                            <input
+                                ref="normalInput"
+                                data-testid="primitive3d-model-normal-input"
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp,image/avif"
+                                hidden
+                                :disabled="api.isLocked || !api.projectId || api.modelUploadState.normal"
+                                @change="onFileChange($event, api, 'normal')"
+                            >
+                            <div class="inspector-note">
+                                {{ api.getAssetLabel(api.params.primitive.modelNormalUrl) }}
+                            </div>
+                        </div>
+
+                        <div v-if="api.modelUploadError" class="inspector-note">
+                            {{ api.modelUploadError }}
+                        </div>
+                        <div class="inspector-note">
+                            Upload the OBJ plus any texture maps here. Imported materials stay app-controlled so Hybrid wireframe still works cleanly.
+                        </div>
+                    </template>
                     <div class="inspector-note">
                         Anchor count now follows the current primitive geometry automatically.
-                    </div>
-                </details>
-
-                <details class="style-sub-section">
-                    <summary class="style-sub-section__header">Models</summary>
-                    <div class="style-v2__field">
-                        <span class="style-v2__field-label">Custom Model</span>
-                        <button class="btn-sm" type="button" disabled>Import Model (coming later)</button>
                     </div>
                 </details>
 
