@@ -1,5 +1,7 @@
 import { computed, reactive } from 'vue';
 import { getPrimitive3DAnchorCapacity } from '@/front-end/motion-blocks/primitive3d/anchor-points';
+import { cloneMotionEnterExit } from '@/front-end/utils/motion/motionEnterExitPresets';
+import type { TextRevealParams } from '@/front-end/utils/motion/textReveal';
 import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
 import { evalInterpolatedAtFrame, removeKeyframeAtIndex, upsertKeyframe } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
@@ -148,6 +150,25 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         });
     };
 
+    const updateEnterExit = (which: 'enter' | 'exit', value: MotionTrack['block']['enter']) => {
+        if (!props.motionTrack || isLocked.value) return;
+        emitUpdatedBlock({
+            ...props.motionTrack.block,
+            [which]: cloneMotionEnterExit(value),
+        });
+    };
+
+    const updateTextReveal = (value: TextRevealParams) => {
+        if (!props.motionTrack || isLocked.value) return;
+        emitUpdatedBlock({
+            ...props.motionTrack.block,
+            params: resolvePrimitive3DParams({
+                ...props.motionTrack.block.params,
+                textReveal: value,
+            }) as any,
+        });
+    };
+
     const toggleKeyframe = (path: string, value: any) => {
         if (!props.motionTrack || isLocked.value) return;
         const block = { ...props.motionTrack.block, propertyTracks: [...(props.motionTrack.block.propertyTracks || [])] };
@@ -231,6 +252,8 @@ export function usePrimitive3DInspector(props: Primitive3DInspectorProps, emit: 
         updateStyle,
         updateFontSelection,
         updateSourceTrackId,
+        updateEnterExit,
+        updateTextReveal,
         toggleKeyframe,
         togglePropertyKeyframing,
         updatePrimitiveType,

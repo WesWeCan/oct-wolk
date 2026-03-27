@@ -326,7 +326,7 @@ export class SubtitleRenderer implements MotionBlockRenderer {
 
         const resolvedStyle = applyAnimatedStyle(item.style, animatedProps);
         const resolvedTransform = applyAnimatedTransform(item.transform, animatedProps);
-        const revealConfig = textRevealConfigFromParams(context.block.params);
+        const revealConfig = textRevealConfigFromParams(context.block.params, item?.enter, item?.exit);
 
         const displayText = applyTextCase(item.text, resolvedStyle.textCase);
         let fullSpans = spansFromRichText(item.richText, displayText);

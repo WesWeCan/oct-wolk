@@ -10,6 +10,7 @@ import {
 } from '@/front-end/motion-blocks/cloud/defaults';
 import { DEFAULT_CLOUD_LAYOUT_PARAMS } from '@/front-end/motion-blocks/cloud/params';
 import type { CloudLayoutParams } from '@/front-end/motion-blocks/cloud/params';
+import { createMotionAllOffEnterExit } from '@/front-end/utils/motion/motionEnterExitPresets';
 
 function createMockCtx() {
     const fillText = vi.fn();
@@ -187,6 +188,22 @@ describe('CloudRenderer text reveal', () => {
             exitProgress: 0,
             textRevealEnterProgress: 0.4,
             textRevealExitProgress: 0,
+        });
+
+        renderer.render(ctx, [item], makeContext(item, { textRevealMode: 'typewriter' }), {});
+
+        const renderedText = fillText.mock.calls.map((call) => call[0]).join('');
+        expect(renderedText).toBe('HE');
+    });
+
+    it('keeps typewriter reveal working when enter and exit visuals are all off', () => {
+        const renderer = new CloudRenderer();
+        const { ctx, fillText } = createMockCtx();
+        const item = makeItem({
+            textRevealEnterProgress: 0.4,
+            textRevealExitProgress: 0,
+            enter: createMotionAllOffEnterExit(createDefaultCloudEnter()),
+            exit: createMotionAllOffEnterExit(createDefaultCloudExit()),
         });
 
         renderer.render(ctx, [item], makeContext(item, { textRevealMode: 'typewriter' }), {});

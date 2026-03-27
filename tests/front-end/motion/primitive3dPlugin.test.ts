@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
 import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
+import {
+    createDefaultPrimitive3DEnter,
+    createDefaultPrimitive3DExit,
+} from '@/front-end/motion-blocks/primitive3d/defaults';
+import { createMotionAllOffEnterExit } from '@/front-end/utils/motion/motionEnterExitPresets';
+import { msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
 
 const makeProject = () => ({
     id: 'project-1',
@@ -54,6 +60,9 @@ describe('primitive3d motion block plugin', () => {
         expect(track.block.params.camera.distance).toBe(5.5);
         expect(track.block.params.lighting.mode).toBe('global');
         expect(track.block.params.material.renderMode).toBe('solid');
+        expect(track.block.params.textReveal.textRevealMode).toBe('none');
+        expect(track.block.params.textReveal.textRevealEnterWindow).toBe(0.3);
+        expect(track.block.params.textReveal.textRevealExitWindow).toBe(0.2);
         expect(track.block.params.words.windowSize).toBe(4);
         expect(track.block.params.reaction.smoothFacing).toBe(true);
         expect(track.block.style.fontFamily).toBe('system-ui');
@@ -79,6 +88,13 @@ describe('primitive3d motion block plugin', () => {
         (track.block.params as any).lighting.mode = 'wat';
         (track.block.params as any).material.renderMode = 'laser';
         (track.block.params as any).material.wireOpacity = 999;
+        (track.block.params as any).textReveal = {
+            textRevealMode: 'garbage',
+            textRevealEnterWindow: -1,
+            textRevealExitWindow: 5,
+            textRevealEnterPortion: -1,
+            textRevealExitPortion: 5,
+        };
         (track.block.params as any).words.windowSize = 999;
         (track.block.params as any).words.worldSize = -5;
         (track.block.params as any).words.radialOffset = 999;
@@ -101,6 +117,11 @@ describe('primitive3d motion block plugin', () => {
         expect(normalized.block.params.lighting.mode).toBe('global');
         expect(normalized.block.params.material.renderMode).toBe('solid');
         expect(normalized.block.params.material.wireOpacity).toBe(1);
+        expect(normalized.block.params.textReveal.textRevealMode).toBe('none');
+        expect(normalized.block.params.textReveal.textRevealEnterWindow).toBe(0.01);
+        expect(normalized.block.params.textReveal.textRevealExitWindow).toBe(1);
+        expect(normalized.block.params.textReveal.textRevealEnterPortion).toBe(0.01);
+        expect(normalized.block.params.textReveal.textRevealExitPortion).toBe(1);
         expect(normalized.block.params.words.windowSize).toBe(24);
         expect(normalized.block.params.words.worldSize).toBe(0.05);
         expect(normalized.block.params.words.radialOffset).toBe(4);
@@ -211,5 +232,53 @@ describe('primitive3d motion block plugin', () => {
         }) as any;
 
         expect(primitive3dMotionBlockPlugin.resolveActiveItems(track.block, null, 10, 60)).toEqual([]);
+    });
+
+    it('keeps shared text reveal timing when primitive3d word motion is all off', () => {
+        const project = makeProject();
+        const sourceTrack = {
+            id: 'lyric-1',
+            name: 'Words',
+            color: '#ffffff',
+            kind: 'word' as const,
+            muted: false,
+            solo: false,
+            locked: false,
+            items: [
+                { id: 'w1', text: 'hello', startMs: 0, endMs: 1000 },
+            ],
+        };
+        const track = primitive3dMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack,
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+        track.block.enter = createMotionAllOffEnterExit(createDefaultPrimitive3DEnter());
+        track.block.exit = createMotionAllOffEnterExit(createDefaultPrimitive3DExit());
+        track.block.params = resolvePrimitive3DParams({
+            ...track.block.params,
+            words: {
+                ...track.block.params.words,
+                enabled: true,
+            },
+            textReveal: {
+                textRevealMode: 'typewriter',
+                textRevealEnterWindow: 0.3,
+                textRevealExitWindow: 0.2,
+                textRevealEnterPortion: 0.3,
+                textRevealExitPortion: 0.2,
+                textRevealShowCursor: false,
+            },
+        }) as any;
+
+        const activeItems = primitive3dMotionBlockPlugin.resolveActiveItems(track.block, sourceTrack, msToFrame(0, 60), 60);
+
+        expect(activeItems).toHaveLength(1);
+        expect(activeItems[0].enterProgress).toBe(1);
+        expect(activeItems[0].textRevealEnterProgress).toBe(0);
     });
 });

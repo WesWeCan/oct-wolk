@@ -1,3 +1,10 @@
+import {
+    DEFAULT_TEXT_REVEAL_PARAMS,
+    resolveTextRevealParams,
+    type TextRevealParams,
+} from '@/front-end/utils/motion/textReveal';
+import type { MotionEnterExit } from '@/types/project_types';
+
 export type Primitive3DType =
     | 'sphere'
     | 'box'
@@ -87,6 +94,7 @@ export interface Primitive3DParams {
     words: Primitive3DWordsParams;
     billboard: Primitive3DBillboardParams;
     reaction: Primitive3DReactionParams;
+    textReveal: TextRevealParams;
 }
 
 export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
@@ -146,6 +154,9 @@ export const DEFAULT_PRIMITIVE3D_PARAMS: Primitive3DParams = {
         smoothFacing: true,
         smoothStrength: 0.08,
     },
+    textReveal: {
+        ...DEFAULT_TEXT_REVEAL_PARAMS,
+    },
 };
 
 const clamp = (value: unknown, min: number, max: number, fallback: number): number => {
@@ -158,7 +169,11 @@ const normalizeColor = (value: unknown, fallback: string): string => {
     return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
 };
 
-export const resolvePrimitive3DParams = (params: Record<string, any> | null | undefined): Primitive3DParams => {
+export const resolvePrimitive3DParams = (
+    params: Record<string, any> | null | undefined,
+    enter?: MotionEnterExit | null,
+    exit?: MotionEnterExit | null,
+): Primitive3DParams => {
     const raw = params || {};
     const primitive = raw.primitive || {};
     const object = raw.object || {};
@@ -168,6 +183,7 @@ export const resolvePrimitive3DParams = (params: Record<string, any> | null | un
     const words = raw.words || {};
     const billboard = raw.billboard || {};
     const reaction = raw.reaction || {};
+    const textReveal = resolveTextRevealParams(raw.textReveal, enter, exit);
 
     const primitiveType: Primitive3DType = (
         primitive.type === 'box'
@@ -249,5 +265,6 @@ export const resolvePrimitive3DParams = (params: Record<string, any> | null | un
             smoothFacing: reaction.smoothFacing !== false,
             smoothStrength: clamp(reaction.smoothStrength, 0.01, 1, DEFAULT_PRIMITIVE3D_PARAMS.reaction.smoothStrength),
         },
+        textReveal,
     };
 };

@@ -4,6 +4,7 @@ import {
     type TextRevealMode,
     type TextRevealParams,
 } from '@/front-end/utils/motion/textReveal';
+import type { MotionEnterExit } from '@/types/project_types';
 
 export type CloudExitMode = 'stay' | 'perItem';
 
@@ -31,9 +32,13 @@ const clamp = (value: number, min: number, max: number): number => {
 const isValidExitMode = (value: unknown): value is CloudExitMode =>
     value === 'stay' || value === 'perItem';
 
-export const resolveCloudLayoutParams = (params: Record<string, any> | null | undefined): CloudLayoutParams => {
+export const resolveCloudLayoutParams = (
+    params: Record<string, any> | null | undefined,
+    enter?: MotionEnterExit | null,
+    exit?: MotionEnterExit | null,
+): CloudLayoutParams => {
     const raw = params || {};
-    const revealParams = resolveTextRevealParams(raw);
+    const revealParams = resolveTextRevealParams(raw, enter, exit);
 
     return {
         gap: clamp(

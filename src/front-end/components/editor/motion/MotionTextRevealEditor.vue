@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed } from 'vue';
 import TypewriterTimingRangeField from '@/front-end/components/editor/motion/TypewriterTimingRangeField.vue';
 import {
-    DEFAULT_TYPEWRITER_ENTER_PORTION,
-    DEFAULT_TYPEWRITER_EXIT_PORTION,
+    DEFAULT_TYPEWRITER_ENTER_WINDOW,
+    DEFAULT_TYPEWRITER_EXIT_WINDOW,
     resolveTextRevealParams,
     type TextRevealMode,
     type TextRevealParams,
@@ -21,22 +21,6 @@ const emit = defineEmits<{
 }>();
 
 const resolved = computed(() => resolveTextRevealParams(props.value));
-const isLegacyTypewriterPlaceholder = computed(() => (
-    resolved.value.textRevealMode === 'typewriter'
-    && resolved.value.textRevealEnterPortion === 1
-    && resolved.value.textRevealExitPortion === 1
-));
-
-const displayEnterPortion = computed(() => (
-    isLegacyTypewriterPlaceholder.value
-        ? DEFAULT_TYPEWRITER_ENTER_PORTION
-        : resolved.value.textRevealEnterPortion
-));
-const displayExitPortion = computed(() => (
-    isLegacyTypewriterPlaceholder.value
-        ? DEFAULT_TYPEWRITER_EXIT_PORTION
-        : resolved.value.textRevealExitPortion
-));
 
 const emitPatch = (patch: Partial<TextRevealParams>) => {
     emit('update-text-reveal', {
@@ -47,17 +31,9 @@ const emitPatch = (patch: Partial<TextRevealParams>) => {
 
 const percentFromPortion = (portion: number): number => Math.round(portion * 100);
 const portionFromPercent = (percent: number): number => Math.max(0.01, Math.min(1, percent / 100));
-const rangeStart = computed(() => percentFromPortion(displayEnterPortion.value));
-const rangeEnd = computed(() => 100 - percentFromPortion(displayExitPortion.value));
+const rangeStart = computed(() => percentFromPortion(resolved.value.textRevealEnterWindow));
+const rangeEnd = computed(() => 100 - percentFromPortion(resolved.value.textRevealExitWindow));
 const holdPercent = computed(() => Math.max(0, rangeEnd.value - rangeStart.value));
-
-watch(isLegacyTypewriterPlaceholder, (value) => {
-    if (!value || props.disabled) return;
-    emitPatch({
-        textRevealEnterPortion: DEFAULT_TYPEWRITER_ENTER_PORTION,
-        textRevealExitPortion: DEFAULT_TYPEWRITER_EXIT_PORTION,
-    });
-}, { immediate: true });
 
 const updateMode = (mode: TextRevealMode) => {
     if (mode !== 'typewriter') {
@@ -67,19 +43,25 @@ const updateMode = (mode: TextRevealMode) => {
 
     emitPatch({
         textRevealMode: mode,
+        textRevealEnterWindow: resolved.value.textRevealMode === 'typewriter'
+            ? resolved.value.textRevealEnterWindow
+            : DEFAULT_TYPEWRITER_ENTER_WINDOW,
+        textRevealExitWindow: resolved.value.textRevealMode === 'typewriter'
+            ? resolved.value.textRevealExitWindow
+            : DEFAULT_TYPEWRITER_EXIT_WINDOW,
         textRevealEnterPortion: resolved.value.textRevealMode === 'typewriter'
             ? resolved.value.textRevealEnterPortion
-            : DEFAULT_TYPEWRITER_ENTER_PORTION,
+            : 1,
         textRevealExitPortion: resolved.value.textRevealMode === 'typewriter'
             ? resolved.value.textRevealExitPortion
-            : DEFAULT_TYPEWRITER_EXIT_PORTION,
+            : 1,
     });
 };
 const updateEnterPortion = (percent: number) => emitPatch({
-    textRevealEnterPortion: portionFromPercent(percent),
+    textRevealEnterWindow: portionFromPercent(percent),
 });
 const updateExitBoundary = (percent: number) => emitPatch({
-    textRevealExitPortion: portionFromPercent(100 - percent),
+    textRevealExitWindow: portionFromPercent(100 - percent),
 });
 const updateShowCursor = (enabled: boolean) => emitPatch({
     textRevealShowCursor: enabled,
@@ -91,7 +73,7 @@ const updateShowCursor = (enabled: boolean) => emitPatch({
         <div class="inspector-field">
             <label>Mode</label>
             <span class="inspector-hint">
-                Controls how characters enter and exit. Uses the block's enter and exit timing windows.
+                Controls how characters enter and exit. Reveal timing is independent from the Motion section.
             </span>
             <div class="segmented-control">
                 <button
@@ -116,7 +98,7 @@ const updateShowCursor = (enabled: boolean) => emitPatch({
                 label="Typewriter Timing"
                 :start-value="rangeStart"
                 :end-value="rangeEnd"
-                hint="Type, hold, and delete across the shared reveal window."
+                hint="Type, hold, and delete across the cue using reveal timing only."
                 @update:start-value="updateEnterPortion"
                 @update:end-value="updateExitBoundary"
             />
@@ -143,11 +125,11 @@ const updateShowCursor = (enabled: boolean) => emitPatch({
             <div class="motion-text-reveal-editor__stats">
                 <div class="motion-text-reveal-editor__stat">
                     <span>Type</span>
-                    <strong>{{ percentFromPortion(displayEnterPortion) }}%</strong>
+                    <strong>{{ percentFromPortion(resolved.textRevealEnterWindow) }}%</strong>
                 </div>
                 <div class="motion-text-reveal-editor__stat">
                     <span>Delete</span>
-                    <strong>{{ percentFromPortion(displayExitPortion) }}%</strong>
+                    <strong>{{ percentFromPortion(resolved.textRevealExitWindow) }}%</strong>
                 </div>
                 <div class="motion-text-reveal-editor__stat">
                     <span>Hold</span>

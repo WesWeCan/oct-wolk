@@ -39,8 +39,12 @@ function inheritProjectFont(track: MotionTrack, projectFont?: WolkProjectFont) {
     };
 }
 
-const collapseLegacyTransformIntoParams = (track: MotionTrack) => {
-    const params = resolvePrimitive3DParams(track.block.params);
+const collapseLegacyTransformIntoParams = (
+    track: MotionTrack,
+    enter = track.block.enter,
+    exit = track.block.exit,
+) => {
+    const params = resolvePrimitive3DParams(track.block.params, enter, exit);
     const transform = track.block.transform || DEFAULT_PRIMITIVE3D_TRANSFORM;
     const isIdentityTransform = (
         transform.offsetX === 0
@@ -117,6 +121,8 @@ export const primitive3dMotionBlockPlugin: MotionBlockPlugin = {
             if (!primitive3DKeyframePaths.has(propertyTrack.propertyPath)) return false;
             return Array.isArray(propertyTrack.keyframes) && propertyTrack.keyframes.length > 0;
         });
+        const enter = normalizeSubtitleEnterExit(track.block.enter, 'enter');
+        const exit = normalizeSubtitleEnterExit(track.block.exit, 'exit');
 
         return {
             ...track,
@@ -129,11 +135,11 @@ export const primitive3dMotionBlockPlugin: MotionBlockPlugin = {
                 type: 'primitive3d',
                 sourceTrackId: typeof track.block.sourceTrackId === 'string' ? track.block.sourceTrackId : '',
                 style: inheritProjectFont(track, projectFont),
-                enter: normalizeSubtitleEnterExit(track.block.enter, 'enter'),
-                exit: normalizeSubtitleEnterExit(track.block.exit, 'exit'),
+                enter,
+                exit,
                 // Collapse the old 2D wrapper into object-space params once, then keep the wrapper neutral.
                 transform: { ...DEFAULT_PRIMITIVE3D_TRANSFORM },
-                params: collapseLegacyTransformIntoParams(track) as any,
+                params: collapseLegacyTransformIntoParams(track, enter, exit) as any,
                 propertyTracks,
             },
         };

@@ -4,10 +4,11 @@ import MotionEnterExitEditor from '@/front-end/components/editor/motion/MotionEn
 import { createDefaultSubtitleEnter, createDefaultSubtitleExit } from '@/front-end/motion-blocks/subtitle/defaults';
 
 describe('MotionEnterExitEditor', () => {
-    it('applies the All Off preset to enter motion', async () => {
+    it('applies the All Off preset to enter motion without clearing timing', async () => {
+        const enterValue = createDefaultSubtitleEnter();
         const wrapper = mount(MotionEnterExitEditor, {
             props: {
-                enterValue: createDefaultSubtitleEnter(),
+                enterValue,
                 exitValue: createDefaultSubtitleExit(),
             },
         });
@@ -19,10 +20,10 @@ describe('MotionEnterExitEditor', () => {
         expect(emitted).toBeTruthy();
         expect(emitted![0][0]).toBe('enter');
         expect(emitted![0][1]).toMatchObject({
-            fraction: 0,
-            minFrames: 0,
-            maxFrames: 0,
-            easing: 'linear',
+            fraction: enterValue.fraction,
+            minFrames: enterValue.minFrames,
+            maxFrames: enterValue.maxFrames,
+            easing: enterValue.easing,
             style: 'none',
             opacityStart: 1,
             opacityEnd: 1,

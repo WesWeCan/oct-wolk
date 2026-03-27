@@ -83,6 +83,8 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
             if (!propertyTrack || propertyTrack.enabled === false) return false;
             return Array.isArray(propertyTrack.keyframes) && propertyTrack.keyframes.length > 0;
         });
+        const enter = normalizeSubtitleEnterExit(track.block.enter, 'enter');
+        const exit = normalizeSubtitleEnterExit(track.block.exit, 'exit');
         return {
             ...track,
             enabled: track.enabled !== false,
@@ -93,11 +95,11 @@ export const subtitleMotionBlockPlugin: MotionBlockPlugin = {
                 ...track.block,
                 type: 'subtitle',
                 style: inheritProjectFont(track, projectFont),
-                enter: normalizeSubtitleEnterExit(track.block.enter, 'enter'),
-                exit: normalizeSubtitleEnterExit(track.block.exit, 'exit'),
+                enter,
+                exit,
                 params: {
                     ...(track.block.params || {}),
-                    ...resolveTextRevealParams(track.block.params),
+                    ...resolveTextRevealParams(track.block.params, enter, exit),
                 },
                 propertyTracks,
             },

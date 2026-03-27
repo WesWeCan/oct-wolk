@@ -8,6 +8,7 @@ import {
     DEFAULT_SUBTITLE_STYLE,
     DEFAULT_SUBTITLE_TRANSFORM,
 } from '@/front-end/motion-blocks/subtitle/defaults';
+import { createMotionAllOffEnterExit } from '@/front-end/utils/motion/motionEnterExitPresets';
 import { DEFAULT_TEXT_REVEAL_PARAMS } from '@/front-end/utils/motion/textReveal';
 
 function createMockCtx() {
@@ -133,6 +134,22 @@ describe('SubtitleRenderer text reveal', () => {
             exitProgress: 0,
             textRevealEnterProgress: 0.4,
             textRevealExitProgress: 0,
+        });
+
+        renderer.render(ctx, [item], makeContext(item, { textRevealMode: 'typewriter' }), {});
+
+        const renderedText = fillText.mock.calls.map((call) => call[0]).join('');
+        expect(renderedText).toBe('HE');
+    });
+
+    it('keeps typewriter reveal working when enter and exit visuals are all off', () => {
+        const renderer = new SubtitleRenderer();
+        const { ctx, fillText } = createMockCtx();
+        const item = makeItem({
+            textRevealEnterProgress: 0.4,
+            textRevealExitProgress: 0,
+            enter: createMotionAllOffEnterExit(createDefaultSubtitleEnter()),
+            exit: createMotionAllOffEnterExit(createDefaultSubtitleExit()),
         });
 
         renderer.render(ctx, [item], makeContext(item, { textRevealMode: 'typewriter' }), {});

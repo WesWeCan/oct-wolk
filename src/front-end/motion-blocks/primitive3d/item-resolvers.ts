@@ -2,6 +2,7 @@ import type { ResolvedItem } from '@/front-end/motion-blocks/core/types';
 import { getPrimitive3DAnchorCapacity } from '@/front-end/motion-blocks/primitive3d/anchor-points';
 import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
 import { computeEnterExitProgress, msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
+import { computeTextRevealProgress } from '@/front-end/utils/motion/textReveal';
 import type { ItemOverride, LyricTrack, MotionBlock, MotionEnterExit, TimelineItem, WolkProject } from '@/types/project_types';
 
 const isItemWithinBlockRange = (item: TimelineItem, block: MotionBlock): boolean => {
@@ -88,6 +89,14 @@ const buildResolvedWordItems = (
                 resolvedEnter,
                 resolvedExit,
             );
+            const textRevealProgress = computeTextRevealProgress(
+                visibleItem,
+                currentFrame,
+                fps,
+                params.textReveal,
+                resolvedEnter,
+                resolvedExit,
+            );
 
             return {
                 id: `${block.id}:primitive3d:word:${item.id}`,
@@ -104,6 +113,8 @@ const buildResolvedWordItems = (
                 endMs: visibleItem.endMs,
                 enterProgress,
                 exitProgress,
+                textRevealEnterProgress: textRevealProgress.enterProgress,
+                textRevealExitProgress: textRevealProgress.exitProgress,
                 isActive,
                 style: {
                     ...block.style,

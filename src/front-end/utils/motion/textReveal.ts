@@ -4,11 +4,15 @@ import type { StyledSpan } from '@/front-end/utils/motion/parseTipTapToSpans';
 
 export type TextRevealMode = 'none' | 'typewriter';
 
+export const DEFAULT_TYPEWRITER_ENTER_WINDOW = 0.3;
+export const DEFAULT_TYPEWRITER_EXIT_WINDOW = 0.2;
 export const DEFAULT_TYPEWRITER_ENTER_PORTION = 0.3;
 export const DEFAULT_TYPEWRITER_EXIT_PORTION = 0.2;
 
 export interface TextRevealParams {
     textRevealMode: TextRevealMode;
+    textRevealEnterWindow: number;
+    textRevealExitWindow: number;
     textRevealEnterPortion: number;
     textRevealExitPortion: number;
     textRevealShowCursor: boolean;
@@ -30,6 +34,8 @@ export const DEFAULT_TEXT_REVEAL_CONFIG: TextRevealConfig = {
 
 export const DEFAULT_TEXT_REVEAL_PARAMS: TextRevealParams = {
     textRevealMode: DEFAULT_TEXT_REVEAL_CONFIG.mode,
+    textRevealEnterWindow: DEFAULT_TYPEWRITER_ENTER_WINDOW,
+    textRevealExitWindow: DEFAULT_TYPEWRITER_EXIT_WINDOW,
     textRevealEnterPortion: DEFAULT_TEXT_REVEAL_CONFIG.enterPortion,
     textRevealExitPortion: DEFAULT_TEXT_REVEAL_CONFIG.exitPortion,
     textRevealShowCursor: DEFAULT_TEXT_REVEAL_CONFIG.showCursor,
@@ -38,6 +44,12 @@ export const DEFAULT_TEXT_REVEAL_PARAMS: TextRevealParams = {
 export interface TextRevealProgress {
     enterProgress: number;
     exitProgress: number;
+}
+
+export interface TextRevealTimingContext {
+    durationItem?: TimelineItem;
+    enterStartMs?: number;
+    exitEndMs?: number;
 }
 
 const clamp01 = (value: unknown, fallback: number): number => {
@@ -52,28 +64,82 @@ const isTextRevealMode = (value: unknown): value is TextRevealMode => {
 
 export const resolveTextRevealParams = (
     raw: Record<string, any> | null | undefined,
+    enter?: MotionEnterExit | null,
+    exit?: MotionEnterExit | null,
 ): TextRevealParams => {
     const source = raw || {};
-    return {
-        textRevealMode: isTextRevealMode(source.textRevealMode)
+    const normalizedEnter = enter ? normalizeEnterExit(enter) : null;
+    const normalizedExit = exit ? normalizeEnterExit(exit) : null;
+    const usesLegacyTypewriter = enter?.style === 'typewriter' || exit?.style === 'typewriter';
+    const revealLooksLikeDefaultNone = (
+        source.textRevealMode === undefined
+        || source.textRevealMode === DEFAULT_TEXT_REVEAL_PARAMS.textRevealMode
+    ) && (
+        source.textRevealEnterWindow === undefined
+        || clamp01(source.textRevealEnterWindow, DEFAULT_TEXT_REVEAL_PARAMS.textRevealEnterWindow) === DEFAULT_TEXT_REVEAL_PARAMS.textRevealEnterWindow
+    ) && (
+        source.textRevealExitWindow === undefined
+        || clamp01(source.textRevealExitWindow, DEFAULT_TEXT_REVEAL_PARAMS.textRevealExitWindow) === DEFAULT_TEXT_REVEAL_PARAMS.textRevealExitWindow
+    ) && (
+        source.textRevealEnterPortion === undefined
+        || clamp01(source.textRevealEnterPortion, DEFAULT_TEXT_REVEAL_PARAMS.textRevealEnterPortion) === DEFAULT_TEXT_REVEAL_PARAMS.textRevealEnterPortion
+    ) && (
+        source.textRevealExitPortion === undefined
+        || clamp01(source.textRevealExitPortion, DEFAULT_TEXT_REVEAL_PARAMS.textRevealExitPortion) === DEFAULT_TEXT_REVEAL_PARAMS.textRevealExitPortion
+    ) && source.textRevealShowCursor !== true;
+    const legacyMode = usesLegacyTypewriter && (
+        !isTextRevealMode(source.textRevealMode) || revealLooksLikeDefaultNone
+    );
+
+    if (legacyMode && revealLooksLikeDefaultNone) {
+        return {
+            textRevealMode: 'typewriter',
+            textRevealEnterWindow: clamp01(normalizedEnter?.fraction, DEFAULT_TYPEWRITER_ENTER_WINDOW) || 0.01,
+            textRevealExitWindow: clamp01(normalizedExit?.fraction, DEFAULT_TYPEWRITER_EXIT_WINDOW) || 0.01,
+            textRevealEnterPortion: 1,
+            textRevealExitPortion: 1,
+            textRevealShowCursor: enter?.showCursor === true || exit?.showCursor === true,
+        };
+    }
+
+    const textRevealMode = legacyMode
+        ? 'typewriter'
+        : isTextRevealMode(source.textRevealMode)
             ? source.textRevealMode
-            : DEFAULT_TEXT_REVEAL_PARAMS.textRevealMode,
+            : DEFAULT_TEXT_REVEAL_PARAMS.textRevealMode;
+
+    return {
+        textRevealMode,
+        textRevealEnterWindow: clamp01(
+            source.textRevealEnterWindow,
+            legacyMode
+                ? clamp01(normalizedEnter?.fraction, DEFAULT_TYPEWRITER_ENTER_WINDOW)
+                : DEFAULT_TEXT_REVEAL_PARAMS.textRevealEnterWindow,
+        ) || 0.01,
+        textRevealExitWindow: clamp01(
+            source.textRevealExitWindow,
+            legacyMode
+                ? clamp01(normalizedExit?.fraction, DEFAULT_TYPEWRITER_EXIT_WINDOW)
+                : DEFAULT_TEXT_REVEAL_PARAMS.textRevealExitWindow,
+        ) || 0.01,
         textRevealEnterPortion: clamp01(
             source.textRevealEnterPortion,
-            DEFAULT_TEXT_REVEAL_PARAMS.textRevealEnterPortion,
+            legacyMode ? 1 : DEFAULT_TEXT_REVEAL_PARAMS.textRevealEnterPortion,
         ) || 0.01,
         textRevealExitPortion: clamp01(
             source.textRevealExitPortion,
-            DEFAULT_TEXT_REVEAL_PARAMS.textRevealExitPortion,
+            legacyMode ? 1 : DEFAULT_TEXT_REVEAL_PARAMS.textRevealExitPortion,
         ) || 0.01,
-        textRevealShowCursor: source.textRevealShowCursor === true,
+        textRevealShowCursor: source.textRevealShowCursor === true || (legacyMode && (enter?.showCursor === true || exit?.showCursor === true)),
     };
 };
 
 export const textRevealConfigFromParams = (
     raw: TextRevealParams | Record<string, any> | null | undefined,
+    enter?: MotionEnterExit | null,
+    exit?: MotionEnterExit | null,
 ): TextRevealConfig => {
-    const params = resolveTextRevealParams(raw);
+    const params = resolveTextRevealParams(raw, enter, exit);
     return {
         mode: params.textRevealMode,
         enterPortion: params.textRevealEnterPortion,
@@ -86,25 +152,26 @@ export const computeTextRevealProgress = (
     item: TimelineItem,
     currentFrame: number,
     fps: number,
-    enter: MotionEnterExit,
-    exit: MotionEnterExit,
+    raw: TextRevealParams | Record<string, any> | null | undefined,
+    enter?: MotionEnterExit | null,
+    exit?: MotionEnterExit | null,
+    timing?: TextRevealTimingContext,
 ): TextRevealProgress => {
-    const enterCfg = normalizeEnterExit(enter);
-    const exitCfg = normalizeEnterExit(exit);
-    const startFrame = msToFrame(item.startMs, fps);
-    const endFrame = Math.max(startFrame + 1, msToFrame(item.endMs, fps));
-    const itemDurationFrames = Math.max(1, endFrame - startFrame);
-    const elapsed = currentFrame - startFrame;
-    const remaining = endFrame - currentFrame;
+    const params = resolveTextRevealParams(raw, enter, exit);
+    if (params.textRevealMode === 'none') {
+        return { enterProgress: 1, exitProgress: 0 };
+    }
+    const durationItem = timing?.durationItem ?? item;
+    const durationStartFrame = msToFrame(durationItem.startMs, fps);
+    const durationEndFrame = Math.max(durationStartFrame + 1, msToFrame(durationItem.endMs, fps));
+    const enterStartFrame = msToFrame(timing?.enterStartMs ?? item.startMs, fps);
+    const exitEndFrame = msToFrame(timing?.exitEndMs ?? item.endMs, fps);
+    const itemDurationFrames = Math.max(1, durationEndFrame - durationStartFrame);
+    const elapsed = currentFrame - enterStartFrame;
+    const remaining = exitEndFrame - currentFrame;
 
-    const enterFrames = Math.max(
-        enterCfg.minFrames,
-        Math.min(enterCfg.maxFrames, Math.round(itemDurationFrames * enterCfg.fraction)),
-    );
-    const exitFrames = Math.max(
-        exitCfg.minFrames,
-        Math.min(exitCfg.maxFrames, Math.round(itemDurationFrames * exitCfg.fraction)),
-    );
+    const enterFrames = Math.max(1, Math.round(itemDurationFrames * params.textRevealEnterWindow));
+    const exitFrames = Math.max(1, Math.round(itemDurationFrames * params.textRevealExitWindow));
 
     const enterProgress = elapsed < enterFrames
         ? elapsed / Math.max(1, enterFrames)

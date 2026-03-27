@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Primitive3DInspector from '@/front-end/motion-blocks/primitive3d/inspector/Primitive3DInspector.vue';
 import Scene3DInspector from '@/front-end/components/editor/Scene3DInspector.vue';
+import MotionTextRevealEditor from '@/front-end/components/editor/motion/MotionTextRevealEditor.vue';
 import { primitive3dMotionBlockPlugin } from '@/front-end/motion-blocks';
 
 const makeProject = () => ({
@@ -130,6 +131,55 @@ describe('primitive3d inspector', () => {
         const updates = wrapper.emitted('update-track');
         expect(updates).toBeTruthy();
         expect((updates?.at(-1)?.[0] as any).block.sourceTrackId).toBe('lyric-1');
+    });
+
+    it('renders the shared animation section for word sprite reveal and motion', () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        expect(wrapper.text()).toContain('Animation');
+        expect(wrapper.text()).toContain('Text Reveal');
+        expect(wrapper.text()).toContain('Typewriter');
+        expect(wrapper.text()).toContain('Motion');
+    });
+
+    it('updates shared text reveal params from the animation section', async () => {
+        const wrapper = mount(Primitive3DInspector, {
+            props: {
+                motionTrack: makeTrack(),
+                lyricTracks: [],
+                fps: 60,
+                playheadMs: 0,
+                scene3d: makeProject().scene3d,
+            },
+        });
+
+        wrapper.findComponent(MotionTextRevealEditor).vm.$emit('update-text-reveal', {
+            textRevealMode: 'typewriter',
+            textRevealEnterWindow: 0.4,
+            textRevealExitWindow: 0.2,
+            textRevealEnterPortion: 0.4,
+            textRevealExitPortion: 0.5,
+            textRevealShowCursor: true,
+        });
+        await wrapper.vm.$nextTick();
+
+        const updates = wrapper.emitted('update-track');
+        expect(updates).toBeTruthy();
+        const updatedTrack = updates?.at(-1)?.[0] as any;
+        expect(updatedTrack.block.params.textReveal.textRevealMode).toBe('typewriter');
+        expect(updatedTrack.block.params.textReveal.textRevealEnterWindow).toBe(0.4);
+        expect(updatedTrack.block.params.textReveal.textRevealExitWindow).toBe(0.2);
+        expect(updatedTrack.block.params.textReveal.textRevealEnterPortion).toBe(0.4);
+        expect(updatedTrack.block.params.textReveal.textRevealExitPortion).toBe(0.5);
+        expect(updatedTrack.block.params.textReveal.textRevealShowCursor).toBe(true);
     });
 
     it('lets smoothing be toggled from the words tab', async () => {

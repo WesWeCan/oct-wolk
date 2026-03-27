@@ -7,6 +7,7 @@ import MotionTextRevealEditor from '@/front-end/components/editor/motion/MotionT
 import TypewriterTimingRangeField from '@/front-end/components/editor/motion/TypewriterTimingRangeField.vue';
 import { cloudMotionBlockPlugin } from '@/front-end/motion-blocks';
 import { createDefaultCloudEnter } from '@/front-end/motion-blocks/cloud/defaults';
+import { createMotionAllOffEnterExit } from '@/front-end/utils/motion/motionEnterExitPresets';
 
 const makeProject = () => ({
     id: 'project-1',
@@ -166,13 +167,13 @@ describe('cloud inspector', () => {
         expect(revealEditor.text()).toContain('Typewriter usually looks best with Motion Off or very subtle motion');
     });
 
-    it('reflects saved reveal portion values in typewriter controls', () => {
+    it('reflects saved reveal window values in typewriter controls', () => {
         const track = makeTrack(wordTrack);
         track.block.params = {
             ...track.block.params,
             textRevealMode: 'typewriter',
-            textRevealEnterPortion: 0.6,
-            textRevealExitPortion: 0.4,
+            textRevealEnterWindow: 0.6,
+            textRevealExitWindow: 0.4,
         };
 
         const wrapper = mountCloudInspector(track, [wordTrack]);
@@ -223,5 +224,27 @@ describe('cloud inspector', () => {
         const nextTrack = emitted![0][0] as typeof track;
         expect(nextTrack.block.enter.move.enabled).toBe(true);
         expect(nextTrack.block.enter.move.distancePx).toBe(80);
+    });
+
+    it('keeps timing intact when the shared All Off motion payload is applied', async () => {
+        const track = makeTrack(wordTrack);
+        const wrapper = mountCloudInspector(track, [wordTrack]);
+
+        wrapper.findComponent(MotionEnterExitEditor).vm.$emit(
+            'update-enter-exit',
+            'enter',
+            createMotionAllOffEnterExit(track.block.enter),
+        );
+        await wrapper.vm.$nextTick();
+
+        const emitted = wrapper.emitted('update-track');
+        expect(emitted).toBeTruthy();
+        const nextTrack = emitted!.at(-1)![0] as typeof track;
+        expect(nextTrack.block.enter.fraction).toBe(track.block.enter.fraction);
+        expect(nextTrack.block.enter.minFrames).toBe(track.block.enter.minFrames);
+        expect(nextTrack.block.enter.maxFrames).toBe(track.block.enter.maxFrames);
+        expect(nextTrack.block.enter.fade.enabled).toBe(false);
+        expect(nextTrack.block.enter.move.enabled).toBe(false);
+        expect(nextTrack.block.enter.scale.enabled).toBe(false);
     });
 });

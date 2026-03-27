@@ -25,6 +25,8 @@ const makeTrack = () => ({
         overrides: [],
         params: {
             textRevealMode: 'none' as const,
+            textRevealEnterWindow: 0.3,
+            textRevealExitWindow: 0.2,
             textRevealEnterPortion: 1,
             textRevealExitPortion: 1,
         },
@@ -39,6 +41,8 @@ describe('subtitle MotionAnimationTab', () => {
                 track: makeTrack() as any,
                 revealValue: {
                     textRevealMode: 'none',
+                    textRevealEnterWindow: 0.3,
+                    textRevealExitWindow: 0.2,
                     textRevealEnterPortion: 1,
                     textRevealExitPortion: 1,
                 },
@@ -55,6 +59,8 @@ describe('subtitle MotionAnimationTab', () => {
                 track: makeTrack() as any,
                 revealValue: {
                     textRevealMode: 'typewriter',
+                    textRevealEnterWindow: 0.3,
+                    textRevealExitWindow: 0.2,
                     textRevealEnterPortion: 1,
                     textRevealExitPortion: 1,
                 },

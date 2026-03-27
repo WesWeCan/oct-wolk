@@ -46,6 +46,8 @@ describe('subtitle motion block plugin', () => {
         expect(track.block.enter.fade.opacityStart).toBe(0);
         expect(track.block.exit.fade.opacityEnd).toBe(0);
         expect(track.block.params.textRevealMode).toBe('none');
+        expect(track.block.params.textRevealEnterWindow).toBe(0.3);
+        expect(track.block.params.textRevealExitWindow).toBe(0.2);
         expect(track.block.params.textRevealEnterPortion).toBe(1);
         expect(track.block.params.textRevealExitPortion).toBe(1);
     });
@@ -73,6 +75,8 @@ describe('subtitle motion block plugin', () => {
         track.block.params = {
             ...track.block.params,
             textRevealMode: 'garbage',
+            textRevealEnterWindow: -1,
+            textRevealExitWindow: 5,
             textRevealEnterPortion: -1,
             textRevealExitPortion: 5,
         };
@@ -92,6 +96,8 @@ describe('subtitle motion block plugin', () => {
         expect(normalized.block.style.fontName).toBe('Project Font');
         expect(normalized.block.style.fontLocalPath).toBe('/font.otf');
         expect(normalized.block.params.textRevealMode).toBe('none');
+        expect(normalized.block.params.textRevealEnterWindow).toBe(0.01);
+        expect(normalized.block.params.textRevealExitWindow).toBe(1);
         expect(normalized.block.params.textRevealEnterPortion).toBe(0.01);
         expect(normalized.block.params.textRevealExitPortion).toBe(1);
         expect(normalized.block.propertyTracks).toHaveLength(1);
@@ -135,5 +141,10 @@ describe('subtitle motion block plugin', () => {
         expect(normalized.block.exit.fade.enabled).toBe(false);
         expect(normalized.block.enter.showCursor).toBe(true);
         expect(normalized.block.exit.showCursor).toBe(true);
+        expect(normalized.block.params.textRevealMode).toBe('typewriter');
+        expect(normalized.block.params.textRevealEnterWindow).toBe(0.25);
+        expect(normalized.block.params.textRevealExitWindow).toBe(0.25);
+        expect(normalized.block.params.textRevealEnterPortion).toBe(1);
+        expect(normalized.block.params.textRevealExitPortion).toBe(1);
     });
 });

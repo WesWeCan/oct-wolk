@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
     computeTextRevealProgress,
+    DEFAULT_TYPEWRITER_ENTER_WINDOW,
+    DEFAULT_TYPEWRITER_EXIT_WINDOW,
     getTextRevealFraction,
     sliceStyledSpansByCharacters,
     applyTextRevealToSpans,
@@ -79,10 +81,14 @@ describe('resolveTextRevealParams', () => {
     it('normalizes invalid values safely', () => {
         expect(resolveTextRevealParams({
             textRevealMode: 'garbage',
+            textRevealEnterWindow: -5,
+            textRevealExitWindow: 10,
             textRevealEnterPortion: -5,
             textRevealExitPortion: 10,
         })).toEqual({
             textRevealMode: 'none',
+            textRevealEnterWindow: 0.01,
+            textRevealExitWindow: 1,
             textRevealEnterPortion: 0.01,
             textRevealExitPortion: 1,
             textRevealShowCursor: false,
@@ -94,6 +100,8 @@ describe('textRevealConfigFromParams', () => {
     it('maps shared params into runtime config', () => {
         expect(textRevealConfigFromParams({
             textRevealMode: 'typewriter',
+            textRevealEnterWindow: 0.3,
+            textRevealExitWindow: 0.2,
             textRevealEnterPortion: 0.6,
             textRevealExitPortion: 0.4,
         })).toEqual({
@@ -107,28 +115,93 @@ describe('textRevealConfigFromParams', () => {
 
 describe('computeTextRevealProgress', () => {
     const item = { id: 'item-1', text: 'hello', startMs: 0, endMs: 1000 };
+    const revealParams = {
+        textRevealMode: 'typewriter' as const,
+        textRevealEnterWindow: DEFAULT_TYPEWRITER_ENTER_WINDOW,
+        textRevealExitWindow: DEFAULT_TYPEWRITER_EXIT_WINDOW,
+        textRevealEnterPortion: 1,
+        textRevealExitPortion: 1,
+        textRevealShowCursor: false,
+    };
 
-    it('tracks enter timing even when motion channels are disabled', () => {
+    it('tracks enter timing from reveal params even when motion channels are disabled', () => {
         const enter = createDefaultSubtitleEnter();
         const exit = createDefaultSubtitleExit();
         enter.fade.enabled = false;
         enter.move.enabled = false;
         enter.scale.enabled = false;
 
-        const progress = computeTextRevealProgress(item, 5, 60, enter, exit);
+        const progress = computeTextRevealProgress(item, 5, 60, revealParams, enter, exit);
         expect(progress.enterProgress).toBeGreaterThan(0);
         expect(progress.enterProgress).toBeLessThan(1);
     });
 
-    it('tracks exit timing even when motion channels are disabled', () => {
+    it('tracks exit timing from reveal params even when motion channels are disabled', () => {
         const enter = createDefaultSubtitleEnter();
         const exit = createDefaultSubtitleExit();
         exit.fade.enabled = false;
         exit.move.enabled = false;
         exit.scale.enabled = false;
 
-        const progress = computeTextRevealProgress(item, 59, 60, enter, exit);
+        const progress = computeTextRevealProgress(item, 59, 60, revealParams, enter, exit);
         expect(progress.exitProgress).toBeGreaterThan(0);
+    });
+
+    it('does not change reveal timing when motion timing changes', () => {
+        const fastEnter = createDefaultSubtitleEnter();
+        const fastExit = createDefaultSubtitleExit();
+        fastEnter.fraction = 0.05;
+        fastEnter.minFrames = 1;
+        fastEnter.maxFrames = 2;
+        fastExit.fraction = 0.05;
+        fastExit.minFrames = 1;
+        fastExit.maxFrames = 2;
+
+        const slowEnter = createDefaultSubtitleEnter();
+        const slowExit = createDefaultSubtitleExit();
+        slowEnter.fraction = 0.8;
+        slowEnter.minFrames = 30;
+        slowEnter.maxFrames = 60;
+        slowExit.fraction = 0.8;
+        slowExit.minFrames = 30;
+        slowExit.maxFrames = 60;
+
+        const fastProgress = computeTextRevealProgress(item, 5, 60, revealParams, fastEnter, fastExit);
+        const slowProgress = computeTextRevealProgress(item, 5, 60, revealParams, slowEnter, slowExit);
+
+        expect(fastProgress).toEqual(slowProgress);
+    });
+
+    it('can hold exit until a later lifecycle end without stretching typing speed', () => {
+        const enter = createDefaultSubtitleEnter();
+        const exit = createDefaultSubtitleExit();
+        const delayedLifecycle = { ...item, endMs: 2000 };
+
+        const baseline = computeTextRevealProgress(item, 5, 60, revealParams, enter, exit);
+        const delayed = computeTextRevealProgress(
+            item,
+            5,
+            60,
+            revealParams,
+            enter,
+            exit,
+            { durationItem: item, exitEndMs: delayedLifecycle.endMs },
+        );
+
+        expect(delayed.enterProgress).toBe(baseline.enterProgress);
+        expect(delayed.exitProgress).toBe(0);
+
+        const lateExit = computeTextRevealProgress(
+            item,
+            119,
+            60,
+            revealParams,
+            enter,
+            exit,
+            { durationItem: item, exitEndMs: delayedLifecycle.endMs },
+        );
+
+        expect(lateExit.exitProgress).toBeGreaterThan(0);
     });
 });
 

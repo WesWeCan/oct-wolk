@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Primitive3DAnimationSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DAnimationSection.vue';
 import Primitive3DCameraSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DCameraSection.vue';
 import Primitive3DLightingSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DLightingSection.vue';
 import Primitive3DMaterialSection from '@/front-end/motion-blocks/primitive3d/inspector/sections/Primitive3DMaterialSection.vue';
@@ -38,6 +39,7 @@ const api = usePrimitive3DInspector(props, emit);
 
         <template v-else>
             <Primitive3DSourceTimingSection :motion-track="motionTrack" :api="api" />
+            <Primitive3DAnimationSection :motion-track="motionTrack" :api="api" />
             <Primitive3DObjectSection :api="api" />
             <Primitive3DCameraSection :api="api" />
             <Primitive3DMaterialSection :api="api" />

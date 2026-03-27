@@ -33,14 +33,9 @@ export const createMotionVisualOffEnterExit = (value: MotionEnterExit): MotionEn
 };
 
 export const createMotionAllOffEnterExit = (value: MotionEnterExit): MotionEnterExit => {
-    const next = createMotionVisualOffEnterExit(value);
-    return {
-        ...next,
-        fraction: 0,
-        minFrames: 0,
-        maxFrames: 0,
-        easing: 'linear',
-    };
+    // "All Off" disables the visual motion channels, but reveal timing still
+    // rides on the enter/exit window for text-based blocks.
+    return createMotionVisualOffEnterExit(value);
 };
 
 export const motionEnterExitEquals = (left: MotionEnterExit, right: MotionEnterExit): boolean => {

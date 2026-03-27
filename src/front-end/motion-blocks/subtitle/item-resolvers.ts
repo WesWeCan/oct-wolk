@@ -103,6 +103,7 @@ function resolveItems(
                 item,
                 currentFrame,
                 fps,
+                block.params,
                 resolvedEnter,
                 resolvedExit,
             );

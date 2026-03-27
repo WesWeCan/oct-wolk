@@ -50,6 +50,8 @@ describe('cloud motion block plugin', () => {
         expect(track.block.params.exitMode).toBe('stay');
         expect(track.block.params.exitDelayMs).toBe(0);
         expect(track.block.params.textRevealMode).toBe('none');
+        expect(track.block.params.textRevealEnterWindow).toBe(0.3);
+        expect(track.block.params.textRevealExitWindow).toBe(0.2);
         expect(track.block.params.textRevealEnterPortion).toBe(1);
         expect(track.block.params.textRevealExitPortion).toBe(1);
     });
@@ -93,6 +95,8 @@ describe('cloud motion block plugin', () => {
         expect(normalized.block.params.exitMode).toBe('stay');
         expect(normalized.block.params.exitDelayMs).toBe(0);
         expect(normalized.block.params.textRevealMode).toBe('none');
+        expect(normalized.block.params.textRevealEnterWindow).toBe(0.3);
+        expect(normalized.block.params.textRevealExitWindow).toBe(0.2);
         expect(normalized.block.params.textRevealEnterPortion).toBe(1);
         expect(normalized.block.params.textRevealExitPortion).toBe(1);
         expect(normalized.block.propertyTracks).toHaveLength(1);
@@ -116,6 +120,8 @@ describe('cloud motion block plugin', () => {
             exitMode: 'garbage',
             exitDelayMs: -500,
             textRevealMode: 'garbage',
+            textRevealEnterWindow: -1,
+            textRevealExitWindow: 5,
             textRevealEnterPortion: -1,
             textRevealExitPortion: 5,
         };
@@ -125,6 +131,8 @@ describe('cloud motion block plugin', () => {
         expect(normalized.block.params.exitMode).toBe('stay');
         expect(normalized.block.params.exitDelayMs).toBe(0);
         expect(normalized.block.params.textRevealMode).toBe('none');
+        expect(normalized.block.params.textRevealEnterWindow).toBe(0.01);
+        expect(normalized.block.params.textRevealExitWindow).toBe(1);
         expect(normalized.block.params.textRevealEnterPortion).toBe(0.01);
         expect(normalized.block.params.textRevealExitPortion).toBe(1);
     });
@@ -153,6 +161,8 @@ describe('cloud motion block plugin', () => {
         expect(normalized.block.params.exitMode).toBe('perItem');
         expect(normalized.block.params.exitDelayMs).toBe(2000);
         expect(normalized.block.params.textRevealMode).toBe('typewriter');
+        expect(normalized.block.params.textRevealEnterWindow).toBe(0.3);
+        expect(normalized.block.params.textRevealExitWindow).toBe(0.2);
         expect(normalized.block.params.textRevealEnterPortion).toBe(1);
         expect(normalized.block.params.textRevealExitPortion).toBe(1);
     });

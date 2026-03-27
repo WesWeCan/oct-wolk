@@ -188,7 +188,11 @@ const selectedItemExitValue = computed<MotionEnterExit | null>(() => {
 
 const textRevealParams = computed<TextRevealParams>(() => {
     if (!props.motionTrack) return resolveTextRevealParams(null);
-    return resolveTextRevealParams(props.motionTrack.block.params);
+    return resolveTextRevealParams(
+        props.motionTrack.block.params,
+        props.motionTrack.block.enter,
+        props.motionTrack.block.exit,
+    );
 });
 
 const updateSourceTrack = (sourceTrackId: string) => {

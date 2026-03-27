@@ -4,6 +4,7 @@ import type { LyricTrack, MotionBlock } from '@/types/project_types';
 import { createDefaultCloudEnter, createDefaultCloudExit, DEFAULT_CLOUD_STYLE, DEFAULT_CLOUD_TRANSFORM } from '@/front-end/motion-blocks/cloud/defaults';
 import { DEFAULT_CLOUD_LAYOUT_PARAMS } from '@/front-end/motion-blocks/cloud/params';
 import { msToFrame } from '@/front-end/utils/motion/enterExitAnimation';
+import { createMotionAllOffEnterExit } from '@/front-end/utils/motion/motionEnterExitPresets';
 
 const FPS = 60;
 
@@ -109,6 +110,37 @@ describe('cloud item resolvers', () => {
             expect(active[0].enterProgress).toBe(1);
         });
 
+        it('treats exit delay as hold time for typewriter instead of slower typing', () => {
+            const track = makeWordTrack([
+                { id: 'w1', text: 'hello', startMs: 0, endMs: 1000 },
+            ]);
+            const block = makeBlock({
+                params: {
+                    ...DEFAULT_CLOUD_LAYOUT_PARAMS,
+                    exitMode: 'perItem',
+                    exitDelayMs: 2000,
+                    textRevealMode: 'typewriter',
+                },
+            });
+
+            const frameDuringTyping = msToFrame(250, FPS);
+            const typingItems = resolveCloudBlockItems(block, track, frameDuringTyping, FPS);
+            expect(typingItems).toHaveLength(1);
+            expect(typingItems[0].textRevealEnterProgress).toBeGreaterThan(0);
+            expect(typingItems[0].textRevealEnterProgress).toBeLessThan(1);
+
+            const frameInDelayHold = msToFrame(2000, FPS);
+            const heldItems = resolveCloudBlockItems(block, track, frameInDelayHold, FPS);
+            expect(heldItems).toHaveLength(1);
+            expect(heldItems[0].textRevealEnterProgress).toBe(1);
+            expect(heldItems[0].textRevealExitProgress).toBe(0);
+
+            const frameNearDelayedExit = msToFrame(2900, FPS);
+            const exitingItems = resolveCloudBlockItems(block, track, frameNearDelayedExit, FPS);
+            expect(exitingItems).toHaveLength(1);
+            expect(exitingItems[0].textRevealExitProgress).toBeGreaterThan(0);
+        });
+
         it('clamps effective endMs to block endMs', () => {
             const track = makeWordTrack([
                 { id: 'w1', text: 'hello', startMs: 1000, endMs: 1500 },
@@ -161,6 +193,30 @@ describe('cloud item resolvers', () => {
                     fade: { enabled: false, opacityStart: 1, opacityEnd: 1 },
                     move: { enabled: false, direction: 'up', distancePx: 24 },
                     scale: { enabled: false, amount: 0.12 },
+                },
+                params: {
+                    ...DEFAULT_CLOUD_LAYOUT_PARAMS,
+                    textRevealMode: 'typewriter',
+                },
+            });
+
+            const frameAtStart = msToFrame(0, FPS);
+            const items = resolveCloudBlockItems(block, track, frameAtStart, FPS);
+            expect(items).toHaveLength(1);
+            expect(items[0].enterProgress).toBe(1);
+            expect(items[0].textRevealEnterProgress).toBe(0);
+        });
+
+        it('keeps text reveal progress when the shared All Off preset is used', () => {
+            const track = makeWordTrack([
+                { id: 'w1', text: 'hello', startMs: 0, endMs: 3000 },
+            ]);
+            const block = makeBlock({
+                enter: createMotionAllOffEnterExit(createDefaultCloudEnter()),
+                exit: createMotionAllOffEnterExit(createDefaultCloudExit()),
+                params: {
+                    ...DEFAULT_CLOUD_LAYOUT_PARAMS,
+                    textRevealMode: 'typewriter',
                 },
             });
 

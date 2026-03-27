@@ -36,6 +36,7 @@ import { getPrimitive3DAnchorPoints } from '@/front-end/motion-blocks/primitive3
 import { resolvePrimitive3DParams } from '@/front-end/motion-blocks/primitive3d/params';
 import { applyEnterExitToAlpha, applyEnterExitToTransform } from '@/front-end/utils/motion/enterExitAnimation';
 import { buildFont } from '@/front-end/utils/motion/renderTipTapSpans';
+import { applyTextRevealToSpans, textRevealConfigFromParams } from '@/front-end/utils/motion/textReveal';
 import { normalizeScene3DSettings } from '@/front-end/utils/projectScene3D';
 
 const STATIC_CAMERA_FOV = 36;
@@ -392,6 +393,18 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
         return result;
     }
 
+    private resolveVisibleWordText(item: ResolvedItem, params: ReturnType<typeof resolvePrimitive3DParams>): string {
+        const revealResult = applyTextRevealToSpans(
+            [{ text: item.text }],
+            item.textRevealEnterProgress ?? item.enterProgress,
+            item.textRevealExitProgress ?? item.exitProgress,
+            textRevealConfigFromParams(params.textReveal, item.enter, item.exit),
+        );
+        const visibleText = revealResult.spans.map((span) => span.text).join('');
+        if (revealResult.cursorCharIndex !== null) return `${visibleText}|`;
+        return visibleText;
+    }
+
     private applyWordPlanes(
         activeItems: ResolvedItem[],
         params: ReturnType<typeof resolvePrimitive3DParams>,
@@ -440,7 +453,8 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
                 .add(cameraRight.clone().multiplyScalar(transform.translateX * pixelsToWorld))
                 .add(cameraUp.clone().multiplyScalar(-transform.translateY * pixelsToWorld));
 
-            const textureEntry = this.getTextTexture(item.text, item.style);
+            const visibleText = this.resolveVisibleWordText(item, params);
+            const textureEntry = visibleText ? this.getTextTexture(visibleText, item.style) : null;
             if (textureEntry) {
                 material.map = textureEntry.texture;
                 material.needsUpdate = true;

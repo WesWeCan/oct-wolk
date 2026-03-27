@@ -181,10 +181,10 @@ export class CloudRenderer implements MotionBlockRenderer {
     ): void {
         this.lastBounds = null;
         const layoutParams = resolveCloudLayoutParams(context.block.params);
-        const revealConfig: TextRevealConfig = textRevealConfigFromParams(layoutParams);
+        const revealConfig = (item: ResolvedItem): TextRevealConfig => textRevealConfigFromParams(layoutParams, item.enter, item.exit);
 
         const measured = context.allItems
-            .map((item) => measureCloudItem(ctx, item, animatedProps, revealConfig))
+            .map((item) => measureCloudItem(ctx, item, animatedProps, revealConfig(item)))
             .filter((item): item is MeasuredCloudItem => item !== null);
 
         if (measured.length === 0) return;

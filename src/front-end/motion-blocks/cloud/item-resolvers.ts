@@ -106,11 +106,17 @@ function resolveCloudItems(
                 resolvedExit,
             );
             const textRevealProgress = computeTextRevealProgress(
-                effectiveItem,
+                item,
                 currentFrame,
                 fps,
+                params,
                 resolvedEnter,
                 resolvedExit,
+                {
+                    durationItem: item,
+                    enterStartMs: item.startMs,
+                    exitEndMs: effectiveItem.endMs,
+                },
             );
 
             return {
