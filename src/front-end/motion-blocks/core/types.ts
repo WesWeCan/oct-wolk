@@ -17,6 +17,8 @@ export interface ResolvedItem {
     endMs: number;
     enterProgress: number;
     exitProgress: number;
+    textRevealEnterProgress?: number;
+    textRevealExitProgress?: number;
     isActive: boolean;
     style: MotionStyle;
     transform: MotionTransform;

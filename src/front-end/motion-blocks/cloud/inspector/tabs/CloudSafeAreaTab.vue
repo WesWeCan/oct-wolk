@@ -102,7 +102,7 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
         />
 
         <p class="inspector-hint">
-            The cloud auto-fits all in-range lyric items into this region before the whole block transform is applied.
+            Words are scattered within this region. The block transform is applied on top.
         </p>
     </div>
 </template>

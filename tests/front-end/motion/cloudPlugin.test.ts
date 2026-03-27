@@ -44,7 +44,14 @@ describe('cloud motion block plugin', () => {
         expect(track.block.style.fontFamily).toBe('ProjectFont');
         expect(track.block.style.fontWeight).toBe(700);
         expect(track.block.style.fontSize).toBe(42);
-        expect(track.block.params.targetCoverage).toBe(0.8);
+        expect(track.block.params.gap).toBe(12);
+        expect(track.block.params.scatter).toBe(0.7);
+        expect(track.block.params.sizeVariation).toBe(0.3);
+        expect(track.block.params.exitMode).toBe('stay');
+        expect(track.block.params.exitDelayMs).toBe(0);
+        expect(track.block.params.textRevealMode).toBe('none');
+        expect(track.block.params.textRevealEnterPortion).toBe(1);
+        expect(track.block.params.textRevealExitPortion).toBe(1);
     });
 
     it('normalizes booleans, inherits project font metadata, and prunes empty keyframe tracks', () => {
@@ -82,8 +89,71 @@ describe('cloud motion block plugin', () => {
         expect(normalized.block.style.fontFallbacks).toEqual(['Arial']);
         expect(normalized.block.style.fontName).toBe('Project Font');
         expect(normalized.block.style.fontLocalPath).toBe('/font.otf');
-        expect(normalized.block.params.targetCoverage).toBe(0.8);
+        expect(normalized.block.params.gap).toBe(12);
+        expect(normalized.block.params.exitMode).toBe('stay');
+        expect(normalized.block.params.exitDelayMs).toBe(0);
+        expect(normalized.block.params.textRevealMode).toBe('none');
+        expect(normalized.block.params.textRevealEnterPortion).toBe(1);
+        expect(normalized.block.params.textRevealExitPortion).toBe(1);
         expect(normalized.block.propertyTracks).toHaveLength(1);
         expect(normalized.block.propertyTracks[0].propertyPath).toBe('transform.offsetY');
+    });
+
+    it('normalizes invalid exitMode, exitDelayMs, and textRevealMode to safe defaults', () => {
+        const project = makeProject();
+        const track = cloudMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack: makeSourceTrack(),
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.params = {
+            ...track.block.params,
+            exitMode: 'garbage',
+            exitDelayMs: -500,
+            textRevealMode: 'garbage',
+            textRevealEnterPortion: -1,
+            textRevealExitPortion: 5,
+        };
+
+        const normalized = cloudMotionBlockPlugin.normalizeTrack(track, { project, projectFont: project.font });
+
+        expect(normalized.block.params.exitMode).toBe('stay');
+        expect(normalized.block.params.exitDelayMs).toBe(0);
+        expect(normalized.block.params.textRevealMode).toBe('none');
+        expect(normalized.block.params.textRevealEnterPortion).toBe(0.01);
+        expect(normalized.block.params.textRevealExitPortion).toBe(1);
+    });
+
+    it('preserves valid perItem exitMode, exitDelayMs, and typewriter reveal mode', () => {
+        const project = makeProject();
+        const track = cloudMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack: makeSourceTrack(),
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.params = {
+            ...track.block.params,
+            exitMode: 'perItem',
+            exitDelayMs: 2000,
+            textRevealMode: 'typewriter',
+        };
+
+        const normalized = cloudMotionBlockPlugin.normalizeTrack(track, { project, projectFont: project.font });
+
+        expect(normalized.block.params.exitMode).toBe('perItem');
+        expect(normalized.block.params.exitDelayMs).toBe(2000);
+        expect(normalized.block.params.textRevealMode).toBe('typewriter');
+        expect(normalized.block.params.textRevealEnterPortion).toBe(1);
+        expect(normalized.block.params.textRevealExitPortion).toBe(1);
     });
 });

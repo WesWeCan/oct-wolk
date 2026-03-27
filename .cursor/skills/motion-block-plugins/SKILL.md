@@ -120,6 +120,11 @@ Motion Plugin Progress
 - Plugin inspectors can import shared UI primitives from `components/editor/motion/` (e.g. `AnimatableNumberField.vue`).
 - Plugin-specific tabs live in `inspector/tabs/` inside the plugin folder.
 - Background editing is separate from block editing. Do not add background controls to plugin inspectors.
+- For text-based blocks, keep one `Animation` section in the UI but separate the concerns clearly:
+  - `Text Reveal` for character visibility (shared text-block behavior like typewriter)
+  - `Motion` for fade / move / scale / easing (shared `MotionEnterExit` behavior)
+  - `Lifecycle` for plugin-owned timing semantics (for example cloud `exitMode` / `exitDelayMs`)
+- Do not stuff text-reveal fields into `MotionEnterExit` just because they appear near each other in the UI.
 
 ### 5. Keyframes
 - Put plugin-owned keyframe definitions in `keyframes.ts`.
@@ -136,11 +141,14 @@ Motion Plugin Progress
 - If the plugin is lyric-backed, implement item resolution clearly in `item-resolvers.ts`.
 - If the plugin stores overrides, implement orphan cleanup scoped only to that plugin type.
 - Never let one plugin's cleanup mutate another plugin's tracks.
+- Plugin-owned lifecycle rules belong in the resolver layer. The resolver should decide the effective timing window for an item before shared animation helpers run.
+- If a text-based block needs content reveal, keep reveal timing explicit and separate from transform-channel enablement. Do not make typewriter depend on fade / move / scale being switched on.
 
 ### 8. Migration Safety
 - `normalizeTrack()` must preserve compatible saved data.
 - Unknown `block.type` values must not be coerced into a different plugin silently.
 - If a plugin is removed, the fallback path should remain safe and visible.
+- Shared text-reveal params should normalize in one shared helper so subtitle, cloud, and future text blocks do not drift in saved data shape.
 
 ### 9. Circular Dependency Prevention
 - `keyframeProperties.ts` builds its lookup lazily (not at module load time) to avoid circular imports.
@@ -155,6 +163,10 @@ Minimum expectations:
 - keyframe definition lookup test if new properties were added
 - gizmo delta test if the plugin is manipulable
 - renderer behavior/bounds test if rendering changed
+- For text-based reveal changes, add tests at three layers:
+  - shared reveal utility/config tests
+  - inspector tests for mode-aware visibility
+  - renderer/resolver tests that prove reveal still works when motion channels are disabled
 
 Preferred command:
 
@@ -175,6 +187,7 @@ yarn vitest run tests/front-end/motion/
 - Do not assume unknown block types can be rendered as subtitle.
 - Do not skip tests after touching registry, normalization, or gizmo logic.
 - Do not add background controls to plugin inspectors (background is project-level).
+- Do not couple text reveal to motion easing or transform-channel enablement unless that relationship is an intentional product decision.
 
 ## Reference Pattern
 Use `src/front-end/motion-blocks/subtitle/` as the first-class example for:
