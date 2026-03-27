@@ -523,6 +523,8 @@ const applyTypewriterPresetToBoth = (preset: TypewriterAnimationPreset) => {
                 </div>
             </div>
 
+            
+
             <TypewriterTimingRangeField
                 v-if="isTypewriterActive()"
                 label="Typing / Backspace Window"

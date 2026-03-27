@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { WolkProject } from '@/types/project_types';
+import type { MotionPresetDocument, MotionPresetSaveInput, MotionPresetSummary } from '@/types/motion_preset_types';
 
 declare global {
     interface Window {
@@ -21,6 +22,12 @@ declare global {
                     originalFileName: string,
                     preferredFileName?: string,
                 ) => Promise<{ url: string; fileName: string }>;
+            };
+            motionPresets: {
+                list: (blockType: string) => Promise<MotionPresetSummary[]>;
+                load: (blockType: string, presetId: string) => Promise<MotionPresetDocument | null>;
+                save: (preset: MotionPresetSaveInput) => Promise<MotionPresetDocument>;
+                delete: (blockType: string, presetId: string) => Promise<boolean>;
             };
             fonts: {
                 list: () => Promise<{
@@ -65,6 +72,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
         uploadAudio: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('projects:uploadAudio', projectId, fileData, originalFileName),
         uploadCover: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('projects:uploadCover', projectId, fileData, originalFileName),
         uploadAsset: (projectId: string, fileData: ArrayBuffer, originalFileName: string, preferredFileName?: string) => ipcRenderer.invoke('projects:uploadAsset', projectId, fileData, originalFileName, preferredFileName),
+    },
+    motionPresets: {
+        list: (blockType: string) => ipcRenderer.invoke('motion-presets:list', blockType),
+        load: (blockType: string, presetId: string) => ipcRenderer.invoke('motion-presets:load', blockType, presetId),
+        save: (preset: MotionPresetSaveInput) => ipcRenderer.invoke('motion-presets:save', preset),
+        delete: (blockType: string, presetId: string) => ipcRenderer.invoke('motion-presets:delete', blockType, presetId),
     },
     fonts: {
         list: () => ipcRenderer.invoke('fonts:list'),

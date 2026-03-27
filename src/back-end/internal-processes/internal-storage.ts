@@ -82,22 +82,26 @@ export const initStorage = async () => {
     const storagePath = getInternalStoragePath();
     const songsPath = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.SONGS);
     const exportsPath = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.EXPORTS);
+    const presetsPath = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.PRESETS);
 
     // Ensure storage folders exist
     fs.mkdirSync(storagePath, { recursive: true });
     fs.mkdirSync(songsPath, { recursive: true });
     fs.mkdirSync(exportsPath, { recursive: true });
+    fs.mkdirSync(presetsPath, { recursive: true });
 
     console.log('Storage initialized:', {
         storage: storagePath,
         song: songsPath,
-        export: exportsPath
+        export: exportsPath,
+        presets: presetsPath,
     });
 
     return {
         storage: storagePath,
         song: songsPath,
-        export: exportsPath
+        export: exportsPath,
+        presets: presetsPath,
     };
 }
 

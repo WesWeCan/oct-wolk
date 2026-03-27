@@ -8,10 +8,12 @@ import MotionAnimationTab from '@/front-end/motion-blocks/subtitle/inspector/tab
 import MotionSafeAreaTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionSafeAreaTab.vue';
 import MotionItemsTab from '@/front-end/motion-blocks/subtitle/inspector/tabs/MotionItemsTab.vue';
 import AnimatableNumberField from '@/front-end/components/editor/motion/AnimatableNumberField.vue';
+import MotionPresetPanel from '@/front-end/components/editor/motion/MotionPresetPanel.vue';
 import { upsertKeyframe, removeKeyframeAtIndex, evalInterpolatedAtFrame } from '@/front-end/utils/tracks';
 import { getPropertyDef } from '@/front-end/utils/motion/keyframeProperties';
 import type { MotionFontSelection } from '@/front-end/utils/fonts/fontUtils';
 import { applyFontSelectionToMotionStyle } from '@/front-end/utils/fonts/fontUtils';
+import { subtitleMotionPresetAdapter } from '@/front-end/motion-blocks/subtitle/presets';
 
 const props = defineProps<{
     motionTrack: MotionTrack | null;
@@ -137,6 +139,11 @@ const selectedItemStyleOverride = computed(() => !!selectedItemOverride.value?.s
 const selectedItemTransformOverride = computed(() => !!selectedItemOverride.value?.transformOverride);
 const selectedItemAnimationOverride = computed(() => !!(selectedItemOverride.value?.enterOverride || selectedItemOverride.value?.exitOverride));
 const selectedItemTextHasOverride = computed(() => !!selectedItemOverride.value?.textOverride);
+const blockPresetDisabledMessage = computed(() => {
+    if (isLocked.value) return 'Unlock the motion track to apply or save presets.';
+    if (selectedItemId.value) return 'Presets apply to the whole block. Clear the item selection to use them.';
+    return '';
+});
 
 const mergeEnterExitForEditor = (
     base: MotionEnterExit,
@@ -200,6 +207,10 @@ const updateEndFrame = (frame: number) => {
     const endMs = Math.round((frame / fpsVal.value) * 1000);
     const minEnd = props.motionTrack.block.startMs + 100;
     emit('update-track', { ...props.motionTrack, block: { ...props.motionTrack.block, endMs: Math.max(minEnd, endMs) } });
+};
+
+const applyMotionPreset = (track: MotionTrack) => {
+    emit('update-track', track);
 };
 
 const autoKeyframe = (path: string, value: any, propertyTracks: any[]): any[] => {
@@ -695,6 +706,20 @@ const resetSelectedItemAnimationOverride = () => {
                         :hint="formatFrameAndMs(endFrame, motionTrack.block.endMs)"
                         :scrub-per-px="0.2"
                         @update:model-value="updateEndFrame"
+                    />
+                </div>
+            </details>
+
+            <details class="inspector-section">
+                <summary class="inspector-section__title">Presets</summary>
+                <div class="inspector-section__content">
+                    <MotionPresetPanel
+                        :motion-track="motionTrack"
+                        :preset-adapter="subtitleMotionPresetAdapter"
+                        :project-font="projectFont"
+                        :disabled="!!selectedItemId || isLocked"
+                        :disabled-message="blockPresetDisabledMessage"
+                        @update-track="applyMotionPreset"
                     />
                 </div>
             </details>

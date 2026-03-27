@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { subtitleMotionBlockPlugin } from '@/front-end/motion-blocks';
+import type { SubtitleMotionPresetDocument } from '@/types/motion_preset_types';
 
 const makeProject = () => ({
     id: 'project-1',
@@ -123,5 +124,105 @@ describe('subtitle motion block plugin', () => {
         expect(normalized.block.exit.fade.enabled).toBe(false);
         expect(normalized.block.enter.showCursor).toBe(true);
         expect(normalized.block.exit.showCursor).toBe(true);
+    });
+
+    it('extracts subtitle presets without source links, overrides, or keyframes', () => {
+        const project = makeProject();
+        const track = subtitleMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack: makeSourceTrack(),
+            startMs: 250,
+            endMs: 1750,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.style.color = '#ff00ff';
+        track.block.transform.offsetX = 42;
+        track.block.enter.fade.enabled = false;
+        track.block.overrides.push({ sourceItemId: 'item-1', hidden: false, textOverride: 'hello' });
+        track.block.propertyTracks.push({
+            propertyPath: 'transform.offsetX',
+            keyframes: [{ frame: 10, value: 10, interpolation: 'linear' }],
+            enabled: true,
+        } as any);
+
+        const payload = subtitleMotionBlockPlugin.presets!.extractPayload(track, { project, projectFont: project.font });
+
+        expect(payload.startMs).toBe(250);
+        expect(payload.endMs).toBe(1750);
+        expect(payload.style.color).toBe('#ff00ff');
+        expect(payload.transform.offsetX).toBe(42);
+        expect((payload as any).overrides).toBeUndefined();
+        expect((payload as any).propertyTracks).toBeUndefined();
+        expect((payload as any).sourceTrackId).toBeUndefined();
+    });
+
+    it('applies subtitle presets while preserving source track, overrides, and keyframes', () => {
+        const project = makeProject();
+        const track = subtitleMotionBlockPlugin.createTrack({
+            project,
+            sourceTrack: makeSourceTrack(),
+            startMs: 0,
+            endMs: 1000,
+            color: '#4fc3f7',
+            trackId: 'track-1',
+            blockId: 'block-1',
+        });
+
+        track.block.overrides.push({ sourceItemId: 'item-1', hidden: false, textOverride: 'hello' });
+        track.block.propertyTracks.push({
+            propertyPath: 'transform.offsetY',
+            keyframes: [{ frame: 10, value: 25, interpolation: 'linear' }],
+            enabled: true,
+        } as any);
+
+        const preset: SubtitleMotionPresetDocument = {
+            id: 'preset-1',
+            blockType: 'subtitle',
+            version: 1,
+            name: 'Punchy',
+            createdAt: 1,
+            updatedAt: 1,
+            payload: {
+                startMs: 300,
+                endMs: 1200,
+                style: {
+                    ...track.block.style,
+                    color: '#00ffcc',
+                    fontFamily: '',
+                    fontFallbacks: undefined,
+                    fontName: undefined,
+                    fontLocalPath: undefined,
+                },
+                transform: {
+                    ...track.block.transform,
+                    offsetX: 88,
+                },
+                enter: {
+                    ...track.block.enter,
+                    style: 'typewriter',
+                    showCursor: true,
+                },
+                exit: {
+                    ...track.block.exit,
+                    style: 'typewriter',
+                    showCursor: true,
+                },
+            },
+        };
+
+        const applied = subtitleMotionBlockPlugin.presets!.applyPreset(track, preset, { project, projectFont: project.font });
+
+        expect(applied.block.sourceTrackId).toBe(track.block.sourceTrackId);
+        expect(applied.block.overrides).toEqual(track.block.overrides);
+        expect(applied.block.propertyTracks).toEqual(track.block.propertyTracks);
+        expect(applied.block.startMs).toBe(300);
+        expect(applied.block.endMs).toBe(1200);
+        expect(applied.block.style.color).toBe('#00ffcc');
+        expect(applied.block.style.fontFallbacks).toEqual(['Arial']);
+        expect(applied.block.enter.style).toBe('typewriter');
+        expect(applied.block.exit.style).toBe('typewriter');
     });
 });
