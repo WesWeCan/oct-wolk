@@ -1,18 +1,39 @@
-import { app, BrowserWindow, systemPreferences, protocol, net } from 'electron';
+import { app, BrowserWindow, Menu, systemPreferences, protocol, net } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import started from 'electron-squirrel-startup';
 import { getInternalStoragePath, initStorage } from './back-end/internal-processes/internal-storage';
 import { registerInternalProcesses } from './back-end/internal-processes/internal-processes';
+import { buildApplicationMenuTemplate } from './back-end/application-menu';
+import { openExternalHttpUrl } from './back-end/internal-processes/external-links';
+import { MENU_COMMAND_CHANNEL, type ProjectEditorCommandId } from './shared/projectEditorCommands';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
 
+let mainWindow: BrowserWindow | null = null;
+
+const sendProjectEditorMenuCommand = (commandId: ProjectEditorCommandId) => {
+  const target = BrowserWindow.getFocusedWindow() || mainWindow;
+  target?.webContents.send(MENU_COMMAND_CHANNEL, commandId);
+};
+
+const setApplicationMenu = () => {
+  const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate({
+    applicationName: app.name,
+    isMac: process.platform === 'darwin',
+    sendProjectEditorCommand: sendProjectEditorMenuCommand,
+    openExternalUrl: (url) => openExternalHttpUrl(url),
+  }));
+
+  Menu.setApplicationMenu(menu);
+};
+
 const createWindow = () => {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1800,
     height: 1000,
     webPreferences: {
@@ -32,7 +53,11 @@ const createWindow = () => {
     mainWindow.webContents.openDevTools();
   }
 
-
+  mainWindow.on('closed', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      mainWindow = null;
+    }
+  });
 
 };
 
@@ -180,6 +205,7 @@ app.whenReady().then(async () => {
   await initStorage();
   await registerInternalProcesses();
 
+  setApplicationMenu();
   createWindow();
 
 

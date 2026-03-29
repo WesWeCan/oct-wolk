@@ -49,6 +49,7 @@ export function createMockElectronAPI() {
       copyAudioForExport: vi.fn().mockResolvedValue({ success: true }),
       assembleVideo: vi.fn().mockResolvedValue({ success: true }),
     },
+    onMenuCommand: vi.fn(() => vi.fn()),
     on: vi.fn(),
     removeAllListeners: vi.fn(),
   };

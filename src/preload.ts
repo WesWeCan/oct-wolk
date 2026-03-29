@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { WolkProject } from '@/types/project_types';
 import type { MotionPresetDocument, MotionPresetSaveInput, MotionPresetSummary } from '@/types/motion_preset_types';
+import { MENU_COMMAND_CHANNEL, type ProjectEditorCommandId } from './shared/projectEditorCommands';
 
 declare global {
     interface Window {
@@ -51,6 +52,7 @@ declare global {
                 copyAudioForExport: (rootDir: string, audioPath: string) => Promise<any>;
                 assembleVideo: (framesDir: string, rootDir: string, fps: number, audioPath: string | null) => Promise<any>;
             };
+            onMenuCommand: (callback: (commandId: ProjectEditorCommandId) => void) => () => void;
             on: (channel: string, callback: (...args: any[]) => void) => void;
             removeAllListeners: (channel: string) => void;
         };
@@ -94,6 +96,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
         saveFrame: (framesDir: string, frameName: string, frameData: ArrayBuffer) => ipcRenderer.invoke('export:saveFrame', framesDir, frameName, frameData),
         copyAudioForExport: (rootDir: string, audioPath: string) => ipcRenderer.invoke('export:copyAudioForExport', rootDir, audioPath),
         assembleVideo: (framesDir: string, rootDir: string, fps: number, audioPath: string | null) => ipcRenderer.invoke('export:assembleVideo', framesDir, rootDir, fps, audioPath),
+    },
+    onMenuCommand(callback: (commandId: ProjectEditorCommandId) => void) {
+        const listener = (_event: Electron.IpcRendererEvent, commandId: ProjectEditorCommandId) => callback(commandId);
+        ipcRenderer.on(MENU_COMMAND_CHANNEL, listener);
+
+        return () => {
+            ipcRenderer.removeListener(MENU_COMMAND_CHANNEL, listener);
+        };
     },
     on(channel: string, callback: (...args: any[]) => void) {
         ipcRenderer.on(channel, (_event, ...args) => callback(...args));

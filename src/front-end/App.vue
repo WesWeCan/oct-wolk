@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
+import { RENDERER_MENU_COMMAND_EVENT, type ProjectEditorCommandId } from '@/shared/projectEditorCommands';
 
 const openExternal = (url: string) => {
      console.log('openExternal', url);
@@ -16,15 +17,56 @@ const openStorageFolder = async () => {
 
  const luckyNumber = ref(-1);
  const menuCounter = ref(0);
+let removeMenuCommandListener: (() => void) | null = null;
+
+const isEditableElement = (element: Element | null): boolean => {
+    if (!element) return false;
+    if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) return true;
+    if (element instanceof HTMLElement && element.isContentEditable) return true;
+    return !!element.closest('.ProseMirror');
+};
+
+const tryExecuteEditableCommand = (commandId: ProjectEditorCommandId): boolean => {
+    if (!isEditableElement(document.activeElement)) return false;
+
+    const editableCommands: Partial<Record<ProjectEditorCommandId, string>> = {
+        'edit.undo': 'undo',
+        'edit.redo': 'redo',
+        'edit.cut': 'cut',
+        'edit.copy': 'copy',
+        'edit.paste': 'paste',
+        'edit.delete': 'delete',
+    };
+
+    const command = editableCommands[commandId];
+    if (!command) return false;
+
+    return document.execCommand(command);
+};
+
+const dispatchRendererMenuCommand = (commandId: ProjectEditorCommandId) => {
+    window.dispatchEvent(new CustomEvent(RENDERER_MENU_COMMAND_EVENT, {
+        detail: commandId,
+    }));
+};
 
 onMounted(async () => {
     getLuckyNumber();
-    
-    
-    // window.electronAPI.onUpdateMenuCounter((value) => {
-    //     menuCounter.value += value;
-    // });
 
+    removeMenuCommandListener = window.electronAPI.onMenuCommand((commandId) => {
+        menuCounter.value += 1;
+
+        if (tryExecuteEditableCommand(commandId)) {
+            return;
+        }
+
+        dispatchRendererMenuCommand(commandId);
+    });
+});
+
+onUnmounted(() => {
+    removeMenuCommandListener?.();
+    removeMenuCommandListener = null;
 });
 
 

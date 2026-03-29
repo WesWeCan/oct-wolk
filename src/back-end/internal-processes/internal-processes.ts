@@ -4,6 +4,7 @@ import { getInternalStoragePath, isPathInsideRoot } from './internal-storage';
 import { listSystemFonts } from './fonts';
 import { createProject, loadProject, saveProject, listProjects, deleteProject, saveProjectAudio, saveProjectCover, saveProjectAsset } from './project-storage';
 import { deleteMotionPreset, listMotionPresets, loadMotionPreset, saveMotionPreset } from './motion-preset-storage';
+import { openExternalHttpUrl } from './external-links';
 import fs from 'fs';
 import path from 'path';
 import { getDocStoragePath } from './internal-storage';
@@ -29,13 +30,7 @@ export const registerInternalProcesses = async () => {
 
     ipcMain.handle('open-external-url', async (_event, url: string) => {
         try {
-            const parsed = new URL(String(url));
-            const protocol = parsed.protocol.toLowerCase();
-            if (protocol !== 'http:' && protocol !== 'https:') {
-                return { success: false, error: 'Unsupported URL protocol' };
-            }
-
-            await shell.openExternal(parsed.toString());
+            await openExternalHttpUrl(url);
             return { success: true };
         } catch (error) {
             return { success: false, error: String(error) };

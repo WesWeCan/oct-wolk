@@ -75,6 +75,12 @@ import {
     RENDER_DIMENSION_BOUNDS,
 } from '@/front-end/utils/dimensionPresets';
 import { normalizeScene3DSettings } from '@/front-end/utils/projectScene3D';
+import {
+    executeProjectEditorCommand,
+    getProjectEditorCommandIdFromKeydown,
+    RENDERER_MENU_COMMAND_EVENT,
+    type ProjectEditorCommandId,
+} from '@/shared/projectEditorCommands';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -776,7 +782,6 @@ const selectedItemId = computed<string | null>(() => {
     const arr = selection.selectedArray.value;
     return arr.length === 1 ? arr[0] : (arr.length > 0 ? arr[0] : null);
 });
-const NUDGE_MS = 50;
 const rippleMode = ref(false);
 type LyricClipboardItem = {
     text: string;
@@ -2031,77 +2036,68 @@ const zoomToSelection = () => {
     vp.zoomToRange(minMs / 1000, maxMs / 1000);
 };
 
+const isEditableTarget = (target: EventTarget | null): boolean => {
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return true;
+    return !!(target as HTMLElement | null)?.closest?.('.ProseMirror');
+};
+
+const runProjectEditorCommand = (commandId: ProjectEditorCommandId) => {
+    executeProjectEditorCommand(commandId, {
+        mode: mode.value,
+        hasSelection: selection.hasSelection.value,
+        selectedMotionTrackId: selectedMotionTrackId.value,
+        clearSelection: () => selection.clearSelection(),
+        togglePlayback: togglePlay,
+        undo: performUndo,
+        redo: performRedo,
+        copyLyricSelection: copySelectedItems,
+        cutLyricSelection: cutSelectedItems,
+        pasteLyricSelection: pasteClipboardItems,
+        deleteLyricSelection: deleteSelectedItem,
+        splitSelectionAtPlayhead: splitSelectedAtPlayhead,
+        toggleRippleMode: () => {
+            rippleMode.value = !rippleMode.value;
+        },
+        zoomToFit: () => vp.zoomToFit(),
+        zoomToSelection,
+        jumpToSelectionEdge,
+        cycleSelection,
+        nudgeLyricSelection: (deltaMs: number) => {
+            nudgeSelectedItem(deltaMs);
+            markDirty();
+        },
+        deleteMotionTrack: deleteSelectedMotionTrack,
+        copyMotionTrack: copySelectedMotionTrack,
+        pasteMotionTrack,
+        nudgeMotionTrack: nudgeSelectedMotionTrack,
+        stepPlayhead: (deltaFrames: number) => {
+            const newFrame = Math.max(0, playhead.value.frame + deltaFrames);
+            vp.setPlayhead(newFrame);
+            audio.seekTo(newFrame / fps.value);
+            markDirty();
+        },
+    });
+};
+
+const onRendererMenuCommand = (event: Event) => {
+    const commandId = (event as CustomEvent<ProjectEditorCommandId>).detail;
+
+    if (!commandId) return;
+
+    runProjectEditorCommand(commandId);
+};
+
 // Keyboard shortcuts
 const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Alt') snapEngine.setAltSuppressed(true);
 
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-    const tag = (e.target as HTMLElement)?.closest?.('.ProseMirror');
-    if (tag) return;
+    if (isEditableTarget(e.target)) return;
 
-    const isMeta = e.metaKey || e.ctrlKey;
+    const commandId = getProjectEditorCommandIdFromKeydown(e, { mode: mode.value });
+    if (!commandId) return;
 
-    if (e.code === 'Escape') { selection.clearSelection(); return; }
-    if (e.code === 'Space') { e.preventDefault(); togglePlay(); return; }
-    if (isMeta && !e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); performUndo(); return; }
-    if (isMeta && e.shiftKey && e.code === 'KeyZ') { e.preventDefault(); performRedo(); return; }
-    if (isMeta && e.code === 'KeyC') {
-        e.preventDefault();
-        if (mode.value === 'motion') copySelectedMotionTrack(); else copySelectedItems();
-        return;
-    }
-    if (isMeta && e.code === 'KeyX') {
-        e.preventDefault();
-        if (mode.value === 'motion') deleteSelectedMotionTrack(); else cutSelectedItems();
-        return;
-    }
-    if (isMeta && e.code === 'KeyV') {
-        e.preventDefault();
-        if (mode.value === 'motion') pasteMotionTrack(); else pasteClipboardItems();
-        return;
-    }
-    if (e.code === 'Delete' || e.code === 'Backspace') {
-        e.preventDefault();
-        if (mode.value === 'motion') deleteSelectedMotionTrack(); else deleteSelectedItem();
-        return;
-    }
-    if (e.code === 'KeyS' && !isMeta && mode.value !== 'motion') { e.preventDefault(); splitSelectedAtPlayhead(); return; }
-    if (isMeta && e.code === 'KeyK') { e.preventDefault(); splitSelectedAtPlayhead(); return; }
-    if (e.code === 'KeyR' && !isMeta) { e.preventDefault(); rippleMode.value = !rippleMode.value; return; }
-    if (isMeta && !e.shiftKey && e.code === 'Digit0') {
-        e.preventDefault();
-        vp.zoomToFit();
-        return;
-    }
-    if (isMeta && e.shiftKey && e.code === 'Digit0') {
-        e.preventDefault();
-        zoomToSelection();
-        return;
-    }
-    if (e.code === 'KeyI' && !isMeta) { e.preventDefault(); jumpToSelectionEdge('in'); return; }
-    if (e.code === 'KeyO' && !isMeta) { e.preventDefault(); jumpToSelectionEdge('out'); return; }
-    if (e.code === 'Tab') {
-        e.preventDefault();
-        cycleSelection(!e.shiftKey);
-        return;
-    }
-    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
-        e.preventDefault();
-        const dir = e.code === 'ArrowLeft' ? -1 : 1;
-        const multiplier = e.shiftKey ? 10 : 1;
-        if (mode.value === 'motion' && selectedMotionTrackId.value) {
-            nudgeSelectedMotionTrack(dir * NUDGE_MS * multiplier);
-        } else if (selection.hasSelection.value) {
-            nudgeSelectedItem(dir * NUDGE_MS * multiplier);
-            markDirty();
-        } else {
-            const newFrame = Math.max(0, playhead.value.frame + dir * multiplier);
-            vp.setPlayhead(newFrame);
-            audio.seekTo(newFrame / fps.value);
-            markDirty();
-        }
-        return;
-    }
+    e.preventDefault();
+    runProjectEditorCommand(commandId);
 };
 
 const onKeyUp = (e: KeyboardEvent) => {
@@ -2113,6 +2109,7 @@ onMounted(() => {
     videoExport.checkFfmpegAvailable();
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener(RENDERER_MENU_COMMAND_EVENT, onRendererMenuCommand as EventListener);
 });
 
 onUnmounted(() => {
@@ -2121,6 +2118,7 @@ onUnmounted(() => {
     if (uiNoticeTimer) clearTimeout(uiNoticeTimer);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener(RENDERER_MENU_COMMAND_EVENT, onRendererMenuCommand as EventListener);
     timelineWidthObserver?.disconnect();
     audio.dispose();
     motionRenderer.dispose();
