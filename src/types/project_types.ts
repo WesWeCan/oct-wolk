@@ -205,6 +205,8 @@ export interface WolkProjectSettings {
     durationMs: number;
     exportBitrateMbps?: number;
     includeAudio?: boolean;
+    keepRawPngFrames?: boolean;
+    exportAlphaMov?: boolean;
 }
 
 export interface WolkProjectFont {
@@ -251,6 +253,8 @@ export const DEFAULT_PROJECT_SETTINGS: WolkProjectSettings = {
     renderHeight: 1080,
     seed: 'wolk-default',
     durationMs: 30_000,
+    keepRawPngFrames: false,
+    exportAlphaMov: false,
 };
 
 export const DEFAULT_PROJECT_FONT: WolkProjectFont = {

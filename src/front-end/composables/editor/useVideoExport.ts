@@ -16,6 +16,8 @@ export interface CanvasFrameExportOptions {
     totalFrames: number;
     includeAudio?: boolean;
     audioPath?: string | null;
+    keepRawPngFrames?: boolean;
+    exportAlphaMov?: boolean;
     drawFrame: (frame: number) => Promise<void> | void;
 }
 
@@ -119,6 +121,65 @@ export function useVideoExport(
             console.error('Font copy failed:', error);
             return true;
         }
+    };
+
+    const cleanupFrameExport = async (framesDir: string, keepRawPngFrames: boolean) => {
+        if (keepRawPngFrames) {
+            exportState.value.progress = 98;
+            exportState.value.message = 'Keeping raw PNG frames...';
+            return;
+        }
+
+        exportState.value.message = 'Cleaning up frames...';
+        exportState.value.progress = 98;
+        try {
+            await (window as any).electronAPI.export.cleanupFrames(framesDir);
+        } catch {}
+    };
+
+    const assembleFrameOutputs = async (params: {
+        framesDir: string;
+        rootDir: string;
+        fps: number;
+        audioPath: string | null;
+        keepRawPngFrames: boolean;
+        exportAlphaMov: boolean;
+        renderedFrames?: number;
+    }) => {
+        const frameLabel = params.renderedFrames
+            ? ` from ${params.renderedFrames} rendered frames`
+            : '';
+
+        exportState.value.phase = 'encoding';
+        exportState.value.progress = 85;
+        exportState.value.message = `Assembling MP4${frameLabel}...`;
+
+        const assembleResult = await (window as any).electronAPI.export.assembleVideo(
+            params.framesDir,
+            params.rootDir,
+            params.fps,
+            params.audioPath,
+        );
+        if (!assembleResult?.success) {
+            throw new Error(assembleResult?.error || 'Failed to assemble MP4 video');
+        }
+
+        if (params.exportAlphaMov) {
+            exportState.value.progress = 93;
+            exportState.value.message = 'Encoding alpha .mov...';
+
+            const alphaResult = await (window as any).electronAPI.export.assembleAlphaVideo(
+                params.framesDir,
+                params.rootDir,
+                params.fps,
+                params.audioPath,
+            );
+            if (!alphaResult?.success) {
+                throw new Error(alphaResult?.error || 'Failed to assemble alpha .mov');
+            }
+        }
+
+        await cleanupFrameExport(params.framesDir, params.keepRawPngFrames);
     };
 
     const startExport = async (onPlaybackStart?: () => void) => {
@@ -312,6 +373,8 @@ export function useVideoExport(
             const { rootDir, framesDir } = folderResult;
 
             const includeAudio = options.includeAudio ?? (settings.includeAudio ?? true);
+            const keepRawPngFrames = options.keepRawPngFrames ?? (settings.keepRawPngFrames ?? false);
+            const exportAlphaMov = options.exportAlphaMov ?? (settings.exportAlphaMov ?? false);
             if (includeAudio && options.audioPath) {
                 exportState.value.message = 'Copying audio file...';
                 exportState.value.progress = 10;
@@ -368,26 +431,14 @@ export function useVideoExport(
 
             if (savePromises.length > 0) await Promise.all(savePromises);
             isRecording.value = false;
-
-            exportState.value.phase = 'encoding';
-            exportState.value.progress = 85;
-            exportState.value.message = 'Assembling video with ffmpeg...';
-
-            const assembleResult = await (window as any).electronAPI.export.assembleVideo(
+            await assembleFrameOutputs({
                 framesDir,
                 rootDir,
-                options.fps,
-                copiedAudioPath,
-            );
-            if (!assembleResult?.success) {
-                throw new Error(assembleResult?.error || 'Failed to assemble video');
-            }
-
-            exportState.value.message = 'Cleaning up frames...';
-            exportState.value.progress = 98;
-            try {
-                await (window as any).electronAPI.export.cleanupFrames(framesDir);
-            } catch {}
+                fps: options.fps,
+                audioPath: copiedAudioPath,
+                keepRawPngFrames,
+                exportAlphaMov,
+            });
 
             exportState.value = {
                 phase: 'complete',
@@ -405,32 +456,26 @@ export function useVideoExport(
                 frameExportContext &&
                 frameExportContext.renderedFrames > 0
             ) {
+                const settings = getSettings();
+                const keepRawPngFrames = options.keepRawPngFrames ?? (settings?.keepRawPngFrames ?? false);
+                const exportAlphaMov = options.exportAlphaMov ?? (settings?.exportAlphaMov ?? false);
+                const outputLabel = exportAlphaMov ? 'export files' : 'video file';
                 const shouldGenerate = globalThis.confirm(
                     `Export was stopped after rendering ${frameExportContext.renderedFrames} frames.\n\n` +
-                    'Do you still want to assemble these frames into a video file?',
+                    `Do you still want to assemble these frames into ${outputLabel}?`,
                 );
 
                 if (shouldGenerate) {
                     try {
-                        exportState.value.phase = 'encoding';
-                        exportState.value.progress = 85;
-                        exportState.value.message = `Assembling video from ${frameExportContext.renderedFrames} frames...`;
-
-                        const assembleResult = await (window as any).electronAPI.export.assembleVideo(
-                            frameExportContext.framesDir,
-                            frameExportContext.rootDir,
-                            options.fps,
-                            copiedAudioPath,
-                        );
-                        if (!assembleResult?.success) {
-                            throw new Error(assembleResult?.error || 'Failed to assemble video');
-                        }
-
-                        exportState.value.message = 'Cleaning up frames...';
-                        exportState.value.progress = 98;
-                        try {
-                            await (window as any).electronAPI.export.cleanupFrames(frameExportContext.framesDir);
-                        } catch {}
+                        await assembleFrameOutputs({
+                            framesDir: frameExportContext.framesDir,
+                            rootDir: frameExportContext.rootDir,
+                            fps: options.fps,
+                            audioPath: copiedAudioPath,
+                            keepRawPngFrames,
+                            exportAlphaMov,
+                            renderedFrames: frameExportContext.renderedFrames,
+                        });
 
                         exportState.value = {
                             phase: 'complete',
