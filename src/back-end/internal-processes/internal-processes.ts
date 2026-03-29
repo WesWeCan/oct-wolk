@@ -1,14 +1,27 @@
-import { ipcMain, shell } from 'electron';
+import { dialog, ipcMain, shell } from 'electron';
 
 import { getInternalStoragePath, isPathInsideRoot } from './internal-storage';
 import { listSystemFonts } from './fonts';
 import { createProject, loadProject, saveProject, listProjects, deleteProject, saveProjectAudio, saveProjectCover, saveProjectAsset } from './project-storage';
 import { deleteMotionPreset, listMotionPresets, loadMotionPreset, saveMotionPreset } from './motion-preset-storage';
+import { exportProjectArchive, getProjectArchiveSuggestedFileName, importProjectArchiveFromBytes, importProjectArchiveFromPath } from './project-archive';
+import {
+    exportMotionPresetArchive,
+    exportMotionPresetBundleArchive,
+    getMotionPresetArchiveSuggestedFileName,
+    getMotionPresetBundleSuggestedFileName,
+    importMotionPresetArchiveFromPath,
+} from './motion-preset-archive';
 import fs from 'fs';
 import path from 'path';
 import { getDocStoragePath } from './internal-storage';
 import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
 import { spawnSync } from 'child_process';
+import {
+    WOLK_PRESET_BUNDLE_EXTENSION,
+    WOLK_PRESET_EXTENSION,
+    WOLK_PROJECT_EXTENSION,
+} from '@/types/archive_types';
 
 
 
@@ -55,6 +68,52 @@ export const registerInternalProcesses = async () => {
     ipcMain.handle('projects:list', () => {
         return listProjects();
     });
+    ipcMain.handle('projects:exportWolk', async (_event, projectId: string) => {
+        try {
+            const project = loadProject(projectId);
+            if (!project) {
+                return { canceled: false, error: 'Project not found.' };
+            }
+
+            const dialogResult = await dialog.showSaveDialog({
+                title: 'Export .wolk project',
+                defaultPath: getProjectArchiveSuggestedFileName(project),
+                filters: [{ name: 'WOLK Project', extensions: [WOLK_PROJECT_EXTENSION] }],
+            });
+            if (dialogResult.canceled || !dialogResult.filePath) {
+                return { canceled: true };
+            }
+
+            const filePath = dialogResult.filePath.endsWith(`.${WOLK_PROJECT_EXTENSION}`)
+                ? dialogResult.filePath
+                : `${dialogResult.filePath}.${WOLK_PROJECT_EXTENSION}`;
+            const exportedProject = await exportProjectArchive(projectId, filePath);
+            return { canceled: false, filePath, project: exportedProject };
+        } catch (error) {
+            return { canceled: false, error: String(error) };
+        }
+    });
+    ipcMain.handle('projects:importWolk', async () => {
+        try {
+            const dialogResult = await dialog.showOpenDialog({
+                title: 'Import .wolk project',
+                properties: ['openFile'],
+                filters: [{ name: 'WOLK Project', extensions: [WOLK_PROJECT_EXTENSION] }],
+            });
+            if (dialogResult.canceled || !dialogResult.filePaths[0]) {
+                return { canceled: true };
+            }
+
+            const filePath = dialogResult.filePaths[0];
+            const project = await importProjectArchiveFromPath(filePath);
+            return { canceled: false, filePath, project };
+        } catch (error) {
+            return { canceled: false, error: String(error) };
+        }
+    });
+    ipcMain.handle('projects:importWolkBytes', async (_event, fileName: string, fileData: ArrayBuffer) => {
+        return importProjectArchiveFromBytes(fileName, fileData);
+    });
     ipcMain.handle('projects:delete', (_event, projectId: string) => {
         return deleteProject(projectId);
     });
@@ -79,6 +138,89 @@ export const registerInternalProcesses = async () => {
     });
     ipcMain.handle('motion-presets:delete', (_event, blockType: string, presetId: string) => {
         return deleteMotionPreset(blockType, presetId);
+    });
+    ipcMain.handle('motion-presets:exportOne', async (_event, blockType: string, presetId: string) => {
+        try {
+            const document = loadMotionPreset(blockType, presetId);
+            if (!document) {
+                return { canceled: false, error: 'Preset not found.' };
+            }
+
+            const dialogResult = await dialog.showSaveDialog({
+                title: 'Export motion preset',
+                defaultPath: getMotionPresetArchiveSuggestedFileName(document),
+                filters: [{ name: 'WOLK Motion Preset', extensions: [WOLK_PRESET_EXTENSION] }],
+            });
+            if (dialogResult.canceled || !dialogResult.filePath) {
+                return { canceled: true };
+            }
+
+            const filePath = dialogResult.filePath.endsWith(`.${WOLK_PRESET_EXTENSION}`)
+                ? dialogResult.filePath
+                : `${dialogResult.filePath}.${WOLK_PRESET_EXTENSION}`;
+            await exportMotionPresetArchive(blockType, presetId, filePath);
+            return { canceled: false, filePath, exportedCount: 1 };
+        } catch (error) {
+            return { canceled: false, error: String(error) };
+        }
+    });
+    ipcMain.handle('motion-presets:importOne', async () => {
+        try {
+            const dialogResult = await dialog.showOpenDialog({
+                title: 'Import motion preset',
+                properties: ['openFile'],
+                filters: [
+                    { name: 'WOLK Motion Preset', extensions: [WOLK_PRESET_EXTENSION, WOLK_PRESET_BUNDLE_EXTENSION] },
+                ],
+            });
+            if (dialogResult.canceled || !dialogResult.filePaths[0]) {
+                return { canceled: true };
+            }
+
+            const filePath = dialogResult.filePaths[0];
+            const imported = await importMotionPresetArchiveFromPath(filePath);
+            return { canceled: false, filePath, imported };
+        } catch (error) {
+            return { canceled: false, error: String(error) };
+        }
+    });
+    ipcMain.handle('motion-presets:exportBundle', async () => {
+        try {
+            const dialogResult = await dialog.showSaveDialog({
+                title: 'Export motion preset bundle',
+                defaultPath: getMotionPresetBundleSuggestedFileName(),
+                filters: [{ name: 'WOLK Motion Presets', extensions: [WOLK_PRESET_BUNDLE_EXTENSION] }],
+            });
+            if (dialogResult.canceled || !dialogResult.filePath) {
+                return { canceled: true };
+            }
+
+            const filePath = dialogResult.filePath.endsWith(`.${WOLK_PRESET_BUNDLE_EXTENSION}`)
+                ? dialogResult.filePath
+                : `${dialogResult.filePath}.${WOLK_PRESET_BUNDLE_EXTENSION}`;
+            const exportedCount = await exportMotionPresetBundleArchive(filePath);
+            return { canceled: false, filePath, exportedCount };
+        } catch (error) {
+            return { canceled: false, error: String(error) };
+        }
+    });
+    ipcMain.handle('motion-presets:importBundle', async () => {
+        try {
+            const dialogResult = await dialog.showOpenDialog({
+                title: 'Import motion preset bundle',
+                properties: ['openFile'],
+                filters: [{ name: 'WOLK Motion Presets', extensions: [WOLK_PRESET_BUNDLE_EXTENSION, WOLK_PRESET_EXTENSION] }],
+            });
+            if (dialogResult.canceled || !dialogResult.filePaths[0]) {
+                return { canceled: true };
+            }
+
+            const filePath = dialogResult.filePaths[0];
+            const imported = await importMotionPresetArchiveFromPath(filePath);
+            return { canceled: false, filePath, imported };
+        } catch (error) {
+            return { canceled: false, error: String(error) };
+        }
     });
 
     // Fonts API

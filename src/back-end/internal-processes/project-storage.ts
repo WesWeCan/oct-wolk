@@ -6,19 +6,19 @@ import { getDocStoragePath } from './internal-storage';
 import type { WolkProject } from '@/types/project_types';
 import { DEFAULT_PROJECT_SETTINGS, DEFAULT_PROJECT_FONT } from '@/types/project_types';
 
-const getProjectsRoot = (): string => {
+export const getProjectsRoot = (): string => {
     return getDocStoragePath(DOCUMENT_STORAGE_FOLDER.SONGS);
 };
 
-const getProjectDir = (projectId: string): string => {
+export const getProjectDir = (projectId: string): string => {
     return path.join(getProjectsRoot(), projectId);
 };
 
-const getProjectJsonPath = (projectId: string): string => {
+export const getProjectJsonPath = (projectId: string): string => {
     return path.join(getProjectDir(projectId), 'project.json');
 };
 
-const normalizeProject = (raw: WolkProject): WolkProject => {
+export const normalizeProject = (raw: WolkProject): WolkProject => {
     const anyRaw = raw as any;
     const colorOpacity = Number(anyRaw.backgroundColorOpacity);
     const gradientAngle = Number(anyRaw.backgroundGradientAngle);

@@ -33,6 +33,7 @@ const listMock = vi.fn();
 const loadMock = vi.fn();
 const saveMock = vi.fn();
 const deleteMock = vi.fn();
+const exportOneMock = vi.fn();
 
 const presetAdapter = {
     version: 1,
@@ -52,6 +53,7 @@ describe('motion preset panel', () => {
         loadMock.mockReset();
         saveMock.mockReset();
         deleteMock.mockReset();
+        exportOneMock.mockReset();
         presetAdapter.extractPayload.mockClear();
         presetAdapter.applyPreset.mockClear();
 
@@ -61,6 +63,7 @@ describe('motion preset panel', () => {
                 load: loadMock,
                 save: saveMock,
                 delete: deleteMock,
+                exportOne: exportOneMock,
             },
         };
     });
@@ -143,5 +146,28 @@ describe('motion preset panel', () => {
         await flushPromises();
 
         expect(wrapper.text()).toContain('No saved presets yet. Save the current look to create one.');
+    });
+
+    it('exports the selected preset', async () => {
+        listMock.mockResolvedValue([
+            { id: 'preset-a', blockType: 'cloud', version: 1, name: 'Alpha', createdAt: 1, updatedAt: 2 },
+        ]);
+        exportOneMock.mockResolvedValue({
+            canceled: false,
+            filePath: '/tmp/alpha.wolkdpreset',
+        });
+
+        const wrapper = mount(MotionPresetPanel, {
+            props: {
+                motionTrack: track,
+                presetAdapter,
+            },
+        });
+
+        await flushPromises();
+        await wrapper.findAll('.motion-preset-panel__action-row .btn-sm')[2].trigger('click');
+
+        expect(exportOneMock).toHaveBeenCalledWith('cloud', 'preset-a');
+        expect(wrapper.text()).toContain('/tmp/alpha.wolkdpreset');
     });
 });

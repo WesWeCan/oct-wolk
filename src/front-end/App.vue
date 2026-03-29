@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import AppHeaderFileActions from '@/front-end/components/AppHeaderFileActions.vue';
+
+const router = useRouter();
 
 const openExternal = (url: string) => {
      console.log('openExternal', url);
@@ -19,12 +23,14 @@ const openStorageFolder = async () => {
 
 onMounted(async () => {
     getLuckyNumber();
-    
-    
-    // window.electronAPI.onUpdateMenuCounter((value) => {
-    //     menuCounter.value += value;
-    // });
+    window.electronAPI.on('projects:imported', (payload: { projectId?: string }) => {
+        if (!payload?.projectId) return;
+        router.push({ name: 'ProjectEditor', params: { projectId: payload.projectId } });
+    });
+});
 
+onUnmounted(() => {
+    window.electronAPI.removeAllListeners('projects:imported');
 });
 
 
@@ -47,6 +53,7 @@ const getLuckyNumber = async () => {
     <header>
         <router-link to="/" exact>Home</router-link>
         <div class="spacer"></div>
+        <AppHeaderFileActions />
         <button @click="openStorageFolder" class="open-folder-btn" title="Open storage folder">
             📁 Open Folder
         </button>
