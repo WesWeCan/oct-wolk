@@ -26,10 +26,11 @@ const loading = ref(false);
 const saving = ref(false);
 const applying = ref(false);
 const deleting = ref(false);
+const exporting = ref(false);
 
 const blockType = computed(() => props.motionTrack.block.type);
 const selectedPreset = computed(() => presets.value.find((preset) => preset.id === selectedPresetId.value) ?? null);
-const actionDisabled = computed(() => !!props.disabled || loading.value || saving.value || applying.value || deleting.value);
+const actionDisabled = computed(() => !!props.disabled || loading.value || saving.value || applying.value || deleting.value || exporting.value);
 const canSave = computed(() => !actionDisabled.value && presetName.value.trim().length > 0);
 const hasSelection = computed(() => !!selectedPreset.value);
 const emptyStateMessage = 'No saved presets yet. Save the current look to create one.';
@@ -145,6 +146,28 @@ const deletePreset = async () => {
     }
 };
 
+const exportPreset = async () => {
+    if (actionDisabled.value || !selectedPreset.value) return;
+
+    exporting.value = true;
+    clearMessages();
+
+    try {
+        const result = await MotionPresetService.exportOne(blockType.value, selectedPreset.value.id);
+        if (result.canceled) return;
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        statusMessage.value = result.filePath
+            ? `Exported "${selectedPreset.value.name}" to ${result.filePath}.`
+            : `Exported "${selectedPreset.value.name}".`;
+    } catch (error) {
+        errorMessage.value = String(error);
+    } finally {
+        exporting.value = false;
+    }
+};
+
 watch(() => props.motionTrack.block.type, () => {
     selectedPresetId.value = '';
     presetName.value = '';
@@ -209,6 +232,9 @@ onMounted(() => {
             </button>
             <button class="btn-sm" :disabled="!canSave || !hasSelection" @click="savePreset(selectedPresetId)">
                 {{ saving && hasSelection ? 'Saving...' : 'Overwrite' }}
+            </button>
+            <button class="btn-sm" :disabled="actionDisabled || !hasSelection" @click="exportPreset()">
+                {{ exporting ? 'Exporting...' : 'Export' }}
             </button>
             <button class="btn-sm" :disabled="actionDisabled || !hasSelection" @click="deletePreset()">
                 {{ deleting ? 'Deleting...' : 'Delete' }}

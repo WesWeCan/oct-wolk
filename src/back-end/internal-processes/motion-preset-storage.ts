@@ -5,7 +5,7 @@ import { getDocStoragePath, isPathInsideRoot, sanitizeFileName } from './interna
 import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
 import type { MotionPresetDocument, MotionPresetSaveInput, MotionPresetSummary } from '@/types/motion_preset_types';
 
-const getMotionPresetsRoot = (): string => getDocStoragePath(DOCUMENT_STORAGE_FOLDER.PRESETS);
+export const getMotionPresetsRoot = (): string => getDocStoragePath(DOCUMENT_STORAGE_FOLDER.PRESETS);
 
 const sanitizeBlockType = (blockType: string): string => {
     const trimmed = String(blockType || '').trim();
@@ -47,7 +47,7 @@ const getPresetFilePath = (blockType: string, presetId: string): string => {
     return filePath;
 };
 
-const normalizePresetDocument = (raw: MotionPresetDocument): MotionPresetDocument => {
+export const normalizePresetDocument = (raw: MotionPresetDocument): MotionPresetDocument => {
     const id = sanitizePresetId(String(raw?.id || randomUUID()));
     const blockType = sanitizeBlockType(String(raw?.blockType || ''));
     const name = String(raw?.name || '').trim();
@@ -79,6 +79,29 @@ const toSummary = (document: MotionPresetDocument): MotionPresetSummary => ({
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
 });
+
+export const listAllMotionPresetDocuments = (): MotionPresetDocument[] => {
+    const root = getMotionPresetsRoot();
+    if (!fs.existsSync(root)) return [];
+
+    const blockEntries = fs.readdirSync(root, { withFileTypes: true });
+    const documents: MotionPresetDocument[] = [];
+
+    for (const entry of blockEntries) {
+        if (!entry.isDirectory()) continue;
+        const blockType = sanitizeBlockType(entry.name);
+        const summaries = listMotionPresets(blockType);
+        for (const summary of summaries) {
+            const document = loadMotionPreset(blockType, summary.id);
+            if (document) {
+                documents.push(document);
+            }
+        }
+    }
+
+    documents.sort((a, b) => b.updatedAt - a.updatedAt || a.name.localeCompare(b.name));
+    return documents;
+};
 
 export const listMotionPresets = (blockType: string): MotionPresetSummary[] => {
     const presetDir = getPresetTypeDir(blockType);
@@ -135,6 +158,16 @@ export const saveMotionPreset = (input: MotionPresetSaveInput): MotionPresetDocu
     const filePath = getPresetFilePath(blockType, document.id);
     fs.writeFileSync(filePath, JSON.stringify(document, null, 2), 'utf-8');
     return document;
+};
+
+export const saveMotionPresetDocument = (document: MotionPresetDocument): MotionPresetDocument => {
+    const normalized = normalizePresetDocument(document);
+    const presetDir = getPresetTypeDir(normalized.blockType);
+    fs.mkdirSync(presetDir, { recursive: true });
+
+    const filePath = getPresetFilePath(normalized.blockType, normalized.id);
+    fs.writeFileSync(filePath, JSON.stringify(normalized, null, 2), 'utf-8');
+    return normalized;
 };
 
 export const deleteMotionPreset = (blockType: string, presetId: string): boolean => {

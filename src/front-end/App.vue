@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import AppHeaderFileActions from '@/front-end/components/AppHeaderFileActions.vue';
 import { RENDERER_MENU_COMMAND_EVENT, type ProjectEditorCommandId } from '@/shared/projectEditorCommands';
+
+const router = useRouter();
 
 const openExternal = (url: string) => {
      console.log('openExternal', url);
@@ -62,11 +66,17 @@ onMounted(async () => {
 
         dispatchRendererMenuCommand(commandId);
     });
+
+    window.electronAPI.on('projects:imported', (payload: { projectId?: string }) => {
+        if (!payload?.projectId) return;
+        router.push({ name: 'ProjectEditor', params: { projectId: payload.projectId } });
+    });
 });
 
 onUnmounted(() => {
     removeMenuCommandListener?.();
     removeMenuCommandListener = null;
+    window.electronAPI.removeAllListeners('projects:imported');
 });
 
 
@@ -89,6 +99,7 @@ const getLuckyNumber = async () => {
     <header>
         <router-link to="/" exact>Home</router-link>
         <div class="spacer"></div>
+        <AppHeaderFileActions />
         <button @click="openStorageFolder" class="open-folder-btn" title="Open storage folder">
             📁 Open Folder
         </button>

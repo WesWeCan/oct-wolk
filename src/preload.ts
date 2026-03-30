@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { WolkProject } from '@/types/project_types';
 import type { MotionPresetDocument, MotionPresetSaveInput, MotionPresetSummary } from '@/types/motion_preset_types';
+import type { MotionPresetArchiveDialogResult, ProjectArchiveDialogResult } from '@/types/archive_types';
 import { MENU_COMMAND_CHANNEL, type ProjectEditorCommandId } from './shared/projectEditorCommands';
 
 declare global {
@@ -14,6 +15,9 @@ declare global {
                 save: (project: WolkProject) => Promise<WolkProject>;
                 load: (projectId: string) => Promise<WolkProject | null>;
                 list: () => Promise<WolkProject[]>;
+                exportWolk: (projectId: string) => Promise<ProjectArchiveDialogResult>;
+                importWolk: () => Promise<ProjectArchiveDialogResult>;
+                importWolkBytes: (fileName: string, fileData: ArrayBuffer) => Promise<WolkProject>;
                 delete: (projectId: string) => Promise<boolean>;
                 uploadAudio: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<WolkProject>;
                 uploadCover: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => Promise<WolkProject>;
@@ -29,6 +33,10 @@ declare global {
                 load: (blockType: string, presetId: string) => Promise<MotionPresetDocument | null>;
                 save: (preset: MotionPresetSaveInput) => Promise<MotionPresetDocument>;
                 delete: (blockType: string, presetId: string) => Promise<boolean>;
+                exportOne: (blockType: string, presetId: string) => Promise<MotionPresetArchiveDialogResult>;
+                importOne: () => Promise<MotionPresetArchiveDialogResult>;
+                exportBundle: () => Promise<MotionPresetArchiveDialogResult>;
+                importBundle: () => Promise<MotionPresetArchiveDialogResult>;
             };
             fonts: {
                 list: () => Promise<{
@@ -70,6 +78,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
         save: (project: WolkProject) => ipcRenderer.invoke('projects:save', project),
         load: (projectId: string) => ipcRenderer.invoke('projects:load', projectId),
         list: () => ipcRenderer.invoke('projects:list'),
+        exportWolk: (projectId: string) => ipcRenderer.invoke('projects:exportWolk', projectId),
+        importWolk: () => ipcRenderer.invoke('projects:importWolk'),
+        importWolkBytes: (fileName: string, fileData: ArrayBuffer) => ipcRenderer.invoke('projects:importWolkBytes', fileName, fileData),
         delete: (projectId: string) => ipcRenderer.invoke('projects:delete', projectId),
         uploadAudio: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('projects:uploadAudio', projectId, fileData, originalFileName),
         uploadCover: (projectId: string, fileData: ArrayBuffer, originalFileName: string) => ipcRenderer.invoke('projects:uploadCover', projectId, fileData, originalFileName),
@@ -80,6 +91,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         load: (blockType: string, presetId: string) => ipcRenderer.invoke('motion-presets:load', blockType, presetId),
         save: (preset: MotionPresetSaveInput) => ipcRenderer.invoke('motion-presets:save', preset),
         delete: (blockType: string, presetId: string) => ipcRenderer.invoke('motion-presets:delete', blockType, presetId),
+        exportOne: (blockType: string, presetId: string) => ipcRenderer.invoke('motion-presets:exportOne', blockType, presetId),
+        importOne: () => ipcRenderer.invoke('motion-presets:importOne'),
+        exportBundle: () => ipcRenderer.invoke('motion-presets:exportBundle'),
+        importBundle: () => ipcRenderer.invoke('motion-presets:importBundle'),
     },
     fonts: {
         list: () => ipcRenderer.invoke('fonts:list'),
