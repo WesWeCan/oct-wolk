@@ -25,6 +25,33 @@
             gap: 32px;
         }
     }
+
+    .home-projects {
+        .home-projects__list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+            gap: 16px;
+            max-width: 416px;
+            margin: 0 auto;
+        }
+
+        .project-row {
+            height: 100%;
+        }
+
+        .project-row__content {
+            grid-template-columns: 1fr;
+            height: 100%;
+        }
+
+        .project-row__image {
+            min-height: 0;
+        }
+
+        .project-row__info {
+            min-height: 108px;
+        }
+    }
 }
 
 @media (max-width: 768px) {
@@ -50,11 +77,11 @@
                     gap: 14px;
 
                     .dev-item {
-                        min-height: 48px;
+                        min-height: 56px;
                     }
 
                     .logo-cablai {
-                        height: 24px;
+                        height: 30px;
                     }
 
                     .rbjan-text {
@@ -62,13 +89,13 @@
                     }
 
                     .logo-bikkel {
-                        height: 42px;
+                        height: 56px;
                     }
 
                     .logo-wesley {
                         inline-size: 18ch;
                         block-size: 3em;
-                        font-size: 20px;
+                        font-size: 22px;
                     }
                 }
             }
@@ -99,14 +126,6 @@
 
         .results-count {
             white-space: normal;
-        }
-
-        .project-row__content {
-            grid-template-columns: 1fr;
-        }
-
-        .project-row__image {
-            min-height: 180px;
         }
 
         .project-row__info {

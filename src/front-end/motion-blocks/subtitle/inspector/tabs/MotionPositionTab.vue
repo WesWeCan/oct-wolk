@@ -97,8 +97,8 @@ const fields = computed(() => {
         </div>
 
         <div class="inspector-actions">
-            <button @click="emit('reset-to-defaults')">Reset to Defaults</button>
-            <button @click="emit('set-default-keyframe')">Set Default Keyframe</button>
+            <button class="btn-sm" @click="emit('reset-to-defaults')">Reset to Defaults</button>
+            <button class="btn-sm" @click="emit('set-default-keyframe')">Set Default Keyframe</button>
         </div>
     </div>
 </template>

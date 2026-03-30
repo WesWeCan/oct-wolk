@@ -31,12 +31,13 @@ const inspectorComponent = computed(() => activePlugin.value?.inspectorComponent
 </script>
 
 <template>
-    <div v-if="!motionTrack" class="inspector-empty">
+    <div v-if="!motionTrack" class="inspector-empty motion-inspector-host">
         Select a motion track to edit.
     </div>
     <component
         v-else-if="inspectorComponent"
         :is="inspectorComponent"
+        class="motion-inspector-host"
         :motion-track="motionTrack"
         :lyric-tracks="lyricTracks"
         :playhead-ms="playheadMs"
@@ -50,7 +51,7 @@ const inspectorComponent = computed(() => activePlugin.value?.inspectorComponent
         @seek-to-ms="$emit('seek-to-ms', $event)"
         @update-scene3d="$emit('update-scene3d', $event)"
     />
-    <div v-else class="inspector-empty">
+    <div v-else class="inspector-empty motion-inspector-host">
         Unsupported motion block: <strong>{{ motionTrack.block.type }}</strong>
     </div>
 </template>

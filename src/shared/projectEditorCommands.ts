@@ -12,7 +12,6 @@ export type ProjectEditorCommandId =
     | 'edit.split'
     | 'selection.clear'
     | 'playback.toggle'
-    | 'timeline.ripple.toggle'
     | 'view.zoom.fit'
     | 'view.zoom.selection'
     | 'playhead.jump.in'
@@ -60,7 +59,6 @@ export const getProjectEditorCommandIdFromKeydown = (
     if (event.code === 'Escape') return 'selection.clear';
     if (event.code === 'Space') return 'playback.toggle';
     if (event.code === 'KeyS' && !isMeta && options.mode !== 'motion') return 'edit.split';
-    if (event.code === 'KeyR' && !isMeta) return 'timeline.ripple.toggle';
     if (event.code === 'Digit0' && isMeta && !event.shiftKey) return 'view.zoom.fit';
     if (event.code === 'Digit0' && isMeta && event.shiftKey) return 'view.zoom.selection';
     if (event.code === 'KeyI' && !isMeta) return 'playhead.jump.in';
@@ -88,7 +86,6 @@ export interface ProjectEditorCommandContext {
     pasteLyricSelection: () => void;
     deleteLyricSelection: () => void;
     splitSelectionAtPlayhead: () => void;
-    toggleRippleMode: () => void;
     zoomToFit: () => void;
     zoomToSelection: () => void;
     jumpToSelectionEdge: (edge: 'in' | 'out') => void;
@@ -136,9 +133,6 @@ export const executeProjectEditorCommand = (
             return;
         case 'edit.split':
             context.splitSelectionAtPlayhead();
-            return;
-        case 'timeline.ripple.toggle':
-            context.toggleRippleMode();
             return;
         case 'view.zoom.fit':
             context.zoomToFit();

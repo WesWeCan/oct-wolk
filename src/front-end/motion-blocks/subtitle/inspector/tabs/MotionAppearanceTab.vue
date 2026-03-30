@@ -78,7 +78,7 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
 <template>
     <div class="motion-tab style-v2">
         <!-- ===== Typography ===== -->
-        <details class="style-sub-section" open>
+        <details class="style-sub-section">
             <summary class="style-sub-section__header">Typography</summary>
 
             <div class="style-v2__field">
@@ -162,7 +162,7 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
         </details>
 
         <!-- ===== Text ===== -->
-        <details class="style-sub-section" open>
+        <details class="style-sub-section">
             <summary class="style-sub-section__header">Text</summary>
 
             <!-- Text Case -->
@@ -251,7 +251,7 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
         </details>
 
         <!-- ===== Color ===== -->
-        <details class="style-sub-section" open>
+        <details class="style-sub-section">
             <summary class="style-sub-section__header">Color</summary>
 
             <!-- Text Color -->
@@ -398,7 +398,7 @@ const resolveStyle = <K extends keyof MotionStyle>(key: K, fallback: MotionStyle
         </details>
 
         <!-- ===== Outline ===== -->
-        <details class="style-sub-section" open>
+        <details class="style-sub-section">
             <summary class="style-sub-section__header">Outline</summary>
 
             <AnimatableNumberField

@@ -15,7 +15,7 @@ defineProps<{
         <summary class="inspector-section__title">Words</summary>
         <div class="inspector-section__content">
             <div class="motion-tab style-v2">
-                <details class="style-sub-section" open>
+                <details class="style-sub-section">
                     <summary class="style-sub-section__header">Placement</summary>
                     <div class="style-v2__field">
                         <span class="style-v2__field-label">Visible Slots</span>

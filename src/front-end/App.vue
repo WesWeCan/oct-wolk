@@ -159,12 +159,5 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <header>
-        <router-link to="/" exact>Home</router-link>
-        <div class="spacer"></div>
-        <button @click="openStorageFolder" class="open-folder-btn" title="Open storage folder">
-            📁 Open Folder
-        </button>
-    </header>
     <RouterView></RouterView>
 </template>

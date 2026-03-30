@@ -1,6 +1,8 @@
 // ===== Motion inspector tabs + shared motion-tab styles =====
 
 .motion-inspector {
+    padding-top: 10px;
+
     .inspector-section__content {
         padding: 4px 14px 14px;
     }
@@ -35,6 +37,11 @@
     &__timing-field {
         margin-bottom: 12px;
     }
+}
+
+.motion-inspector-host {
+    display: block;
+    padding-top: 10px;
 }
 
 .anim-number-field {
@@ -432,7 +439,8 @@
 
     .typewriter-timing-field__handle-label {
         writing-mode: vertical-rl;
-        transform: rotate(180deg);
+        text-orientation: mixed;
+        line-height: 0.9;
         font-size: 8px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -449,18 +457,19 @@
 }
 
 .style-toggle {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #222;
-    border: 1px solid #444;
-    color: #888;
-    border-radius: 3px;
+    background: #20262c;
+    border: 1px solid #3a4550;
+    color: #b7c3cf;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 12px;
     font-weight: 700;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 
     svg {
         width: 16px !important;
@@ -471,20 +480,22 @@
 
     &.italic { font-style: italic; }
     &.underline { text-decoration: underline; }
-    &:hover { background: #333; color: #ccc; }
+    &:hover { background: #29323a; border-color: #526273; color: #f3f7fb; }
     &.active { background: rgba(0, 212, 255, 0.15); border-color: rgba(0, 212, 255, 0.5); color: #00d4ff; }
 }
 
 .chip {
-    padding: 4px 8px;
+    padding: 6px 10px;
     font-size: 10px;
-    background: #222;
-    border: 1px solid #444;
-    color: #888;
-    border-radius: 3px;
+    line-height: 1.2;
+    background: #20262c;
+    border: 1px solid #3a4550;
+    color: #b7c3cf;
+    border-radius: 999px;
     cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 
-    &:hover { background: #333; color: #ccc; }
+    &:hover { background: #29323a; border-color: #526273; color: #f3f7fb; }
     &.active { background: rgba(0, 212, 255, 0.15); border-color: rgba(0, 212, 255, 0.5); color: #00d4ff; }
 }
 

@@ -20,7 +20,6 @@ const createContext = (overrides: Partial<ProjectEditorCommandContext> = {}): Pr
   pasteLyricSelection: vi.fn(),
   deleteLyricSelection: vi.fn(),
   splitSelectionAtPlayhead: vi.fn(),
-  toggleRippleMode: vi.fn(),
   zoomToFit: vi.fn(),
   zoomToSelection: vi.fn(),
   jumpToSelectionEdge: vi.fn(),

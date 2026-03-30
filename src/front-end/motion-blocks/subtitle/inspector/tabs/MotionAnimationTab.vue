@@ -27,7 +27,7 @@ const resolvedExit = (): MotionEnterExit => props.exitValue ?? props.track.block
 
 <template>
     <div class="motion-animation-tab">
-        <details v-if="showReveal && revealValue" class="style-sub-section" open>
+        <details v-if="showReveal && revealValue" class="style-sub-section">
             <summary class="style-sub-section__header">Text Reveal</summary>
             <MotionTextRevealEditor
                 :value="revealValue"
@@ -36,7 +36,7 @@ const resolvedExit = (): MotionEnterExit => props.exitValue ?? props.track.block
             />
         </details>
 
-        <details class="style-sub-section" open>
+        <details class="style-sub-section">
             <summary class="style-sub-section__header">Motion</summary>
             <MotionEnterExitEditor
                 :enter-value="resolvedEnter()"

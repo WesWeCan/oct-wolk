@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import SvgIcon from '@jamescoyle/vue-icon';
-import { mdiClose } from '@mdi/js';
-import type { LyricTrack } from '@/types/project_types';
+import { mdiTrashCanOutline } from '@mdi/js';
+import { TRACK_COLORS, type LyricTrack } from '@/types/project_types';
 import {
     generateVerseTrack,
     createCustomTrack,
@@ -20,6 +20,7 @@ const emit = defineEmits<{
     (e: 'generateLines'): void;
     (e: 'generateWords'): void;
     (e: 'deleteTrack', trackId: string): void;
+    (e: 'updateTrack', track: LyricTrack): void;
 }>();
 
 const hasLyrics = () => !!props.rawLyrics.trim();
@@ -44,28 +45,40 @@ const addCustom = () => {
     emit('addTrack', createCustomTrack(props.tracks.length));
 };
 
+const cycleTrackColor = (track: LyricTrack) => {
+    const currentIndex = TRACK_COLORS.indexOf(track.color as (typeof TRACK_COLORS)[number]);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % TRACK_COLORS.length : 0;
+    emit('updateTrack', {
+        ...track,
+        color: TRACK_COLORS[nextIndex],
+    });
+};
+
 const deletingId = defineModel<string | null>('deletingId', { default: null });
 </script>
 
 <template>
-    <div class="track-list-panel">
-        <div class="track-list-panel__header">
+    <details class="track-list-panel" open>
+        <summary class="track-list-panel__header">
             <span class="track-list-panel__title">Tracks</span>
-        </div>
+        </summary>
 
-        <div class="track-list-panel__generators">
-            <button @click="generateVerses" :disabled="!rawLyrics.trim()" title="Split lyrics into verses (separated by blank lines)">Verses</button>
+        <div class="track-list-panel__body">
+        <div class="track-list-panel__actions">
+            <button class="track-list-panel__action" @click="generateVerses" :disabled="!rawLyrics.trim()" title="Split lyrics into verses (separated by blank lines)">Verses</button>
             <button
+                class="track-list-panel__action"
                 @click="generateLines"
                 :disabled="!rawLyrics.trim() || !selectedVerseTrackId"
                 title="Generate lines from the selected verse track and raw lyric lines"
             >Lines</button>
             <button
+                class="track-list-panel__action"
                 @click="generateWords"
                 :disabled="!rawLyrics.trim() || !selectedLineTrackId"
                 title="Generate words from the selected line track and raw lyric lines"
             >Words</button>
-            <button @click="addCustom" title="Add blank custom track">+ Custom</button>
+            <button class="track-list-panel__action" @click="addCustom" title="Add blank custom track">+ Custom</button>
         </div>
         <p v-if="!rawLyrics.trim()" class="track-list-panel__hint">
             Paste lyrics below to generate verse tracks.
@@ -86,7 +99,13 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                 :key="track.id"
                 class="track-row"
             >
-                <div class="track-row__color" :style="{ backgroundColor: track.color }"></div>
+                <button
+                    class="track-row__color"
+                    :style="{ '--track-color': track.color }"
+                    type="button"
+                    title="Cycle track color"
+                    @click="cycleTrackColor(track)"
+                ></button>
                 <div class="track-row__name">
                     <span>{{ track.name }}</span>
                 </div>
@@ -97,7 +116,7 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                         @click="deletingId = track.id"
                         title="Delete track"
                     >
-                        <SvgIcon type="mdi" :path="mdiClose" :size="12" />
+                        <SvgIcon type="mdi" :path="mdiTrashCanOutline" :size="12" />
                     </button>
                     <template v-else>
                         <button class="track-btn danger" @click="emit('deleteTrack', track.id); deletingId = null;">Yes</button>
@@ -109,5 +128,6 @@ const deletingId = defineModel<string | null>('deletingId', { default: null });
                 No tracks yet. Paste lyrics and generate verses to start.
             </div>
         </div>
-    </div>
+        </div>
+    </details>
 </template>

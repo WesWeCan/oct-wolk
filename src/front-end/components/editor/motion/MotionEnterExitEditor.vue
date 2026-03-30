@@ -290,17 +290,17 @@ const applyPreset = (which: 'enter' | 'exit', preset: 'subtle' | 'default' | 'sn
 
 <template>
     <div class="motion-tab style-v2 motion-animation-v2">
-        <details class="style-sub-section" open>
+        <details class="style-sub-section">
             <summary class="style-sub-section__header">Enter</summary>
 
             <div class="style-v2__field">
                 <span class="style-v2__field-label">Presets</span>
                 <div class="motion-tab__chips">
-                    <button class="chip" @click="applyPreset('enter', 'allOff')">All Off</button>
-                    <button class="chip" @click="applyPreset('enter', 'subtle')">Subtle</button>
-                    <button class="chip" @click="applyPreset('enter', 'default')">Default</button>
-                    <button class="chip" @click="applyPreset('enter', 'snappy')">Snappy</button>
-                    <button class="chip" @click="applyPreset('enter', 'dramatic')">Dramatic</button>
+                    <button class="chip" @click="applyPreset('enter', 'allOff')">Enter All Off</button>
+                    <button class="chip" @click="applyPreset('enter', 'subtle')">Subtle Enter</button>
+                    <button class="chip" @click="applyPreset('enter', 'default')">Default Enter</button>
+                    <button class="chip" @click="applyPreset('enter', 'snappy')">Snappy Enter</button>
+                    <button class="chip" @click="applyPreset('enter', 'dramatic')">Dramatic Enter</button>
                 </div>
             </div>
 
@@ -398,17 +398,17 @@ const applyPreset = (which: 'enter' | 'exit', preset: 'subtle' | 'default' | 'sn
             </div>
         </details>
 
-        <details class="style-sub-section" open>
+        <details class="style-sub-section">
             <summary class="style-sub-section__header">Exit</summary>
 
             <div class="style-v2__field">
                 <span class="style-v2__field-label">Presets</span>
                 <div class="motion-tab__chips">
-                    <button class="chip" @click="applyPreset('exit', 'allOff')">All Off</button>
-                    <button class="chip" @click="applyPreset('exit', 'subtle')">Subtle</button>
-                    <button class="chip" @click="applyPreset('exit', 'default')">Default</button>
-                    <button class="chip" @click="applyPreset('exit', 'snappy')">Snappy</button>
-                    <button class="chip" @click="applyPreset('exit', 'dramatic')">Dramatic</button>
+                    <button class="chip" @click="applyPreset('exit', 'allOff')">Exit All Off</button>
+                    <button class="chip" @click="applyPreset('exit', 'subtle')">Subtle Exit</button>
+                    <button class="chip" @click="applyPreset('exit', 'default')">Default Exit</button>
+                    <button class="chip" @click="applyPreset('exit', 'snappy')">Snappy Exit</button>
+                    <button class="chip" @click="applyPreset('exit', 'dramatic')">Dramatic Exit</button>
                 </div>
             </div>
 

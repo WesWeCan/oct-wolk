@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import StarterKit from '@tiptap/starter-kit';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
-import { onBeforeUnmount, watch } from 'vue';
+import { computed, onBeforeUnmount, watch } from 'vue';
 import { VerseLineGuides } from '@/front-end/extensions/VerseLineGuides';
+import type { LyricTrack } from '@/types/project_types';
 
 const rawLyrics = defineModel<string>('rawLyrics', { default: '' });
+
+const props = defineProps<{
+    tracks?: LyricTrack[];
+}>();
 
 const editor = useEditor({
     content: (rawLyrics.value || '').split('\n').map((line) => `<p>${line || ''}</p>`).join(''),
@@ -37,15 +42,27 @@ watch(rawLyrics, (newVal) => {
 onBeforeUnmount(() => {
     editor.value?.destroy();
 });
+
+const firstTrackColor = (kind: LyricTrack['kind'], fallback: string) => {
+    return props.tracks?.find((track) => track.kind === kind)?.color || fallback;
+};
+
+const guideStyle = computed(() => ({
+    '--raw-lyrics-verse-color': firstTrackColor('verse', '#e57373'),
+    '--raw-lyrics-line-color': firstTrackColor('sentence', '#81c784'),
+    '--raw-lyrics-word-color': firstTrackColor('word', '#4fc3f7'),
+}));
 </script>
 
 <template>
-    <div class="raw-lyrics-panel">
-        <div class="raw-lyrics-panel__header">
+    <details class="raw-lyrics-panel" open :style="guideStyle">
+        <summary class="raw-lyrics-panel__header">
             <span class="raw-lyrics-panel__title">Raw Lyrics</span>
-        </div>
+        </summary>
+        <div class="raw-lyrics-panel__body">
         <div class="raw-lyrics-panel__editor">
             <editor-content v-if="editor" :editor="editor" />
         </div>
-    </div>
+        </div>
+    </details>
 </template>

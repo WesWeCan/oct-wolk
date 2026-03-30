@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router';
 import SvgIcon from '@jamescoyle/vue-icon';
 import {
     mdiArrowDown,
-    mdiArrowLeft,
     mdiArrowUp,
     mdiCheck,
     mdiContentCopy,
@@ -12,12 +11,18 @@ import {
     mdiDiamond,
     mdiDiamondOutline,
     mdiLock,
+    mdiMagnet,
     mdiMusicNote,
     mdiEye,
     mdiEyeOff,
+    mdiHomeVariantOutline,
+    mdiLoading,
+    mdiPause,
     mdiPencil,
+    mdiPlay,
     mdiSkipNext,
     mdiSkipPrevious,
+    mdiStop,
 } from '@mdi/js';
 import {
     TRACK_COLORS,
@@ -49,11 +54,11 @@ import { getMotionBlockPlugin, getMotionTrackPlugin, listMotionBlockPlugins } fr
 import { pickPreferredCloudSourceTrack } from '@/front-end/motion-blocks/cloud/source-tracks';
 import SnapOverlay from '@/front-end/components/timeline/SnapOverlay.vue';
 import RawLyricsPanel from '@/front-end/components/editor/RawLyricsPanel.vue';
-import SongMediaPanel from '@/front-end/components/editor/SongMediaPanel.vue';
 import TrackListPanel from '@/front-end/components/editor/TrackListPanel.vue';
 import MotionTrackListPanel from '@/front-end/components/editor/MotionTrackListPanel.vue';
 import MotionInspectorHost from '@/front-end/components/editor/MotionInspectorHost.vue';
 import BackgroundInspector from '@/front-end/components/editor/BackgroundInspector.vue';
+import AnalysisOverlaysSection from '@/front-end/components/editor/AnalysisOverlaysSection.vue';
 import ProjectInspector from '@/front-end/components/editor/ProjectInspector.vue';
 import ExportModal from '@/front-end/components/editor/ExportModal.vue';
 import { useUndoRedo } from '@/front-end/composables/editor/useUndoRedo';
@@ -136,11 +141,13 @@ const syncLayoutMode = () => {
     const nextMode: EditorLayoutMode = window.innerWidth <= STACKED_LAYOUT_BREAKPOINT ? 'stacked' : 'full';
     const changed = layoutMode.value !== nextMode;
     layoutMode.value = nextMode;
-    if (changed) {
-        nextTick(() => {
+    nextTick(() => {
+        if (changed) {
             markDirty();
-        });
-    }
+        }
+        // Nudge the ruler to recompute labels after responsive resizes.
+        vp.setStart(viewport.value.startSec);
+    });
 };
 
 const toggleStackedPanel = (panel: EditorPanelKey) => {
@@ -153,30 +160,6 @@ const toggleStackedPanel = (panel: EditorPanelKey) => {
 };
 
 const isPanelExpanded = (panel: EditorPanelKey) => layoutMode.value === 'full' || stackedPanels.value[panel];
-
-// Editable title
-const editingTitle = ref(false);
-const titleInput = ref('');
-
-const startEditTitle = () => {
-    if (!project.value) return;
-    titleInput.value = project.value.song.title || '';
-    editingTitle.value = true;
-    nextTick(() => {
-        const el = document.querySelector('.toolbar-title-input') as HTMLInputElement;
-        el?.focus();
-        el?.select();
-    });
-};
-
-const commitTitle = () => {
-    if (project.value && titleInput.value.trim()) {
-        project.value.song.title = titleInput.value.trim();
-        document.title = `${project.value.song.title} - W.O.L.K.`;
-        scheduleSave();
-    }
-    editingTitle.value = false;
-};
 
 // Audio
 const audio = useAudioPlayer();
@@ -313,6 +296,9 @@ const overlayOpts = ref<{ showEnergy: boolean; showBeats: boolean; showBands: bo
     showBands: false,
     showBeatStrength: false,
 });
+const updateOverlayOpts = (value: typeof overlayOpts.value) => {
+    overlayOpts.value = value;
+};
 const uiNotice = ref<string | null>(null);
 let uiNoticeTimer: ReturnType<typeof setTimeout> | null = null;
 const showNotice = (message: string) => {
@@ -861,7 +847,6 @@ const selectedItemId = computed<string | null>(() => {
     const arr = selection.selectedArray.value;
     return arr.length === 1 ? arr[0] : (arr.length > 0 ? arr[0] : null);
 });
-const rippleMode = ref(false);
 type LyricClipboardItem = {
     text: string;
     startOffsetMs: number;
@@ -927,7 +912,17 @@ const monitorManipulationEnabled = ref(true);
 const selectedTrackSupportsMonitorGizmo = computed(() => (
     selectedMotionPlugin.value?.meta.supportsMonitorGizmo !== false
 ));
-const enableMonitorGizmo = computed(() => monitorManipulationEnabled.value && selectedTrackSupportsMonitorGizmo.value);
+const selectedMotionTrackAtPlayhead = computed(() => {
+    const track = selectedMotionTrack.value;
+    if (!track) return false;
+    const currentMs = (playhead.value.frame / Math.max(1, fps.value)) * 1000;
+    return currentMs >= track.block.startMs && currentMs < track.block.endMs;
+});
+const enableMonitorGizmo = computed(() => (
+    monitorManipulationEnabled.value
+    && selectedTrackSupportsMonitorGizmo.value
+    && selectedMotionTrackAtPlayhead.value
+));
 const normalizedScene3D = computed(() => normalizeScene3DSettings(project.value?.scene3d));
 
 const kfLabel = (path: string): string => {
@@ -1561,6 +1556,7 @@ const onUpdateProject = (updated: WolkProject) => {
     pushUndo();
     project.value = updated;
     fps.value = updated.settings.fps || 60;
+    document.title = `${updated.song.title || 'Untitled'} - W.O.L.K.`;
     scheduleSave();
 };
 
@@ -1962,6 +1958,7 @@ const setupResizeHandles = () => {
             for (const entry of entries) {
                 timelineContainerWidth.value = entry.contentRect.width;
             }
+            vp.setStart(viewport.value.startSec);
         });
         timelineWidthObserver.observe(rightCol);
     }
@@ -2198,9 +2195,6 @@ const runProjectEditorCommand = (commandId: ProjectEditorCommandId) => {
         pasteLyricSelection: pasteClipboardItems,
         deleteLyricSelection: deleteSelectedItem,
         splitSelectionAtPlayhead: splitSelectedAtPlayhead,
-        toggleRippleMode: () => {
-            rippleMode.value = !rippleMode.value;
-        },
         zoomToFit: () => vp.zoomToFit(),
         zoomToSelection,
         jumpToSelectionEdge,
@@ -2275,6 +2269,7 @@ onUnmounted(() => {
 
 <template>
     <div v-if="loading" class="editor-loading">
+        <SvgIcon type="mdi" :path="mdiLoading" :size="30" class="editor-loading__icon" />
         <p>Loading project...</p>
     </div>
     <div
@@ -2290,42 +2285,40 @@ onUnmounted(() => {
         <div class="editor__toolbar">
             <div class="toolbar__left">
                 <button class="toolbar-back" @click="router.push({ name: 'Index' })" aria-label="Back to home">
-                    <SvgIcon type="mdi" :path="mdiArrowLeft" :size="16" />
+                    <SvgIcon type="mdi" :path="mdiHomeVariantOutline" :size="16" />
                 </button>
 
-                <input
-                    v-if="editingTitle"
-                    v-model="titleInput"
-                    class="toolbar-title-input"
-                    @keydown.enter="commitTitle"
-                    @blur="commitTitle"
-                    @keydown.escape="editingTitle = false"
-                />
-                <span v-else class="toolbar-title" @dblclick="startEditTitle" title="Double-click to rename">
+                <span class="toolbar-title">
                     {{ project.song.title || 'Untitled' }}
                 </span>
+            </div>
 
+            <div class="toolbar__center">
                 <div class="toolbar-mode-toggle">
                     <button :class="{ active: mode === 'lyric' }" @click="mode = 'lyric'">Lyric</button>
                     <button :class="{ active: mode === 'motion' }" @click="mode = 'motion'">Motion</button>
                 </div>
             </div>
+
             <div class="toolbar__right">
-                <button
-                    class="toolbar-toggle"
-                    :class="{ active: snapEngine.enabled.value }"
-                    @click="snapEngine.enabled.value = !snapEngine.enabled.value"
-                    title="Toggle snapping"
-                >Snap</button>
-                <button
-                    class="toolbar-toggle"
-                    :class="{ active: rippleMode }"
-                    @click="rippleMode = !rippleMode"
-                    title="Toggle ripple edit (R)"
-                >Ripple</button>
                 <span v-if="vp.interaction.value.mode !== 'idle'" class="toolbar-mode-indicator">{{ vp.interaction.value.mode }}</span>
-                <button @click="togglePlay" class="primary">{{ audio.isPlaying.value ? 'Pause' : 'Play' }}</button>
-                <button @click="stopPlayback" :disabled="!audio.isPlaying.value && playhead.frame === 0">Stop</button>
+                <button
+                    @click="togglePlay"
+                    class="toolbar-icon-btn"
+                    :title="audio.isPlaying.value ? 'Pause playback' : 'Play playback'"
+                    :aria-label="audio.isPlaying.value ? 'Pause playback' : 'Play playback'"
+                >
+                    <SvgIcon type="mdi" :path="audio.isPlaying.value ? mdiPause : mdiPlay" :size="16" />
+                </button>
+                <button
+                    @click="stopPlayback"
+                    class="toolbar-icon-btn"
+                    title="Stop playback"
+                    aria-label="Stop playback"
+                    :disabled="!audio.isPlaying.value && playhead.frame === 0"
+                >
+                    <SvgIcon type="mdi" :path="mdiStop" :size="16" />
+                </button>
                 <span v-if="audio.duration.value > 0" class="toolbar-time">
                     {{ (audio.currentTime.value).toFixed(1) }}s / {{ (audio.duration.value).toFixed(1) }}s
                 </span>
@@ -2341,16 +2334,11 @@ onUnmounted(() => {
                 class="editor-panel__toggle"
                 @click="toggleStackedPanel('sidebar')"
             >
-                <span class="editor-panel__toggle-title">Sidebar</span>
-                <span class="editor-panel__toggle-meta">{{ mode === 'lyric' ? 'Media, tracks, and lyrics' : 'Motion tracks and sources' }}</span>
+                <span class="editor-panel__toggle-title">{{ mode === 'lyric' ? 'Lyrics' : 'Motion' }}</span>
+                <span class="editor-panel__toggle-meta">{{ mode === 'lyric' ? 'Tracks and raw lyrics' : 'Motion tracks and sources' }}</span>
             </button>
             <div v-show="isPanelExpanded('sidebar')" class="editor-panel__content editor-panel__content--sidebar">
                 <template v-if="mode === 'lyric'">
-                    <SongMediaPanel
-                        :project-id="project.id"
-                        :song="project.song"
-                        @project-updated="onSongProjectUpdated"
-                    />
                     <TrackListPanel
                         :tracks="project.lyricTracks"
                         :raw-lyrics="rawLyrics"
@@ -2361,8 +2349,9 @@ onUnmounted(() => {
                         @generate-lines="onGenerateLines"
                         @generate-words="onGenerateWords"
                         @delete-track="onDeleteTrack"
+                        @update-track="onUpdateTrack"
                     />
-                    <RawLyricsPanel v-model:rawLyrics="rawLyrics" />
+                    <RawLyricsPanel v-model:rawLyrics="rawLyrics" :tracks="project.lyricTracks" />
                 </template>
                 <template v-else>
                     <MotionTrackListPanel
@@ -2557,6 +2546,10 @@ onUnmounted(() => {
                         @reset-background-image-controls="onResetBackgroundImageControls"
                         @reset-background="onResetBackground"
                     />
+                    <AnalysisOverlaysSection
+                        :overlay-opts="overlayOpts"
+                        @update:overlay-opts="updateOverlayOpts"
+                    />
                 </template>
                 <template v-else>
                     <ProjectInspector
@@ -2567,12 +2560,13 @@ onUnmounted(() => {
                         :playhead-ms="playheadMs"
                         :overlay-opts="overlayOpts"
                         @update-project="onUpdateProject"
+                        @project-media-updated="onSongProjectUpdated"
                         @update-item="onUpdateItem"
                         @delete-item="onDeleteItem"
                         @split-item="onSplitItem"
                         @merge-with-next="onMergeWithNext"
                         @add-item-at-location="onAddItemAtLocation"
-                        @update:overlay-opts="(v: any) => overlayOpts = v"
+                        @update:overlay-opts="updateOverlayOpts"
                     />
                 </template>
             </div>
@@ -2595,7 +2589,18 @@ onUnmounted(() => {
                     <div class="grid" style="grid-template-columns: 220px 1fr">
                         <!-- Left column: labels -->
                         <div class="leftcol">
-                            <div class="lane-label ruler-label" :style="{ height: `${laneHeights.ruler}px` }">TIME</div>
+                            <div class="lane-label ruler-label" :style="{ height: `${laneHeights.ruler}px` }">
+                                <span>TIME</span>
+                                <button
+                                    class="lane-icon-btn timeline-snap-toggle"
+                                    :class="{ active: snapEngine.enabled.value }"
+                                    aria-label="Toggle snap"
+                                    data-tooltip="Toggle snap"
+                                    @click.stop="snapEngine.enabled.value = !snapEngine.enabled.value"
+                                >
+                                    <SvgIcon type="mdi" :path="mdiMagnet" :size="12" />
+                                </button>
+                            </div>
                             <div
                                 v-for="track in (project?.lyricTracks ?? [])"
                                 :key="'label-' + track.id"

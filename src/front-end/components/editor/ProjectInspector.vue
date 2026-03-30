@@ -2,9 +2,11 @@
 import { computed, onMounted, ref } from 'vue';
 import type { WolkProject, LyricTrack, TimelineItem } from '@/types/project_types';
 import { FontsService, FontName, type SystemFontFile } from '@/front-end/services/FontsService';
-import { ProjectService } from '@/front-end/services/ProjectService';
 import { buildFontFamilyChain, fontDescriptorFromProjectFont } from '@/front-end/utils/fonts/fontUtils';
+import AnimatableNumberField from './motion/AnimatableNumberField.vue';
+import AnalysisOverlaysSection from './AnalysisOverlaysSection.vue';
 import ItemInspector from './ItemInspector.vue';
+import SongMediaPanel from './SongMediaPanel.vue';
 
 const props = defineProps<{
     project: WolkProject;
@@ -17,6 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (e: 'updateProject', project: WolkProject): void;
+    (e: 'projectMediaUpdated', payload: { project: WolkProject; kind: 'audio' | 'cover' }): void;
     (e: 'updateItem', item: TimelineItem): void;
     (e: 'deleteItem', itemId: string): void;
     (e: 'splitItem', itemId: string, atMs: number): void;
@@ -119,10 +122,15 @@ const updateSeed = (e: Event) => {
     });
 };
 
-// ===== OVERLAY TOGGLES =====
-
-const toggleOverlay = (key: keyof typeof props.overlayOpts) => {
-    emit('update:overlayOpts', { ...props.overlayOpts, [key]: !props.overlayOpts[key] });
+const updateProjectName = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value;
+    emit('updateProject', {
+        ...props.project,
+        song: {
+            ...props.project.song,
+            title: value,
+        },
+    });
 };
 
 // ===== LIFECYCLE =====
@@ -155,13 +163,33 @@ onMounted(async () => {
         </template>
 
         <!-- Project Settings -->
-        <details class="inspector-section">
+        <details class="inspector-section" open>
             <summary class="inspector-section__title">Project Settings</summary>
             <div class="inspector-section__content">
-                <label class="inspector-label">
-                    Seed
-                    <input type="text" :value="project.settings.seed" @input="updateSeed" class="inspector-input" />
-                </label>
+                <div class="motion-tab style-v2">
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Identity</summary>
+                        <label class="inspector-label">
+                            Project Name
+                            <input type="text" :value="project.song.title" @input="updateProjectName" class="inspector-input" />
+                        </label>
+                        <p class="inspector-copy">Set the project title shown in the editor and project list.</p>
+                        <label class="inspector-label">
+                            Seed
+                            <input type="text" :value="project.settings.seed" @input="updateSeed" class="inspector-input" />
+                        </label>
+                        <p class="inspector-copy">The seed is the basis for all project randomness, so keeping it stable keeps the generated variation stable too.</p>
+                    </details>
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Media</summary>
+                        <SongMediaPanel
+                            :project-id="project.id"
+                            :song="project.song"
+                            :show-header="false"
+                            @project-updated="(payload) => emit('projectMediaUpdated', payload)"
+                        />
+                    </details>
+                </div>
             </div>
         </details>
 
@@ -169,76 +197,67 @@ onMounted(async () => {
         <details class="inspector-section">
             <summary class="inspector-section__title">Font Settings</summary>
             <div class="inspector-section__content">
-                <div class="font-preview" :style="{ fontFamily: fontFamilyChain, fontStyle: project.font?.style || 'normal', fontWeight: String(project.font?.weight || 400) }">
-                    <div class="preview-label">Preview: <strong>{{ project.font?.name || 'System chain' }}</strong></div>
-                    <div class="preview-text">The quick brown fox jumps over the lazy dog 0123456789</div>
-                    <div class="font-actions" v-if="fontLocalPath">
-                        <button @click="removeProjectFont" class="btn-sm danger">Remove project font</button>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <label class="inspector-label">
-                        Fallback
-                        <select :value="fallbackType" @change="(e: any) => setFallbackType(e.target.value)" class="inspector-input">
-                            <option value="sans">sans-serif</option>
-                            <option value="serif">serif</option>
-                            <option value="mono">monospace</option>
-                            <option value="display">display</option>
-                        </select>
-                    </label>
-                </div>
-                <div class="form-row">
-                    <label class="inspector-label">
-                        Weight
-                        <input type="range" :value="project.font?.weight || 400" @input="(e: any) => setFontWeight(Number(e.target.value))" min="100" max="900" step="100" />
-                        <span class="inspector-hint">{{ project.font?.weight || 400 }}</span>
-                    </label>
-                </div>
-                <div class="form-row">
-                    <label class="inspector-label">
-                        Style
-                        <select :value="project.font?.style || 'normal'" @change="(e: any) => setFontStyle(e.target.value)" class="inspector-input">
-                            <option value="normal">Normal</option>
-                            <option value="italic">Italic</option>
-                            <option value="oblique">Oblique</option>
-                        </select>
-                    </label>
-                </div>
-                <div class="font-search">
-                    <div class="font-search__label">System Fonts</div>
-                    <input type="search" v-model="fontQuery" class="inspector-input" placeholder="Search fonts..." />
-                    <div class="font-list">
-                        <div v-for="f in filteredFonts" :key="f.filePath" class="font-item">
-                            <div class="font-name">{{ f.familyGuess }} <span class="file-name">({{ f.fileName }})</span></div>
-                            <button :disabled="copyingFontPath === f.filePath" @click="() => setFontFromSystem(f)" class="btn-sm">Set font</button>
+                <div class="motion-tab style-v2">
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Typeface</summary>
+                        <div class="font-preview" :style="{ fontFamily: fontFamilyChain, fontStyle: project.font?.style || 'normal', fontWeight: String(project.font?.weight || 400) }">
+                            <div class="preview-label">Preview: <strong>{{ project.font?.name || 'System chain' }}</strong></div>
+                            <div class="preview-text">The quick brown fox jumps over the lazy dog 0123456789</div>
+                            <div class="font-actions" v-if="fontLocalPath">
+                                <button @click="removeProjectFont" class="btn-sm danger">Remove project font</button>
+                            </div>
                         </div>
-                        <div v-if="copyError" class="error">{{ copyError }}</div>
-                    </div>
+                        <div class="form-row">
+                            <label class="inspector-label">
+                                Fallback
+                                <select :value="fallbackType" @change="(e: any) => setFallbackType(e.target.value)" class="inspector-input">
+                                    <option value="sans">sans-serif</option>
+                                    <option value="serif">serif</option>
+                                    <option value="mono">monospace</option>
+                                    <option value="display">display</option>
+                                </select>
+                            </label>
+                        </div>
+                        <AnimatableNumberField
+                            label="Weight"
+                            :model-value="project.font?.weight || 400"
+                            :min="100"
+                            :max="900"
+                            :step="100"
+                            :fallback-value="400"
+                            @update:model-value="setFontWeight"
+                        />
+                        <div class="form-row">
+                            <label class="inspector-label">
+                                Style
+                                <select :value="project.font?.style || 'normal'" @change="(e: any) => setFontStyle(e.target.value)" class="inspector-input">
+                                    <option value="normal">Normal</option>
+                                    <option value="italic">Italic</option>
+                                    <option value="oblique">Oblique</option>
+                                </select>
+                            </label>
+                        </div>
+                    </details>
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">System Fonts</summary>
+                        <div class="font-search">
+                            <input type="search" v-model="fontQuery" class="inspector-input" placeholder="Search fonts..." />
+                            <div class="font-list">
+                                <div v-for="f in filteredFonts" :key="f.filePath" class="font-item">
+                                    <div class="font-name">{{ f.familyGuess }} <span class="file-name">({{ f.fileName }})</span></div>
+                                    <button :disabled="copyingFontPath === f.filePath" @click="() => setFontFromSystem(f)" class="btn-sm">Set font</button>
+                                </div>
+                                <div v-if="copyError" class="error">{{ copyError }}</div>
+                            </div>
+                        </div>
+                    </details>
                 </div>
             </div>
         </details>
 
-        <!-- Analysis Overlays -->
-        <details class="inspector-section">
-            <summary class="inspector-section__title">Analysis Overlays</summary>
-            <div class="inspector-section__content">
-                <label class="overlay-toggle">
-                    <input type="checkbox" :checked="overlayOpts.showEnergy" @change="toggleOverlay('showEnergy')" />
-                    Energy
-                </label>
-                <label class="overlay-toggle">
-                    <input type="checkbox" :checked="overlayOpts.showBeats" @change="toggleOverlay('showBeats')" />
-                    Beats
-                </label>
-                <label class="overlay-toggle">
-                    <input type="checkbox" :checked="overlayOpts.showBeatStrength" @change="toggleOverlay('showBeatStrength')" />
-                    Beat Strength
-                </label>
-                <label class="overlay-toggle">
-                    <input type="checkbox" :checked="overlayOpts.showBands" @change="toggleOverlay('showBands')" />
-                    Frequency Bands
-                </label>
-            </div>
-        </details>
+        <AnalysisOverlaysSection
+            :overlay-opts="overlayOpts"
+            @update:overlay-opts="(value) => emit('update:overlayOpts', value)"
+        />
     </div>
 </template>

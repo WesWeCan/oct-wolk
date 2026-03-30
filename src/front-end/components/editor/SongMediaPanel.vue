@@ -8,6 +8,7 @@ import { ProjectService } from '@/front-end/services/ProjectService';
 const props = defineProps<{
     projectId: string;
     song: WolkProjectSong;
+    showHeader?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -144,8 +145,8 @@ const onCoverDragLeave = () => {
 
 <template>
     <div class="sidebar-section song-media-panel">
-        <div class="song-media-panel__header">
-            <span class="song-media-panel__title">Song</span>
+        <div v-if="showHeader !== false" class="song-media-panel__header">
+            <span class="song-media-panel__title">Media</span>
         </div>
 
         <div class="song-media-panel__body">

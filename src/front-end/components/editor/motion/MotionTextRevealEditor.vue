@@ -33,8 +33,6 @@ const percentFromPortion = (portion: number): number => Math.round(portion * 100
 const portionFromPercent = (percent: number): number => Math.max(0.01, Math.min(1, percent / 100));
 const rangeStart = computed(() => percentFromPortion(resolved.value.textRevealEnterWindow));
 const rangeEnd = computed(() => 100 - percentFromPortion(resolved.value.textRevealExitWindow));
-const holdPercent = computed(() => Math.max(0, rangeEnd.value - rangeStart.value));
-
 const updateMode = (mode: TextRevealMode) => {
     if (mode !== 'typewriter') {
         emitPatch({ textRevealMode: mode });
@@ -90,15 +88,15 @@ const updateShowCursor = (enabled: boolean) => emitPatch({
         </div>
 
         <template v-if="resolved.textRevealMode === 'typewriter'">
-            <div class="inspector-note">
-                Typewriter usually looks best with Motion Off or very subtle motion. If it feels too busy, use the Motion section's All Off preset.
-            </div>
+            <span class="inspector-hint">
+                Typewriter usually works best with very subtle motion or an `All Off` motion preset.
+            </span>
 
             <TypewriterTimingRangeField
                 label="Typewriter Timing"
                 :start-value="rangeStart"
                 :end-value="rangeEnd"
-                hint="Type, hold, and delete across the cue using reveal timing only."
+                hint="Type from the left handle and delete from the right handle."
                 @update:start-value="updateEnterPortion"
                 @update:end-value="updateExitBoundary"
             />
@@ -120,21 +118,6 @@ const updateShowCursor = (enabled: boolean) => emitPatch({
                     >On</button>
                 </div>
                 <span class="inspector-hint">Show a typing cursor while entering or backspacing.</span>
-            </div>
-
-            <div class="motion-text-reveal-editor__stats">
-                <div class="motion-text-reveal-editor__stat">
-                    <span>Type</span>
-                    <strong>{{ percentFromPortion(resolved.textRevealEnterWindow) }}%</strong>
-                </div>
-                <div class="motion-text-reveal-editor__stat">
-                    <span>Delete</span>
-                    <strong>{{ percentFromPortion(resolved.textRevealExitWindow) }}%</strong>
-                </div>
-                <div class="motion-text-reveal-editor__stat">
-                    <span>Hold</span>
-                    <strong>{{ holdPercent }}%</strong>
-                </div>
             </div>
         </template>
     </div>

@@ -19,7 +19,7 @@ defineProps<{
                 These controls animate the word sprite layer only. Use Object, Camera, and Material above to shape the base 3D primitive.
             </div>
 
-            <details class="style-sub-section" open>
+            <details class="style-sub-section">
                 <summary class="style-sub-section__header">Text Reveal</summary>
                 <MotionTextRevealEditor
                     :value="api.params.textReveal"
@@ -28,7 +28,7 @@ defineProps<{
                 />
             </details>
 
-            <details class="style-sub-section" open>
+            <details class="style-sub-section">
                 <summary class="style-sub-section__header">Lifecycle</summary>
                 <div class="inspector-field">
                     <span class="inspector-hint">Controls how long each word sprite stays on the primitive before it exits or gets replaced.</span>
@@ -66,7 +66,7 @@ defineProps<{
                 />
             </details>
 
-            <details class="style-sub-section" open>
+            <details class="style-sub-section">
                 <summary class="style-sub-section__header">Motion</summary>
                 <MotionEnterExitEditor
                     :enter-value="motionTrack.block.enter"

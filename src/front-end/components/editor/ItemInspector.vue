@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiPlus, mdiTrashCanOutline } from '@mdi/js';
 import type { TimelineItem, LyricTrack } from '@/types/project_types';
 
 const props = defineProps<{
@@ -129,142 +131,143 @@ const formatMs = (ms: number) => {
     const s = sec % 60;
     return `${m}:${String(s).padStart(2, '0')}.${String(remainder).padStart(3, '0')}`;
 };
+
+const trackGroups = computed(() => ([
+    { title: 'Verses', kindLabel: 'Verse', tracks: verseTracks.value },
+    { title: 'Lines', kindLabel: 'Line', tracks: lineTracks.value },
+    { title: 'Words', kindLabel: 'Word', tracks: wordTracks.value },
+    { title: 'Custom', kindLabel: 'Custom', tracks: customTracks.value },
+]).filter((group) => group.tracks.length));
 </script>
 
 <template>
     <div class="item-inspector">
-        <div class="item-inspector__header">
-            <span class="item-inspector__title">Item Inspector</span>
-        </div>
+        <details class="inspector-section" open>
+            <summary class="inspector-section__title">Lyric Items</summary>
+            <div class="inspector-section__content">
+                <div class="motion-tab style-v2">
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Tracks</summary>
+                        <div class="item-inspector__track-groups">
+                            <div v-for="group in trackGroups" :key="group.title" class="track-group">
+                                <div class="track-group__title">{{ group.title }}</div>
+                                <div class="track-group__rows">
+                                    <div
+                                        v-for="track in group.tracks"
+                                        :key="track.id"
+                                        class="track-group__row"
+                                        :style="{ '--track-color': track.color }"
+                                    >
+                                        <div class="track-group__info">
+                                            <div class="track-group__copy">
+                                                <span class="track-group__name">{{ track.name }}</span>
+                                                <span class="track-group__meta">{{ group.kindLabel }}<span v-if="track.locked"> · Locked</span></span>
+                                            </div>
+                                        </div>
+                                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">
+                                            <SvgIcon type="mdi" :path="mdiPlus" :size="14" />
+                                            <span>Add at Playhead</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-if="!trackGroups.length" class="track-group__empty">No lyric tracks yet.</div>
+                        </div>
+                    </details>
 
-        <div class="item-inspector__track-groups">
-            <div class="track-group">
-                <div class="track-group__title">Verses</div>
-                <div v-if="verseTracks.length" class="track-group__rows">
-                    <div v-for="track in verseTracks" :key="track.id" class="track-group__row">
-                        <span class="track-group__name">{{ track.name }}<span v-if="track.locked"> (Locked)</span></span>
-                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">+ Add at Playhead</button>
-                    </div>
+                    <details class="style-sub-section" open>
+                        <summary class="style-sub-section__header">Selected Item</summary>
+                        <template v-if="selectedItem">
+                            <div class="item-inspector__selected-track" :style="{ '--track-color': selectedItem.track.color }">
+                                <span class="item-inspector__selected-dot"></span>
+                                <div class="item-inspector__selected-copy">
+                                    <span class="item-inspector__selected-name">{{ selectedItem.track.name }}</span>
+                                    <span class="item-inspector__selected-meta">Track for this lyric item</span>
+                                </div>
+                            </div>
+
+                            <div class="motion-tab__field">
+                                <label>Text</label>
+                                <textarea
+                                    :value="selectedItem.item.text"
+                                    @change="onTextChange"
+                                    class="inspector-input"
+                                    rows="3"
+                                    :disabled="isSelectedTrackLocked"
+                                ></textarea>
+                            </div>
+
+                            <div class="motion-tab__field">
+                                <label>Start (ms)</label>
+                                <input
+                                    type="number"
+                                    :value="selectedItem.item.startMs"
+                                    @change="onStartMsChange"
+                                    class="inspector-input"
+                                    min="0"
+                                    step="10"
+                                    :disabled="isSelectedTrackLocked"
+                                />
+                                <span class="inspector-hint">{{ formatMs(selectedItem.item.startMs) }}</span>
+                            </div>
+
+                            <div class="motion-tab__field">
+                                <label>End (ms)</label>
+                                <input
+                                    type="number"
+                                    :value="selectedItem.item.endMs"
+                                    @change="onEndMsChange"
+                                    class="inspector-input"
+                                    min="0"
+                                    step="10"
+                                    :disabled="isSelectedTrackLocked"
+                                />
+                                <span class="inspector-hint">{{ formatMs(selectedItem.item.endMs) }}</span>
+                            </div>
+
+                            <div class="motion-tab__field">
+                                <label>Duration</label>
+                                <div class="item-inspector__readout">{{ formatMs(selectedItem.item.endMs - selectedItem.item.startMs) }}</div>
+                            </div>
+
+                            <div class="item-inspector__actions">
+                                <button
+                                    class="item-inspector__pill"
+                                    :disabled="!canSplit || isSelectedTrackLocked"
+                                    @click="emit('splitItem', selectedItem!.item.id, playheadMs)"
+                                    title="Split at playhead (S)"
+                                >Split</button>
+                                <button
+                                    class="item-inspector__pill"
+                                    :disabled="!canMerge || isSelectedTrackLocked"
+                                    @click="emit('mergeWithNext', selectedItem!.item.id)"
+                                    title="Merge with next item"
+                                >Merge</button>
+                                <button
+                                    class="item-inspector__pill"
+                                    :disabled="!canAddAtLocation || isSelectedTrackLocked"
+                                    @click="addAtPlayhead"
+                                    title="Add new item at playhead"
+                                >
+                                    <SvgIcon type="mdi" :path="mdiPlus" :size="14" />
+                                    <span>Add at Playhead</span>
+                                </button>
+                                <button
+                                    class="item-inspector__pill item-inspector__pill--danger"
+                                    :disabled="isSelectedTrackLocked"
+                                    @click="emit('deleteItem', selectedItem!.item.id)"
+                                    title="Delete item (Del)"
+                                >
+                                    <SvgIcon type="mdi" :path="mdiTrashCanOutline" :size="12" />
+                                </button>
+                            </div>
+                        </template>
+                        <div v-else class="inspector-empty">
+                            Select an item on the timeline to inspect.
+                        </div>
+                    </details>
                 </div>
-                <div v-else class="track-group__empty">No verse tracks</div>
             </div>
-
-            <div class="track-group">
-                <div class="track-group__title">Lines</div>
-                <div v-if="lineTracks.length" class="track-group__rows">
-                    <div v-for="track in lineTracks" :key="track.id" class="track-group__row">
-                        <span class="track-group__name">{{ track.name }}<span v-if="track.locked"> (Locked)</span></span>
-                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">+ Add at Playhead</button>
-                    </div>
-                </div>
-                <div v-else class="track-group__empty">No line tracks</div>
-            </div>
-
-            <div class="track-group">
-                <div class="track-group__title">Words</div>
-                <div v-if="wordTracks.length" class="track-group__rows">
-                    <div v-for="track in wordTracks" :key="track.id" class="track-group__row">
-                        <span class="track-group__name">{{ track.name }}<span v-if="track.locked"> (Locked)</span></span>
-                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">+ Add at Playhead</button>
-                    </div>
-                </div>
-                <div v-else class="track-group__empty">No word tracks</div>
-            </div>
-
-            <div class="track-group" v-if="customTracks.length">
-                <div class="track-group__title">Custom</div>
-                <div class="track-group__rows">
-                    <div v-for="track in customTracks" :key="track.id" class="track-group__row">
-                        <span class="track-group__name">{{ track.name }}<span v-if="track.locked"> (Locked)</span></span>
-                        <button class="track-group__add" :disabled="!canAddToTrack(track)" @click="addAtPlayheadForTrack(track.id)">+ Add at Playhead</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <template v-if="selectedItem">
-            <div class="inspector-field">
-                <label>Text</label>
-                <textarea
-                    :value="selectedItem.item.text"
-                    @change="onTextChange"
-                    class="inspector-input"
-                    rows="3"
-                    :disabled="isSelectedTrackLocked"
-                ></textarea>
-            </div>
-
-            <div class="inspector-field">
-                <label>Track</label>
-                <span class="inspector-value">{{ selectedItem.track.name }}</span>
-            </div>
-
-            <div class="inspector-row">
-                <div class="inspector-field half">
-                    <label>Start (ms)</label>
-                    <input
-                        type="number"
-                        :value="selectedItem.item.startMs"
-                        @change="onStartMsChange"
-                        class="inspector-input"
-                        min="0"
-                        step="10"
-                        :disabled="isSelectedTrackLocked"
-                    />
-                    <span class="inspector-hint">{{ formatMs(selectedItem.item.startMs) }}</span>
-                </div>
-                <div class="inspector-field half">
-                    <label>End (ms)</label>
-                    <input
-                        type="number"
-                        :value="selectedItem.item.endMs"
-                        @change="onEndMsChange"
-                        class="inspector-input"
-                        min="0"
-                        step="10"
-                        :disabled="isSelectedTrackLocked"
-                    />
-                    <span class="inspector-hint">{{ formatMs(selectedItem.item.endMs) }}</span>
-                </div>
-            </div>
-
-            <div class="inspector-field">
-                <label>Duration</label>
-                <span class="inspector-value">{{ formatMs(selectedItem.item.endMs - selectedItem.item.startMs) }}</span>
-            </div>
-
-            <div class="inspector-actions">
-                <button
-                    :disabled="!canSplit || isSelectedTrackLocked"
-                    @click="emit('splitItem', selectedItem!.item.id, playheadMs)"
-                    title="Split at playhead (S)"
-                >Split</button>
-                <button
-                    :disabled="!canMerge || isSelectedTrackLocked"
-                    @click="emit('mergeWithNext', selectedItem!.item.id)"
-                    title="Merge with next item"
-                >Merge</button>
-                <button
-                    :disabled="!canAddAtLocation || isSelectedTrackLocked"
-                    @click="addAtPlayhead"
-                    title="Add new item at playhead"
-                >+ Add</button>
-                <button
-                    class="danger"
-                    :disabled="isSelectedTrackLocked"
-                    @click="emit('deleteItem', selectedItem!.item.id)"
-                    title="Delete item (Del)"
-                >Delete</button>
-            </div>
-        </template>
-
-        <template v-else>
-            <div class="inspector-empty">
-                Select an item on the timeline to inspect
-            </div>
-            <div class="inspector-actions">
-                ----
-            </div>
-        </template>
+        </details>
     </div>
 </template>

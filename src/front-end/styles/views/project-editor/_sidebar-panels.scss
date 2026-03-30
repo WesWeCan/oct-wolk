@@ -43,6 +43,7 @@
 
 .song-media-panel {
     flex-shrink: 0;
+    margin-top: 10px;
 
     &__header {
         display: flex;
@@ -84,6 +85,8 @@
         flex-direction: column;
         gap: 6px;
         text-align: left;
+        width: max-content;
+        max-width: 100%;
 
         &:disabled {
             opacity: 0.7;
@@ -92,15 +95,17 @@
     }
 
     &__cover-image {
-        width: 100%;
-        max-width: 132px;
+        width: min(180px, 100%);
         aspect-ratio: 1;
-        border-radius: 8px;
-        border: 1px solid #2f3440;
-        background-color: #141821;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background:
+            linear-gradient(180deg, rgba(26, 31, 42, 0.98), rgba(18, 22, 31, 0.98));
         background-size: cover;
         background-position: center;
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+        box-shadow:
+            0 12px 28px rgba(0, 0, 0, 0.24),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.03);
         overflow: hidden;
     }
 
@@ -132,8 +137,10 @@
 
     &__cover:hover &__cover-image,
     &__cover.drag-over &__cover-image {
-        border-color: #2a6af0;
-        box-shadow: 0 0 0 1px rgba(42, 106, 240, 0.35);
+        border-color: rgba(0, 212, 255, 0.4);
+        box-shadow:
+            0 14px 32px rgba(0, 0, 0, 0.28),
+            0 0 0 1px rgba(0, 212, 255, 0.18);
     }
 
     &__meta-label {
@@ -229,9 +236,26 @@
     &__header {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         padding: 6px 0;
         border-bottom: 1px solid #333;
         margin-bottom: 8px;
+        cursor: pointer;
+        list-style: none;
+
+        &::-webkit-details-marker {
+            display: none;
+        }
+
+        &::after {
+            content: '';
+            width: 0;
+            height: 0;
+            border-top: 4px solid transparent;
+            border-bottom: 4px solid transparent;
+            border-left: 6px solid #8ea7c0;
+            transition: transform 150ms ease;
+        }
     }
 
     &__title {
@@ -242,10 +266,18 @@
         font-weight: 600;
     }
 
+    &__body {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+    }
+
     &__editor {
         flex: 1;
         overflow-y: auto;
         min-height: 0;
+        max-height: min(38vh, 360px);
+        scrollbar-gutter: stable;
 
         .ProseMirror {
             outline: none;
@@ -253,7 +285,7 @@
             font-size: 13px;
             line-height: 1.6;
             color: #ddd;
-            min-height: 100px;
+            min-height: 100%;
 
             p {
                 margin: 0 0 2px;
@@ -264,7 +296,7 @@
             // Blue underline on each decorated word token (not spaces).
             .lyric-word {
                 text-decoration-line: underline;
-                text-decoration-color: #4fc3f7;
+                text-decoration-color: var(--raw-lyrics-word-color, #4fc3f7);
                 text-decoration-thickness: 1px;
                 text-underline-offset: 0.2em;
             }
@@ -278,7 +310,7 @@
                 bottom: 2px;
                 width: 2px;
                 border-radius: 1px;
-                background: #81c784;
+                background: var(--raw-lyrics-line-color, #81c784);
             }
 
             // Red lane: one continuous verse block between empty lines.
@@ -290,7 +322,7 @@
                 position: absolute;
                 left: 3px;
                 width: 2px;
-                background: #e57373;
+                background: var(--raw-lyrics-verse-color, #e57373);
             }
 
             p.verse-start::after {
@@ -317,5 +349,20 @@
                 border-radius: 1px;
             }
         }
+    }
+
+    &:not([open]) {
+        .raw-lyrics-panel__body {
+            display: none;
+        }
+
+        .raw-lyrics-panel__header {
+            margin-bottom: 0;
+            border-bottom: 0;
+        }
+    }
+
+    &[open] .raw-lyrics-panel__header::after {
+        transform: rotate(90deg);
     }
 }

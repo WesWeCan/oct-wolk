@@ -31,21 +31,29 @@
     grid-area: toolbar;
     padding: 8px 12px;
     border-bottom: 1px solid #222;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 8px;
     align-items: center;
-    justify-content: space-between; // Space between left and right sections
 
     .toolbar__left {
         display: flex;
         gap: 8px;
         align-items: center;
+        min-width: 0;
+    }
+
+    .toolbar__center {
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .toolbar__right {
         display: flex;
         gap: 8px;
         align-items: center;
+        justify-self: end;
         margin-left: auto;
     }
 }
@@ -107,13 +115,33 @@
 
 @media (max-width: 600px) {
     .editor__toolbar {
-        flex-wrap: wrap;
-        gap: 6px;
-        padding: 6px 8px;
+        gap: 8px;
+        padding: 8px 10px;
+    }
 
-        button {
-            padding: 6px 12px;
-            font-size: 13px;
+    .editor--stacked .editor__toolbar {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+
+        .toolbar__left {
+            grid-column: 1;
+            min-width: 0;
+        }
+
+        .toolbar__center {
+            grid-column: 2;
+            justify-self: end;
+        }
+
+        .toolbar__right {
+            grid-column: 1 / -1;
+            justify-self: center;
+            margin-left: 0;
+        }
+
+        .toolbar-icon-btn {
+            width: 40px;
+            height: 40px;
         }
     }
 

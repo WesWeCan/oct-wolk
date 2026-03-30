@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import SvgIcon from '@jamescoyle/vue-icon';
-import { mdiClose, mdiMusicNote, mdiPlus } from '@mdi/js';
+import { mdiMusicNote, mdiPlus, mdiTrashCanOutline } from '@mdi/js';
 import type { WolkProject } from '@/types/project_types';
 import { ProjectService } from '@/front-end/services/ProjectService';
 
@@ -80,14 +80,15 @@ const deleteProject = async (id: string) => {
     deletingId.value = null;
 };
 
-const formatDate = (ts: number) => {
-    return new Date(ts).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+const formatLastEdited = (ts: number) => {
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }).format(new Date(ts));
+};
+
+const formatLyricTrackCount = (count: number) => {
+    return `${count} lyric track${count === 1 ? '' : 's'}`;
 };
 
 onMounted(() => {
@@ -176,9 +177,12 @@ onMounted(() => {
                     <div class="project-row__info">
                         <h3 class="project-row__title">{{ project.song.title || 'Untitled' }}</h3>
                         <div class="project-row__meta">
-                            <span class="meta-date">{{ formatDate(project.updatedAt) }}</span>
-                            <span v-if="project.lyricTracks.length" class="meta-tracks">
-                                {{ project.lyricTracks.length }} track{{ project.lyricTracks.length === 1 ? '' : 's' }}
+                            <span class="project-row__meta-item project-row__meta-item--date">
+                                <span class="meta-label">Last edited</span>
+                                <span class="meta-value">{{ formatLastEdited(project.updatedAt) }}</span>
+                            </span>
+                            <span v-if="project.lyricTracks.length" class="project-row__meta-item">
+                                <span class="meta-value">{{ formatLyricTrackCount(project.lyricTracks.length) }}</span>
                             </span>
                         </div>
                     </div>
@@ -194,7 +198,7 @@ onMounted(() => {
 
                 <div v-else class="project-row__actions">
                     <button @click.stop="confirmDelete(project.id)" class="action-btn danger" title="Delete">
-                        <SvgIcon type="mdi" :path="mdiClose" :size="14" />
+                        <SvgIcon type="mdi" :path="mdiTrashCanOutline" :size="14" />
                     </button>
                 </div>
             </article>

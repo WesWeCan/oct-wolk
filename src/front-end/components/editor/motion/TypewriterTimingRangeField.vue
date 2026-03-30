@@ -40,9 +40,6 @@ const normalizedEnd = computed(() => clamp(props.endValue));
 const rangeSpan = computed(() => Math.max(1, props.max - props.min));
 const startPercent = computed(() => ((normalizedStart.value - props.min) / rangeSpan.value) * 100);
 const endPercent = computed(() => ((normalizedEnd.value - props.min) / rangeSpan.value) * 100);
-const holdPercent = computed(() => Math.max(0, normalizedEnd.value - normalizedStart.value));
-const deletePercent = computed(() => Math.max(0, props.max - normalizedEnd.value));
-
 const emitStart = (value: number) => {
     emit('update:startValue', quantize(clamp(value, props.min, normalizedEnd.value)));
 };
@@ -147,18 +144,6 @@ const onWindowPointerDown = (event: PointerEvent) => {
             <span v-if="hint" class="inspector-hint">{{ hint }}</span>
         </label>
 
-        <div class="typewriter-timing-field__stats">
-            <span class="typewriter-timing-field__stat" :class="{ 'is-disabled': !startEnabled }">
-                Type: {{ normalizedStart.toFixed(0) }}%
-            </span>
-            <span class="typewriter-timing-field__stat">
-                Hold: {{ holdPercent.toFixed(0) }}%
-            </span>
-            <span class="typewriter-timing-field__stat" :class="{ 'is-disabled': !endEnabled }">
-                Delete: {{ deletePercent.toFixed(0) }}%
-            </span>
-        </div>
-
         <div ref="trackRef" class="typewriter-timing-field__track">
             <div
                 class="typewriter-timing-field__segment typewriter-timing-field__segment--enter"
@@ -185,7 +170,7 @@ const onWindowPointerDown = (event: PointerEvent) => {
                 :style="{ left: `${startPercent}%` }"
                 @pointerdown.prevent="onStartHandlePointerDown"
             >
-                <span class="typewriter-timing-field__handle-label">In</span>
+                <span class="typewriter-timing-field__handle-label">Enter</span>
             </button>
 
             <button
@@ -195,13 +180,8 @@ const onWindowPointerDown = (event: PointerEvent) => {
                 :style="{ left: `${endPercent}%` }"
                 @pointerdown.prevent="onEndHandlePointerDown"
             >
-                <span class="typewriter-timing-field__handle-label">Out</span>
+                <span class="typewriter-timing-field__handle-label">Exit</span>
             </button>
-        </div>
-
-        <div class="typewriter-timing-field__legend">
-            <span>Type in from the left handle.</span>
-            <span>Backspace starts at the right handle.</span>
         </div>
     </div>
 </template>

@@ -47,7 +47,7 @@ const onFileChange = async (
 </script>
 
 <template>
-    <details class="inspector-section" open>
+    <details class="inspector-section">
         <summary class="inspector-section__title">Object</summary>
         <div class="inspector-section__content">
             <div class="motion-tab style-v2">
@@ -99,12 +99,18 @@ const onFileChange = async (
                     <AnimatableNumberField v-if="api.params.primitive.type === 'torus'" label="Radial Segments" :model-value="api.params.primitive.torusRadialSegments" :min="3" :max="64" :step="1" :disabled="api.isLocked" @update:model-value="api.updatePathValue('params.primitive.torusRadialSegments', $event)" />
                     <AnimatableNumberField v-if="api.params.primitive.type === 'torus'" label="Tubular Segments" :model-value="api.params.primitive.torusTubularSegments" :min="8" :max="128" :step="1" :disabled="api.isLocked" @update:model-value="api.updatePathValue('params.primitive.torusTubularSegments', $event)" />
 
-                    <div v-if="['icosahedron', 'tetrahedron', 'octahedron', 'dodecahedron'].includes(api.params.primitive.type)" class="inspector-note">
-                        This shape does not have any extra geometry controls yet.
-                    </div>
+                    <span v-if="['icosahedron', 'tetrahedron', 'octahedron', 'dodecahedron'].includes(api.params.primitive.type)" class="inspector-hint">
+                        This shape does not have extra geometry controls yet.
+                    </span>
                     <template v-if="api.params.primitive.type === 'model'">
                         <div class="style-v2__field">
                             <span class="style-v2__field-label">OBJ Geometry</span>
+                            <input
+                                class="inspector-input"
+                                type="text"
+                                :value="api.getAssetLabel(api.params.primitive.modelObjUrl)"
+                                disabled
+                            >
                             <div class="inspector-button-row">
                                 <button type="button" class="btn-sm" :disabled="api.isLocked || !api.projectId || api.modelUploadState.obj" @click="openPicker(objInput)">
                                     {{ api.params.primitive.modelObjUrl ? 'Replace OBJ' : 'Upload OBJ' }}
@@ -112,7 +118,7 @@ const onFileChange = async (
                                 <button
                                     v-if="api.params.primitive.modelObjUrl"
                                     type="button"
-                                    class="btn-sm btn-secondary"
+                                    class="btn-sm"
                                     :disabled="api.isLocked || api.modelUploadState.obj"
                                     @click="api.clearModelAsset('obj')"
                                 >
@@ -128,13 +134,17 @@ const onFileChange = async (
                                 :disabled="api.isLocked || !api.projectId || api.modelUploadState.obj"
                                 @change="onFileChange($event, api, 'obj')"
                             >
-                            <div class="inspector-note">
-                                {{ api.getAssetLabel(api.params.primitive.modelObjUrl) }}
-                            </div>
+                            <span class="inspector-hint">Upload the OBJ geometry used by this block.</span>
                         </div>
 
                         <div class="style-v2__field">
                             <span class="style-v2__field-label">Base Texture</span>
+                            <input
+                                class="inspector-input"
+                                type="text"
+                                :value="api.getAssetLabel(api.params.primitive.modelTextureUrl)"
+                                disabled
+                            >
                             <div class="inspector-button-row">
                                 <button type="button" class="btn-sm" :disabled="api.isLocked || !api.projectId || api.modelUploadState.texture" @click="openPicker(textureInput)">
                                     {{ api.params.primitive.modelTextureUrl ? 'Replace Texture' : 'Upload Texture' }}
@@ -142,7 +152,7 @@ const onFileChange = async (
                                 <button
                                     v-if="api.params.primitive.modelTextureUrl"
                                     type="button"
-                                    class="btn-sm btn-secondary"
+                                    class="btn-sm"
                                     :disabled="api.isLocked || api.modelUploadState.texture"
                                     @click="api.clearModelAsset('texture')"
                                 >
@@ -158,13 +168,17 @@ const onFileChange = async (
                                 :disabled="api.isLocked || !api.projectId || api.modelUploadState.texture"
                                 @change="onFileChange($event, api, 'texture')"
                             >
-                            <div class="inspector-note">
-                                {{ api.getAssetLabel(api.params.primitive.modelTextureUrl) }}
-                            </div>
+                            <span class="inspector-hint">Optional color texture for the uploaded model.</span>
                         </div>
 
                         <div class="style-v2__field">
                             <span class="style-v2__field-label">Normal Map</span>
+                            <input
+                                class="inspector-input"
+                                type="text"
+                                :value="api.getAssetLabel(api.params.primitive.modelNormalUrl)"
+                                disabled
+                            >
                             <div class="inspector-button-row">
                                 <button type="button" class="btn-sm" :disabled="api.isLocked || !api.projectId || api.modelUploadState.normal" @click="openPicker(normalInput)">
                                     {{ api.params.primitive.modelNormalUrl ? 'Replace Normal Map' : 'Upload Normal Map' }}
@@ -172,7 +186,7 @@ const onFileChange = async (
                                 <button
                                     v-if="api.params.primitive.modelNormalUrl"
                                     type="button"
-                                    class="btn-sm btn-secondary"
+                                    class="btn-sm"
                                     :disabled="api.isLocked || api.modelUploadState.normal"
                                     @click="api.clearModelAsset('normal')"
                                 >
@@ -188,20 +202,25 @@ const onFileChange = async (
                                 :disabled="api.isLocked || !api.projectId || api.modelUploadState.normal"
                                 @change="onFileChange($event, api, 'normal')"
                             >
-                            <div class="inspector-note">
-                                {{ api.getAssetLabel(api.params.primitive.modelNormalUrl) }}
-                            </div>
+                            <span class="inspector-hint">Optional normal map for extra surface detail.</span>
                         </div>
 
-                        <div v-if="api.modelUploadError" class="inspector-note">
+                        <div v-if="api.modelUploadError" class="inspector-hint" style="color: #e57373;">
                             {{ api.modelUploadError }}
                         </div>
-                        <div class="inspector-note">
-                            Upload the OBJ plus any texture maps here. Imported materials stay app-controlled so Hybrid wireframe still works cleanly.
-                        </div>
+                        <span class="inspector-hint">
+                            Imported materials stay app-controlled so Hybrid wireframe still behaves consistently.
+                        </span>
                     </template>
-                    <div class="inspector-note">
-                        Anchor count now follows the current primitive geometry automatically.
+                    <div class="style-v2__field">
+                        <span class="style-v2__field-label">Anchor Slots</span>
+                        <input
+                            class="inspector-input"
+                            type="text"
+                            :value="`${api.anchorCapacity} geometry-driven slots`"
+                            disabled
+                        >
+                        <span class="inspector-hint">Word placement updates automatically when the primitive geometry changes.</span>
                     </div>
                 </details>
 

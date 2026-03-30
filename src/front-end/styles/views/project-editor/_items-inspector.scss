@@ -220,80 +220,184 @@
 // ===== Item inspector =====
 
 .item-inspector {
-    padding: 12px;
-
-    &__header {
-        display: flex;
-        align-items: center;
-        padding: 6px 0;
-        border-bottom: 1px solid #333;
-        margin-bottom: 10px;
-    }
-
-    &__title {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #888;
-        font-weight: 600;
-    }
+    padding: 0;
 
     &__track-groups {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 10px;
+    }
+
+    &__selected-track {
+        display: flex;
+        align-items: center;
+        gap: 10px;
         margin-bottom: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-left: 3px solid var(--track-color, #00d4ff);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    &__selected-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: var(--track-color, #00d4ff);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+        flex-shrink: 0;
+    }
+
+    &__selected-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+    }
+
+    &__selected-name {
+        color: #eef3f8;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    &__selected-meta {
+        color: #8d96a3;
+        font-size: 11px;
+    }
+
+    &__readout {
+        padding: 9px 10px;
+        border: 1px solid #353c46;
+        border-radius: 8px;
+        background: #1a1f27;
+        color: #eef3f8;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    &__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    &__pill {
+        width: max-content;
+        max-width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 7px 12px;
+        border: 1px solid #3b4450;
+        border-radius: 999px;
+        background: #24272d;
+        color: #eef3f8;
+        cursor: pointer;
+        font-size: 11px;
+        white-space: nowrap;
+        transition: background-color 150ms ease, border-color 150ms ease;
+
+        &:hover:not(:disabled) {
+            background: rgba(0, 212, 255, 0.14);
+            border-color: rgba(0, 212, 255, 0.42);
+        }
+
+        &:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+    }
+
+    &__pill--danger {
+        color: #fff;
+        border-color: #d04b59;
+        background: #c43d4c;
+
+        &:hover:not(:disabled) {
+            background: #d94b5b;
+            border-color: #d94b5b;
+        }
     }
 }
 
 .track-group {
-    border: 1px solid #333;
-    border-radius: 4px;
-    padding: 6px;
-    background: #161616;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 
     &__title {
         font-size: 10px;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        color: #aaa;
-        margin-bottom: 6px;
+        color: #8d96a3;
         font-weight: 600;
     }
 
     &__rows {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 8px;
     }
 
     &__row {
         display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-left: 3px solid var(--track-color, #00d4ff);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+    }
+
+    &__info {
+        display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 8px;
+        gap: 0;
+        min-width: 0;
+    }
+
+    &__copy {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
     }
 
     &__name {
+        font-size: 12px;
+        color: #eef3f8;
+        font-weight: 600;
+    }
+
+    &__meta {
         font-size: 11px;
-        color: #ddd;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        color: #8d96a3;
     }
 
     &__add {
-        border: 1px solid #444;
-        background: #232323;
-        color: #ccc;
-        border-radius: 3px;
-        font-size: 10px;
-        padding: 2px 6px;
+        width: max-content;
+        max-width: 100%;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #3b4450;
+        background: #24272d;
+        color: #eef3f8;
+        border-radius: 999px;
+        font-size: 11px;
+        padding: 7px 12px;
         cursor: pointer;
         flex-shrink: 0;
 
-        &:hover {
-            background: #2e2e2e;
+        &:hover:not(:disabled) {
+            background: rgba(0, 212, 255, 0.14);
+            border-color: rgba(0, 212, 255, 0.42);
             color: #fff;
         }
 
@@ -328,12 +432,6 @@
     }
 }
 
-.inspector-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
-}
-
 .inspector-input {
     width: 100%;
     background: #222;
@@ -362,47 +460,9 @@
     display: block;
 }
 
-.inspector-actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 12px;
-
-    button {
-        flex: 1;
-        padding: 5px 8px;
-        font-size: 11px;
-        background: #2a2a2a;
-        border: 1px solid #444;
-        color: #ccc;
-        border-radius: 3px;
-        cursor: pointer;
-
-        &:hover:not(:disabled) {
-            background: #333;
-            color: #fff;
-        }
-
-        &:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-        }
-
-        &.danger {
-            color: #fff;
-            border-color: #633;
-            background: rgba(229, 115, 115, 0.2);
-
-            &:hover:not(:disabled) {
-                background: #633;
-                color: #fff;
-            }
-        }
-    }
-}
-
 .inspector-empty {
     font-size: 12px;
     color: #666;
     font-style: italic;
-    padding: 12px 0;
+    padding: 6px 0;
 }

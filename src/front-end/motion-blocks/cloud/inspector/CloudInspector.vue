@@ -268,7 +268,7 @@ const togglePropertyKeyframing = (path: string) => {
         </div>
 
         <template v-else>
-            <details class="inspector-section" open>
+            <details class="inspector-section">
                 <summary class="inspector-section__title">Source &amp; Timing</summary>
                 <div class="inspector-section__content">
                     <div class="inspector-field">
@@ -328,7 +328,7 @@ const togglePropertyKeyframing = (path: string) => {
                 </div>
             </details>
 
-            <details class="inspector-section" open>
+            <details class="inspector-section">
                 <summary class="inspector-section__title">Layout</summary>
                 <div class="inspector-section__content">
                     <AnimatableNumberField
@@ -395,7 +395,7 @@ const togglePropertyKeyframing = (path: string) => {
             <details class="inspector-section">
                 <summary class="inspector-section__title">Animation</summary>
                 <div class="inspector-section__content">
-                    <details class="style-sub-section" open>
+                    <details class="style-sub-section">
                         <summary class="style-sub-section__header">Text Reveal</summary>
                         <MotionTextRevealEditor
                             :value="layoutParams"
@@ -404,7 +404,7 @@ const togglePropertyKeyframing = (path: string) => {
                         />
                     </details>
 
-                    <details class="style-sub-section" open>
+                    <details class="style-sub-section">
                         <summary class="style-sub-section__header">Lifecycle</summary>
                         <div class="inspector-field">
                             <span class="inspector-hint">Controls when each word starts exiting inside the cloud.</span>
@@ -437,7 +437,7 @@ const togglePropertyKeyframing = (path: string) => {
                         />
                     </details>
 
-                    <details class="style-sub-section" open>
+                    <details class="style-sub-section">
                         <summary class="style-sub-section__header">Motion</summary>
                         <MotionEnterExitEditor
                             :enter-value="motionTrack.block.enter"

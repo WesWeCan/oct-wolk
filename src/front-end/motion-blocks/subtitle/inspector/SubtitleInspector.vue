@@ -666,7 +666,6 @@ const resetSelectedItemAnimationOverride = () => {
                 v-if="selectedItemId && selectedWordIndex === null"
                 class="inspector-section"
                 :class="{ 'inspector-section--item-override': selectedItemTextHasOverride }"
-                open
             >
                 <summary class="inspector-section__title">Text</summary>
                 <div class="inspector-section__content">

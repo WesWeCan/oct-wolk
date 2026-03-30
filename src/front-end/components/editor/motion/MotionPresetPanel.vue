@@ -236,11 +236,11 @@ onMounted(() => {
             <button class="btn-sm" :disabled="actionDisabled || !hasSelection" @click="exportPreset()">
                 {{ exporting ? 'Exporting...' : 'Export' }}
             </button>
-            <button class="btn-sm" :disabled="actionDisabled || !hasSelection" @click="deletePreset()">
-                {{ deleting ? 'Deleting...' : 'Delete' }}
-            </button>
             <button class="btn-sm" :disabled="loading" @click="loadPresetList()">
                 Refresh
+            </button>
+            <button class="btn-sm danger motion-preset-panel__delete-btn" :disabled="actionDisabled || !hasSelection" @click="deletePreset()">
+                {{ deleting ? 'Deleting...' : 'Delete' }}
             </button>
         </div>
 
@@ -297,6 +297,11 @@ onMounted(() => {
 .motion-preset-panel__action-row {
     flex-wrap: wrap;
     margin-top: 0;
+    gap: 10px;
+}
+
+.motion-preset-panel__delete-btn {
+    margin-left: auto;
 }
 
 .motion-preset-panel__empty-state {

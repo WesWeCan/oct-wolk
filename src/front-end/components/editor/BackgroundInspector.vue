@@ -114,11 +114,11 @@ const onBackgroundDragLeave = () => {
 
 <template>
     <div class="background-inspector">
-        <details class="inspector-section" open>
+        <details class="inspector-section">
             <summary class="inspector-section__title">Background</summary>
             <div class="inspector-section__content">
                 <div class="motion-tab style-v2">
-                    <details class="style-sub-section" open>
+                    <details class="style-sub-section">
                         <summary class="style-sub-section__header">Fill</summary>
                         <div v-if="!backgroundVisibleValue" class="inspector-note">
                             Background layer is currently hidden globally.
@@ -186,7 +186,7 @@ const onBackgroundDragLeave = () => {
                         />
                     </details>
 
-                    <details class="style-sub-section" open>
+                    <details class="style-sub-section">
                         <summary class="style-sub-section__header">Image</summary>
                         <div class="style-v2__field">
                             <span class="style-v2__field-label">Image Layer</span>
@@ -269,7 +269,7 @@ const onBackgroundDragLeave = () => {
                         />
                     </details>
 
-                    <details class="style-sub-section" open>
+                    <details class="style-sub-section">
                         <summary class="style-sub-section__header">Reset</summary>
                         <div class="inspector-actions">
                             <button class="btn-sm" @click="emit('reset-background-image-controls')">Reset Image Controls</button>

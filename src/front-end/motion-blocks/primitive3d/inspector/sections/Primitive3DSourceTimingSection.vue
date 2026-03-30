@@ -30,20 +30,14 @@ defineProps<{
                         </option>
                     </select>
                 </div>
-                <div class="inspector-note">
-                    <template v-if="api.selectedWordTrack">
-                        Using `{{ api.selectedWordTrack.name }}` with {{ api.anchorCapacity }} geometry-driven slots.
-                    </template>
-                    <template v-else-if="api.wordTracks.length > 0">
-                        Select a `word` lyric track to render billboarded word sprites on the primitive.
+                <span class="inspector-hint">
+                    <template v-if="api.wordTracks.length > 0">
+                        Choose a word track for billboarded sprites on the primitive surface.
                     </template>
                     <template v-else>
-                        No `word` lyric tracks found yet. Create one first so the sprites have timing data.
+                        No word lyric tracks found yet. Create one first so sprites have timing data.
                     </template>
-                </div>
-                <div class="inspector-note">
-                    Start and end frames control the full primitive block on the timeline. Word sprite timing still comes from the selected word track.
-                </div>
+                </span>
                 <AnimatableNumberField
                     label="Start Frame"
                     :model-value="api.startFrame"

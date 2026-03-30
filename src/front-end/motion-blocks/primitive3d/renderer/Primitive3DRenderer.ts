@@ -422,14 +422,15 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             this.ensureModel(params);
             this.ensureModelTextures(params);
             if (!this.modelGroup) return;
+            const modelReady = !!this.modelSolidGroup?.children.length;
 
             this.mesh.visible = false;
             this.wireMesh.visible = false;
-            this.modelGroup.visible = !!params.primitive.modelObjUrl;
+            this.modelGroup.visible = !!params.primitive.modelObjUrl && modelReady;
             this.modelGroup.position.set(params.object.positionX, params.object.positionY, params.object.positionZ);
             this.modelGroup.quaternion.copy(this.getObjectQuaternion(this.modelGroup.position, params, activeAnchor));
             this.modelGroup.scale.setScalar(params.object.scale);
-            this.applyModelMaterials(params);
+            if (modelReady) this.applyModelMaterials(params);
             return;
         }
 
@@ -830,6 +831,7 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
             : getPrimitive3DAnchorPoints(params);
         const activeSlotIndex = Number(activeItems.at(-1)?.richText?.primitive3dWord?.slotIndex ?? -1);
         const activeAnchor = activeSlotIndex >= 0 && activeSlotIndex < anchors.length ? anchors[activeSlotIndex]! : null;
+        const shouldSuppressFallback = params.primitive.type === 'model' && !!params.primitive.modelObjUrl;
 
         this.ensureScene();
         let projectedBounds: RendererBounds | null = null;
@@ -884,19 +886,21 @@ export class Primitive3DRenderer implements MotionBlockRenderer {
                     );
                 }
             } catch {
-                projectedBounds = this.drawVisibleFallback(
-                    ctx,
-                    params,
-                    viewportWidth,
-                    viewportHeight,
-                    combinedOpacity,
-                );
+                if (!shouldSuppressFallback) {
+                    projectedBounds = this.drawVisibleFallback(
+                        ctx,
+                        params,
+                        viewportWidth,
+                        viewportHeight,
+                        combinedOpacity,
+                    );
+                }
                 this.webglAvailable = false;
                 this.dispose();
             }
         }
 
-        if (!projectedBounds) {
+        if (!projectedBounds && !shouldSuppressFallback) {
             projectedBounds = this.drawVisibleFallback(
                 ctx,
                 params,

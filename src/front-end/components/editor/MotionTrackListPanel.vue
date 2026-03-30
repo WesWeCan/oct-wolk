@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import type { LyricTrack, MotionTrack } from '@/types/project_types';
+import { ref } from 'vue';
+import SvgIcon from '@jamescoyle/vue-icon';
+import { mdiPlus, mdiTrashCanOutline } from '@mdi/js';
+import { TRACK_COLORS, type LyricTrack, type MotionTrack } from '@/types/project_types';
 
 const props = defineProps<{
     lyricTracks: LyricTrack[];
@@ -16,27 +18,8 @@ const emit = defineEmits<{
     (e: 'update-track', track: MotionTrack): void;
 }>();
 
-const addType = ref<MotionTrack['block']['type']>('');
-
-watch(
-    () => props.plugins,
-    (plugins) => {
-        if (!plugins.length) {
-            addType.value = '';
-            return;
-        }
-        if (!plugins.some((plugin) => plugin.type === addType.value)) {
-            addType.value = plugins[0].type;
-        }
-    },
-    { immediate: true },
-);
-
 const renamingId = ref<string | null>(null);
 const renameValue = ref('');
-const selectedPlugin = computed(() => props.plugins.find((plugin) => plugin.type === addType.value) ?? null);
-const addRequiresSourceTrack = computed(() => selectedPlugin.value?.requiresSourceTrack !== false);
-const canAddSelectedPlugin = computed(() => !!addType.value && (!addRequiresSourceTrack.value || props.lyricTracks.length > 0));
 
 const startRename = (track: MotionTrack) => {
     renamingId.value = track.id;
@@ -50,6 +33,17 @@ const commitRename = (track: MotionTrack) => {
     if (!nextName || nextName === track.name) return;
     emit('update-track', { ...track, name: nextName });
 };
+
+const canAddPlugin = (plugin: { requiresSourceTrack: boolean }) => !plugin.requiresSourceTrack || props.lyricTracks.length > 0;
+
+const cycleTrackColor = (track: MotionTrack) => {
+    const currentIndex = TRACK_COLORS.indexOf(track.color as (typeof TRACK_COLORS)[number]);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % TRACK_COLORS.length : 0;
+    emit('update-track', {
+        ...track,
+        color: TRACK_COLORS[nextIndex],
+    });
+};
 </script>
 
 <template>
@@ -62,27 +56,24 @@ const commitRename = (track: MotionTrack) => {
             Add a motion block track, then adjust source, layout, and animation in the plugin inspector.
         </p>
 
-        <div class="inspector-row">
-            <div class="inspector-field half">
-                <label>Block Type</label>
-                <select v-model="addType" class="inspector-input" :disabled="!plugins.length">
-                    <option v-for="plugin in plugins" :key="plugin.type" :value="plugin.type">{{ plugin.label }}</option>
-                </select>
-            </div>
+        <div class="track-list-panel__actions track-list-panel__actions">
+            <button
+                v-for="plugin in plugins"
+                :key="plugin.type"
+                class="track-list-panel__action"
+                :disabled="!canAddPlugin(plugin)"
+                @click="emit('add-track', { type: plugin.type })"
+            >
+                <SvgIcon type="mdi" :path="mdiPlus" :size="14" />
+                <span>{{ plugin.label }}</span>
+            </button>
         </div>
-
-        <button class="btn-sm" :disabled="!canAddSelectedPlugin" @click="emit('add-track', { type: addType })">
-            + Add Motion
-        </button>
         <p class="track-list-panel__hint">
             In-repo motion block plugins register themselves here automatically.
         </p>
 
-        <div v-if="lyricTracks.length === 0 && addRequiresSourceTrack" class="track-list-empty">
+        <div v-if="lyricTracks.length === 0 && plugins.some((plugin) => plugin.requiresSourceTrack)" class="track-list-empty">
             No lyric tracks available. Create one in Lyric mode first.
-        </div>
-        <div v-else-if="selectedPlugin && !addRequiresSourceTrack" class="track-list-empty">
-            This block creates its own scene and does not require a lyric source track.
         </div>
 
         <div class="track-list-panel__list" style="margin-top: 8px;">
@@ -93,7 +84,13 @@ const commitRename = (track: MotionTrack) => {
                 :class="{ active: selectedTrackId === track.id }"
                 @click="emit('select-track', track.id)"
             >
-                <span class="track-row__color" :style="{ backgroundColor: track.color }"></span>
+                <button
+                    class="track-row__color"
+                    :style="{ '--track-color': track.color }"
+                    type="button"
+                    title="Cycle track color"
+                    @click.stop="cycleTrackColor(track)"
+                ></button>
                 <div class="track-row__name">
                     <template v-if="renamingId === track.id">
                         <input
@@ -112,7 +109,9 @@ const commitRename = (track: MotionTrack) => {
                     </template>
                 </div>
                 <div class="track-row__controls">
-                    <button class="track-btn danger" @click.stop="emit('delete-track', track.id)">DEL</button>
+                    <button class="track-btn danger" title="Delete track" @click.stop="emit('delete-track', track.id)">
+                        <SvgIcon type="mdi" :path="mdiTrashCanOutline" :size="12" />
+                    </button>
                 </div>
             </div>
             <div v-if="motionTracks.length === 0" class="track-list-empty">

@@ -507,7 +507,6 @@ const progressBarStyle = computed(() => {
 
 .export-modal__button--primary:hover {
     background: #00b8e6;
-    transform: translateY(-1px);
 }
 
 .export-modal__button--primary:active {
@@ -534,7 +533,6 @@ const progressBarStyle = computed(() => {
 
 .export-modal__button--danger:hover {
     background: #ff6666;
-    transform: translateY(-1px);
 }
 
 .export-modal__button--danger:active {

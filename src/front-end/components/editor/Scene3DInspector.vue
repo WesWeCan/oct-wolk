@@ -27,7 +27,7 @@ const updateScene3D = (patch: Partial<Scene3DSettings>) => {
 </script>
 
 <template>
-    <details v-if="visible !== false" class="inspector-section" open>
+    <details v-if="visible !== false" class="inspector-section">
         <summary class="inspector-section__title">3D Scene</summary>
         <div class="inspector-section__content">
             <div class="motion-tab style-v2">
