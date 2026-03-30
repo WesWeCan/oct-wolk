@@ -14,6 +14,8 @@ const props = defineProps<{
     show: boolean;
     exportMode: 'realtime' | 'frames';
     includeAudio?: boolean;
+    keepRawPngFrames?: boolean;
+    exportAlphaMov?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -24,6 +26,8 @@ const emit = defineEmits<{
     close: [];
     updateExportMode: [mode: 'realtime' | 'frames'];
     updateIncludeAudio: [include: boolean];
+    updateKeepRawPngFrames: [keepRawPngFrames: boolean];
+    updateExportAlphaMov: [exportAlphaMov: boolean];
     start: [];
 }>();
 
@@ -37,6 +41,14 @@ const canCancel = computed(() => {
 
 const canStart = computed(() => {
     return props.state.phase === 'idle';
+});
+
+const showEditableOptions = computed(() => {
+    return props.state.phase === 'idle' || props.state.phase === 'preparing';
+});
+
+const showFrameOptions = computed(() => {
+    return showEditableOptions.value && props.exportMode === 'frames';
 });
 
 const progressBarStyle = computed(() => {
@@ -89,7 +101,7 @@ const progressBarStyle = computed(() => {
                     </div>
                 </div>
 
-                <div v-if="state.phase === 'idle' || state.phase === 'preparing'" class="export-modal__audio-toggle">
+                <div v-if="showEditableOptions" class="export-modal__audio-toggle">
                     <label class="export-modal__audio-checkbox">
                         <input
                             type="checkbox"
@@ -98,6 +110,34 @@ const progressBarStyle = computed(() => {
                         />
                         Include Audio
                     </label>
+                </div>
+
+                <div v-if="showFrameOptions" class="export-modal__frame-options">
+                    <label class="export-modal__audio-checkbox">
+                        <input
+                            type="checkbox"
+                            :checked="keepRawPngFrames === true"
+                            @change="emit('updateKeepRawPngFrames', ($event.target as HTMLInputElement).checked)"
+                        />
+                        Keep raw .png frames after export
+                    </label>
+
+                    <label class="export-modal__audio-checkbox">
+                        <input
+                            type="checkbox"
+                            :checked="exportAlphaMov === true"
+                            @change="emit('updateExportAlphaMov', ($event.target as HTMLInputElement).checked)"
+                        />
+                        Export with alpha (.mov)
+                    </label>
+
+                    <p class="export-modal__option-help">
+                        Alpha export creates an additional ProRes 4444 `.mov` beside the normal MP4.
+                        It only preserves transparency already present in the render.
+                    </p>
+                    <p class="export-modal__option-help">
+                        Alpha `.mov` files are much larger and less universally supported than MP4.
+                    </p>
                 </div>
 
                 <!-- Progress Bar -->
@@ -253,12 +293,25 @@ const progressBarStyle = computed(() => {
     margin-bottom: 20px;
 }
 
+.export-modal__frame-options {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
 .export-modal__audio-checkbox {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     color: #ddd;
     font-size: 14px;
+}
+
+.export-modal__option-help {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #999;
 }
 
 .export-modal__mode-label {

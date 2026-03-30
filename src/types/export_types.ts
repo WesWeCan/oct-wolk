@@ -5,6 +5,8 @@ export interface ExportRenderSettings {
     includeAudio?: boolean;
     exportBitrateMbps?: number;
     exportMode?: 'realtime' | 'frames';
+    keepRawPngFrames?: boolean;
+    exportAlphaMov?: boolean;
     fontFamily?: string;
     fontFallbacks?: string[];
     fontStyle?: 'normal' | 'italic' | 'oblique';

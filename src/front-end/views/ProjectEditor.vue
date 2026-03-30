@@ -343,6 +343,8 @@ const exportDocument = computed<ExportDocument | null>(() => {
             includeAudio: project.value.settings.includeAudio ?? true,
             exportBitrateMbps: project.value.settings.exportBitrateMbps || 8,
             exportMode: exportMode.value,
+            keepRawPngFrames: project.value.settings.keepRawPngFrames ?? false,
+            exportAlphaMov: project.value.settings.exportAlphaMov ?? false,
         },
     };
 });
@@ -627,6 +629,8 @@ const startExportProcess = async () => {
             totalFrames,
             includeAudio: project.value.settings.includeAudio ?? true,
             audioPath: project.value.song.audioSrc || null,
+            keepRawPngFrames: project.value.settings.keepRawPngFrames ?? false,
+            exportAlphaMov: project.value.settings.exportAlphaMov ?? false,
             drawFrame: (frame: number) => {
                 const currentMs = (frame * 1000) / fpsValue;
                 motionRenderer.renderMotionFrame(project.value!, currentMs, {
@@ -693,6 +697,18 @@ const handleUpdateExportMode = (mode: 'realtime' | 'frames') => {
 const handleUpdateIncludeAudio = (include: boolean) => {
     if (!project.value) return;
     project.value.settings.includeAudio = include;
+    scheduleSave();
+};
+
+const handleUpdateKeepRawPngFrames = (keepRawPngFrames: boolean) => {
+    if (!project.value) return;
+    project.value.settings.keepRawPngFrames = keepRawPngFrames;
+    scheduleSave();
+};
+
+const handleUpdateExportAlphaMov = (exportAlphaMov: boolean) => {
+    if (!project.value) return;
+    project.value.settings.exportAlphaMov = exportAlphaMov;
     scheduleSave();
 };
 
@@ -2977,6 +2993,8 @@ onUnmounted(() => {
         :state="videoExport.exportState.value"
         :export-mode="exportMode"
         :include-audio="project?.settings.includeAudio ?? true"
+        :keep-raw-png-frames="project?.settings.keepRawPngFrames ?? false"
+        :export-alpha-mov="project?.settings.exportAlphaMov ?? false"
         @cancel="handleExportCancel"
         @stop="handleExportStop"
         @start="handleExportStart"
@@ -2985,5 +3003,7 @@ onUnmounted(() => {
         @close="handleExportClose"
         @updateExportMode="handleUpdateExportMode"
         @updateIncludeAudio="handleUpdateIncludeAudio"
+        @updateKeepRawPngFrames="handleUpdateKeepRawPngFrames"
+        @updateExportAlphaMov="handleUpdateExportAlphaMov"
     />
 </template>

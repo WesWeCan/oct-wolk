@@ -9,6 +9,7 @@ import path from 'path';
 import { getDocStoragePath } from './internal-storage';
 import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
 import { spawnSync } from 'child_process';
+import { buildAlphaMovFrameAssemblyArgs, buildMp4FrameAssemblyArgs } from './exportFfmpegArgs';
 
 
 
@@ -377,79 +378,65 @@ ffmpeg -version`;
             return { success: false, error: String(error) };
         }
     });
+
+    const ensureFrameExportPaths = (framesDir: string, rootDir: string) => {
+        const exportsRoot = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.EXPORTS);
+        if (!isPathInsideRoot(framesDir, exportsRoot) || !isPathInsideRoot(rootDir, exportsRoot)) {
+            throw new Error('Path outside exports directory');
+        }
+    };
+
+    const ensureFfmpegPath = () => {
+        if (cachedFfmpegPath === undefined) {
+            cachedFfmpegPath = findFfmpegPath();
+        }
+
+        if (!cachedFfmpegPath) {
+            throw new Error('ffmpeg is not available');
+        }
+
+        return cachedFfmpegPath;
+    };
+
+    const runFrameAssembly = (args: string[], outputPath: string) => {
+        const ffmpegPath = ensureFfmpegPath();
+        const result = spawnSync(ffmpegPath, args, { encoding: 'utf-8', stdio: 'pipe' });
+
+        if (result.status !== 0) {
+            console.error('ffmpeg error:', result.stderr);
+            return { success: false, error: result.stderr || 'ffmpeg failed' };
+        }
+
+        if (!fs.existsSync(outputPath)) {
+            return { success: false, error: 'Output file was not created' };
+        }
+
+        return { success: true, outputPath };
+    };
     
     ipcMain.handle('export:assembleVideo', async (_event, framesDir: string, rootDir: string, fps: number, audioPath: string | null) => {
         try {
-            const exportsRoot = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.EXPORTS);
-            if (!isPathInsideRoot(framesDir, exportsRoot) || !isPathInsideRoot(rootDir, exportsRoot)) {
-                return { success: false, error: 'Path outside exports directory' };
-            }
-
-            if (cachedFfmpegPath === undefined) {
-                cachedFfmpegPath = findFfmpegPath();
-            }
-            
-            if (!cachedFfmpegPath) {
-                return { success: false, error: 'ffmpeg is not available' };
-            }
-            
-            const outputPath = path.join(rootDir, 'export.mp4');
-            
-            // Build ffmpeg arguments
-            // Order matters: all inputs first, then filters, then codecs, then output
-            const args = [
-                '-y', // Overwrite output file
-                '-framerate', String(fps),
-                '-i', path.join(framesDir, 'frame_%06d.png'), // Video input pattern
-            ];
-            
-            // Add audio input if provided (must come before filters/codecs)
-            // audioPath should already be a local file path (copied to export folder)
-            if (audioPath) {
-                // audioPath is already a local file path (from copyAudioForExport)
-                if (fs.existsSync(audioPath)) {
-                    args.push('-i', audioPath); // Audio input
-                } else {
-                    console.warn('Audio file not found at:', audioPath);
-                }
-            }
-            
-            // Video filters (must come after all inputs)
-            args.push('-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2'); // Ensure dimensions are divisible by 2
-            
-            // Video codec options
-            args.push('-c:v', 'libx264');
-            args.push('-pix_fmt', 'yuv420p');
-            args.push('-preset', 'medium');
-            args.push('-crf', '18'); // High quality
-            args.push('-movflags', '+faststart');
-            
-            // Audio codec options (if audio was added)
-            if (audioPath && fs.existsSync(audioPath)) {
-                args.push('-c:a', 'aac');
-                args.push('-b:a', '192k');
-                args.push('-shortest'); // End when shortest stream ends
-            }
-            
-            // Output file (must be last)
-            args.push(outputPath);
-            
-            // Run ffmpeg
-            const result = spawnSync(cachedFfmpegPath, args, { encoding: 'utf-8', stdio: 'pipe' });
-            
-            if (result.status !== 0) {
-                console.error('ffmpeg error:', result.stderr);
-                return { success: false, error: result.stderr || 'ffmpeg failed' };
-            }
-            
-            if (!fs.existsSync(outputPath)) {
-                return { success: false, error: 'Output file was not created' };
-            }
-            
-            return { success: true, outputPath };
+            ensureFrameExportPaths(framesDir, rootDir);
+            const exportBaseName = path.basename(rootDir);
+            const outputPath = path.join(rootDir, `${exportBaseName}.mp4`);
+            const args = buildMp4FrameAssemblyArgs(framesDir, fps, audioPath, outputPath);
+            return runFrameAssembly(args, outputPath);
         } catch (error) {
             console.error('Failed to assemble video:', error);
-            return { success: false, error: String(error) };
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
+        }
+    });
+
+    ipcMain.handle('export:assembleAlphaVideo', async (_event, framesDir: string, rootDir: string, fps: number, audioPath: string | null) => {
+        try {
+            ensureFrameExportPaths(framesDir, rootDir);
+            const exportBaseName = path.basename(rootDir);
+            const outputPath = path.join(rootDir, `${exportBaseName}_alpha.mov`);
+            const args = buildAlphaMovFrameAssemblyArgs(framesDir, fps, audioPath, outputPath);
+            return runFrameAssembly(args, outputPath);
+        } catch (error) {
+            console.error('Failed to assemble alpha video:', error);
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
     });
 

@@ -50,6 +50,7 @@ declare global {
                 saveFrame: (framesDir: string, frameName: string, frameData: ArrayBuffer) => Promise<any>;
                 copyAudioForExport: (rootDir: string, audioPath: string) => Promise<any>;
                 assembleVideo: (framesDir: string, rootDir: string, fps: number, audioPath: string | null) => Promise<any>;
+                assembleAlphaVideo: (framesDir: string, rootDir: string, fps: number, audioPath: string | null) => Promise<any>;
             };
             on: (channel: string, callback: (...args: any[]) => void) => void;
             removeAllListeners: (channel: string) => void;
@@ -94,6 +95,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         saveFrame: (framesDir: string, frameName: string, frameData: ArrayBuffer) => ipcRenderer.invoke('export:saveFrame', framesDir, frameName, frameData),
         copyAudioForExport: (rootDir: string, audioPath: string) => ipcRenderer.invoke('export:copyAudioForExport', rootDir, audioPath),
         assembleVideo: (framesDir: string, rootDir: string, fps: number, audioPath: string | null) => ipcRenderer.invoke('export:assembleVideo', framesDir, rootDir, fps, audioPath),
+        assembleAlphaVideo: (framesDir: string, rootDir: string, fps: number, audioPath: string | null) => ipcRenderer.invoke('export:assembleAlphaVideo', framesDir, rootDir, fps, audioPath),
     },
     on(channel: string, callback: (...args: any[]) => void) {
         ipcRenderer.on(channel, (_event, ...args) => callback(...args));
