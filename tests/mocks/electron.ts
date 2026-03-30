@@ -18,6 +18,7 @@ export function createMockElectronAPI() {
 
   return {
     getRandomNumber: vi.fn().mockResolvedValue(42),
+    setMenuContext: vi.fn().mockResolvedValue({ ok: true }),
     openStorageFolder: vi.fn().mockResolvedValue(undefined),
     projects,
     songs: projects,
@@ -59,6 +60,7 @@ export function createMockElectronAPI() {
       copyAudioForExport: vi.fn().mockResolvedValue({ success: true }),
       assembleVideo: vi.fn().mockResolvedValue({ success: true }),
     },
+    onAppMenuAction: vi.fn(() => vi.fn()),
     onMenuCommand: vi.fn(() => vi.fn()),
     on: vi.fn(),
     removeAllListeners: vi.fn(),

@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
-import AppHeaderFileActions from '@/front-end/components/AppHeaderFileActions.vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { MotionPresetService } from '@/front-end/services/MotionPresetService';
+import { ProjectService } from '@/front-end/services/ProjectService';
+import type { AppMenuAction } from '@/shared/appMenuActions';
 import { RENDERER_MENU_COMMAND_EVENT, type ProjectEditorCommandId } from '@/shared/projectEditorCommands';
 
 const router = useRouter();
-
-const openExternal = (url: string) => {
-     console.log('openExternal', url);
-    //  window.electronAPI.openExternal(url);
- }
+const route = useRoute();
 
 const openStorageFolder = async () => {
     try {
@@ -19,9 +17,9 @@ const openStorageFolder = async () => {
     }
 }
 
- const luckyNumber = ref(-1);
- const menuCounter = ref(0);
+const busyMenuAction = ref<string | null>(null);
 let removeMenuCommandListener: (() => void) | null = null;
+let removeAppMenuActionListener: (() => void) | null = null;
 
 const isEditableElement = (element: Element | null): boolean => {
     if (!element) return false;
@@ -54,17 +52,91 @@ const dispatchRendererMenuCommand = (commandId: ProjectEditorCommandId) => {
     }));
 };
 
+const currentProjectId = (): string => (
+    route.name === 'ProjectEditor' ? String(route.params.projectId || '') : ''
+);
+
+const syncMenuContext = async () => {
+    await window.electronAPI.setMenuContext({
+        hasProjectRoute: route.name === 'ProjectEditor',
+    });
+};
+
+const runMenuAction = async (actionName: string, callback: () => Promise<void>) => {
+    if (busyMenuAction.value) return;
+    busyMenuAction.value = actionName;
+
+    try {
+        await callback();
+    } catch (error) {
+        console.error(`[menu] ${actionName} failed`, error);
+    } finally {
+        busyMenuAction.value = null;
+    }
+};
+
+const handleAppMenuAction = async (action: AppMenuAction) => {
+    switch (action.type) {
+        case 'file.newProject':
+            await runMenuAction(action.type, async () => {
+                const created = await ProjectService.create({ title: 'New Project' });
+                await router.push({ name: 'ProjectEditor', params: { projectId: created.id } });
+            });
+            return;
+        case 'file.openProjectArchive':
+            await runMenuAction(action.type, async () => {
+                const result = await ProjectService.importWolk();
+                if (result.canceled || result.error || !result.project) {
+                    if (result.error) throw new Error(result.error);
+                    return;
+                }
+                await router.push({ name: 'ProjectEditor', params: { projectId: result.project.id } });
+            });
+            return;
+        case 'file.exportProjectArchive':
+            await runMenuAction(action.type, async () => {
+                const projectId = currentProjectId();
+                if (!projectId) return;
+                const result = await ProjectService.exportWolk(projectId);
+                if (result.error) throw new Error(result.error);
+            });
+            return;
+        case 'file.importPresetBundle':
+            await runMenuAction(action.type, async () => {
+                const result = await MotionPresetService.importBundle();
+                if (result.error) throw new Error(result.error);
+            });
+            return;
+        case 'file.exportPresetBundle':
+            await runMenuAction(action.type, async () => {
+                const result = await MotionPresetService.exportBundle();
+                if (result.error) throw new Error(result.error);
+            });
+            return;
+        case 'file.openRecent':
+            await router.push({ name: 'ProjectEditor', params: { projectId: action.projectId } });
+            return;
+        case 'app.showProjects':
+            await router.push({ name: 'Index' });
+            return;
+        case 'app.openStorageFolder':
+            await openStorageFolder();
+            return;
+    }
+};
+
 onMounted(async () => {
-    getLuckyNumber();
+    await syncMenuContext();
 
     removeMenuCommandListener = window.electronAPI.onMenuCommand((commandId) => {
-        menuCounter.value += 1;
-
         if (tryExecuteEditableCommand(commandId)) {
             return;
         }
 
         dispatchRendererMenuCommand(commandId);
+    });
+    removeAppMenuActionListener = window.electronAPI.onAppMenuAction((action) => {
+        void handleAppMenuAction(action);
     });
 
     window.electronAPI.on('projects:imported', (payload: { projectId?: string }) => {
@@ -73,33 +145,23 @@ onMounted(async () => {
     });
 });
 
+watch(() => route.name, () => {
+    void syncMenuContext();
+});
+
 onUnmounted(() => {
     removeMenuCommandListener?.();
     removeMenuCommandListener = null;
+    removeAppMenuActionListener?.();
+    removeAppMenuActionListener = null;
     window.electronAPI.removeAllListeners('projects:imported');
 });
-
-
-const getLuckyNumber = async () => {
-    try {
-        console.log('Calling window.electronAPI.getRandomNumber()...');
-        const number = await window.electronAPI.getRandomNumber();
-        console.log('Received number:', number);
-        luckyNumber.value = number;
-    } catch (error) {
-        console.error('Error calling getRandomNumber:', error);
-    }
-}
-
-
-
 </script>
 
 <template>
     <header>
         <router-link to="/" exact>Home</router-link>
         <div class="spacer"></div>
-        <AppHeaderFileActions />
         <button @click="openStorageFolder" class="open-folder-btn" title="Open storage folder">
             📁 Open Folder
         </button>

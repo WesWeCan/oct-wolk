@@ -37,6 +37,8 @@ describe('App', () => {
       },
     });
 
+    await flushPromises();
+
     listeners['projects:imported']?.({ projectId: 'imported-42' });
     await flushPromises();
 

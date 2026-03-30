@@ -5,9 +5,11 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import started from 'electron-squirrel-startup';
 import { getInternalStoragePath, initStorage } from './back-end/internal-processes/internal-storage';
+import { listProjects } from './back-end/internal-processes/project-storage';
 import { registerInternalProcesses } from './back-end/internal-processes/internal-processes';
 import { buildApplicationMenuTemplate } from './back-end/application-menu';
 import { openExternalHttpUrl } from './back-end/internal-processes/external-links';
+import { APP_MENU_ACTION_CHANNEL, type AppMenuAction } from './shared/appMenuActions';
 import { MENU_COMMAND_CHANNEL, type ProjectEditorCommandId } from './shared/projectEditorCommands';
 import { importProjectArchiveFromPath } from './back-end/internal-processes/project-archive';
 import { WOLK_PROJECT_EXTENSION } from '@/types/archive_types';
@@ -24,6 +26,7 @@ let mainWindow: BrowserWindow | null = null;
 let rendererReady = false;
 let appReadyForImports = false;
 let processingPendingArchives = false;
+let hasProjectRoute = false;
 const pendingArchivePaths: string[] = [];
 const pendingImportedProjectIds: string[] = [];
 
@@ -71,6 +74,7 @@ const processPendingArchivePaths = async () => {
       try {
         const project = await importProjectArchiveFromPath(archivePath);
         queueImportedProjectId(project.id);
+        setApplicationMenu();
       } catch (error) {
         console.error('[wolk open-file] Failed to import archive:', archivePath, error);
       }
@@ -93,10 +97,26 @@ const sendProjectEditorMenuCommand = (commandId: ProjectEditorCommandId) => {
   target?.webContents.send(MENU_COMMAND_CHANNEL, commandId);
 };
 
+const sendAppMenuAction = (action: AppMenuAction) => {
+  const target = BrowserWindow.getFocusedWindow() || mainWindow;
+  target?.webContents.send(APP_MENU_ACTION_CHANNEL, action);
+};
+
 const setApplicationMenu = () => {
+  const recentProjects = listProjects()
+    .sort((left, right) => (right.updatedAt || 0) - (left.updatedAt || 0))
+    .slice(0, 10)
+    .map((project) => ({
+      id: project.id,
+      title: project.song.title || 'Untitled',
+    }));
+
   const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate({
     applicationName: app.name,
+    canExportProjectArchive: hasProjectRoute,
     isMac: process.platform === 'darwin',
+    recentProjects,
+    sendAppMenuAction,
     sendProjectEditorCommand: sendProjectEditorMenuCommand,
     openExternalUrl: (url) => openExternalHttpUrl(url),
   }));
@@ -278,7 +298,13 @@ app.whenReady().then(async () => {
   setProtocols();
 
   await initStorage();
-  await registerInternalProcesses();
+  await registerInternalProcesses({
+    onMenuContextChanged: (context) => {
+      hasProjectRoute = context.hasProjectRoute;
+      setApplicationMenu();
+    },
+    onProjectsChanged: setApplicationMenu,
+  });
   appReadyForImports = true;
   registerWindowsFileAssociation();
 

@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from 'electron';
+import type { AppMenuAction, RecentProjectMenuEntry } from '../shared/appMenuActions';
 import { PROJECT_EDITOR_MENU_COMMANDS, type ProjectEditorCommandId } from '../shared/projectEditorCommands';
 
 const GITHUB_URL = 'https://github.com/WesWeCan/oct-wolk';
@@ -6,7 +7,10 @@ const RELEASES_URL = 'https://github.com/WesWeCan/oct-wolk/releases';
 
 export interface BuildApplicationMenuOptions {
     applicationName: string;
+    canExportProjectArchive: boolean;
     isMac: boolean;
+    recentProjects: RecentProjectMenuEntry[];
+    sendAppMenuAction: (action: AppMenuAction) => void;
     sendProjectEditorCommand: (commandId: ProjectEditorCommandId) => void;
     openExternalUrl: (url: string) => void | Promise<void>;
 }
@@ -37,30 +41,82 @@ const createCommandItem = (
     };
 };
 
-const createPreviewItem = (label: string): MenuItemConstructorOptions => ({
-    label: `${label} (Coming Soon)`,
-    enabled: false,
-});
-
 export const buildApplicationMenuTemplate = ({
     applicationName,
+    canExportProjectArchive,
     isMac,
+    recentProjects,
+    sendAppMenuAction,
     sendProjectEditorCommand,
     openExternalUrl,
 }: BuildApplicationMenuOptions): MenuItemConstructorOptions[] => {
+    const openRecentSubmenu: MenuItemConstructorOptions[] = recentProjects.length > 0
+        ? recentProjects.map((project) => ({
+            label: project.title,
+            click: () => {
+                sendAppMenuAction({ type: 'file.openRecent', projectId: project.id });
+            },
+        }))
+        : [{ label: 'No Recent Projects', enabled: false }];
+
     const fileMenu: MenuItemConstructorOptions = {
         label: 'File',
         submenu: [
-            createPreviewItem('New Project'),
-            createPreviewItem('Open .wolk...'),
-            createPreviewItem('Import .wolk...'),
+            {
+                label: 'New Project',
+                accelerator: 'CommandOrControl+N',
+                click: () => {
+                    sendAppMenuAction({ type: 'file.newProject' });
+                },
+            },
+            {
+                label: 'Show Projects',
+                accelerator: 'CommandOrControl+Shift+H',
+                click: () => {
+                    sendAppMenuAction({ type: 'app.showProjects' });
+                },
+            },
+            {
+                label: 'Open Recent',
+                submenu: openRecentSubmenu,
+            },
             { type: 'separator' },
-            createPreviewItem('Save'),
-            createPreviewItem('Save As...'),
+            {
+                label: 'Open .wolk...',
+                accelerator: 'CommandOrControl+O',
+                click: () => {
+                    sendAppMenuAction({ type: 'file.openProjectArchive' });
+                },
+            },
+            {
+                label: 'Export .wolk...',
+                accelerator: 'CommandOrControl+Shift+E',
+                enabled: canExportProjectArchive,
+                click: () => {
+                    sendAppMenuAction({ type: 'file.exportProjectArchive' });
+                },
+            },
             { type: 'separator' },
-            createPreviewItem('Import .wolkpreset...'),
-            createPreviewItem('Export .wolkpreset...'),
-            createPreviewItem('Export .wolkpresets...'),
+            {
+                label: 'Import Presets...',
+                click: () => {
+                    sendAppMenuAction({ type: 'file.importPresetBundle' });
+                },
+            },
+            {
+                label: 'Export Presets...',
+                click: () => {
+                    sendAppMenuAction({ type: 'file.exportPresetBundle' });
+                },
+            },
+            { type: 'separator' },
+            {
+                label: 'Open Storage Folder',
+                click: () => {
+                    sendAppMenuAction({ type: 'app.openStorageFolder' });
+                },
+            },
+            ...(!isMac ? [{ type: 'separator' } as MenuItemConstructorOptions, { role: 'quit' } as MenuItemConstructorOptions] : []),
         ],
     };
 

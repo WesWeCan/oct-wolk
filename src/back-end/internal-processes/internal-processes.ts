@@ -23,10 +23,12 @@ import {
     WOLK_PRESET_EXTENSION,
     WOLK_PROJECT_EXTENSION,
 } from '@/types/archive_types';
+export interface RegisterInternalProcessesOptions {
+    onMenuContextChanged?: (context: { hasProjectRoute: boolean }) => void;
+    onProjectsChanged?: () => void;
+}
 
-
-
-export const registerInternalProcesses = async () => {
+export const registerInternalProcesses = async (options: RegisterInternalProcessesOptions = {}) => {
     console.log('Registering internal processes...');
     
     // Existing IPC handler
@@ -41,6 +43,13 @@ export const registerInternalProcesses = async () => {
         return shell.openPath(getInternalStoragePath());
     });
 
+    ipcMain.handle('menu:set-context', (_event, context: { hasProjectRoute?: boolean }) => {
+        options.onMenuContextChanged?.({
+            hasProjectRoute: !!context?.hasProjectRoute,
+        });
+        return { ok: true };
+    });
+
     ipcMain.handle('open-external-url', async (_event, url: string) => {
         try {
             await openExternalHttpUrl(url);
@@ -52,7 +61,9 @@ export const registerInternalProcesses = async () => {
 
     // Projects API (v2)
     ipcMain.handle('projects:create', (_event, initial) => {
-        return createProject(initial);
+        const project = createProject(initial);
+        options.onProjectsChanged?.();
+        return project;
     });
     ipcMain.handle('projects:save', (_event, project) => {
         return saveProject(project);
@@ -101,16 +112,21 @@ export const registerInternalProcesses = async () => {
 
             const filePath = dialogResult.filePaths[0];
             const project = await importProjectArchiveFromPath(filePath);
+            options.onProjectsChanged?.();
             return { canceled: false, filePath, project };
         } catch (error) {
             return { canceled: false, error: String(error) };
         }
     });
     ipcMain.handle('projects:importWolkBytes', async (_event, fileName: string, fileData: ArrayBuffer) => {
-        return importProjectArchiveFromBytes(fileName, fileData);
+        const project = await importProjectArchiveFromBytes(fileName, fileData);
+        options.onProjectsChanged?.();
+        return project;
     });
     ipcMain.handle('projects:delete', (_event, projectId: string) => {
-        return deleteProject(projectId);
+        const deleted = deleteProject(projectId);
+        if (deleted) options.onProjectsChanged?.();
+        return deleted;
     });
     ipcMain.handle('projects:uploadAudio', (_event, projectId: string, fileData: ArrayBuffer, originalFileName: string) => {
         return saveProjectAudio(projectId, fileData, originalFileName);
