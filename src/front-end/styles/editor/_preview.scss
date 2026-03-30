@@ -1,0 +1,35 @@
+.editor--full .editor__preview {
+    background: #111;
+    overflow: hidden;
+}
+
+.preview__canvas-wrapper {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+    max-width: calc(100% - 32px);
+    max-height: calc(100% - 32px);
+}
+
+.preview__canvas {
+    display: block;
+}
+
+.preview__canvas-offscreen {
+    position: fixed;
+    left: -9999px;
+    top: -9999px;
+    pointer-events: none;
+    z-index: -1;
+    /* Canvas bitmap size is set via JS, not CSS */
+}
+
+.preview__overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+button {
+    cursor: pointer;
+}

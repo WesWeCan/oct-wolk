@@ -17,8 +17,3 @@
 @use 'timeline/root';
 @use 'views/home';
 @use 'views/project-editor';
-
-// Legacy overrides
-.lane-label {
-    color: #fff;
-}

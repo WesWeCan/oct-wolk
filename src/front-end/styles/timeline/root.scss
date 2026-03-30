@@ -5,6 +5,12 @@
     grid-template-columns: 220px 1fr;
     align-items: start; // Top-align the grid
   }
+
+  .lane--ruler-sticky {
+    position: sticky !important;
+    top: 0;
+    z-index: 4;
+  }
   
   .leftcol {
     background: rgba(20, 20, 25, 0.95);

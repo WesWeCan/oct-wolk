@@ -1,0 +1,176 @@
+.editor--full .editor__sidebar {
+    border-right: 1px solid #222;
+    overflow-x: visible; // Allow dropdowns and buttons to overflow horizontally
+    overflow-y: hidden; // Prevent vertical overflow, let children handle scrolling
+    padding: 12px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; // Allow nested scroll regions to shrink inside the grid row
+
+    &::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        cursor: ew-resize;
+        background: repeating-linear-gradient(
+            0deg,
+            rgba(0, 212, 255, 0.2) 0,
+            rgba(0, 212, 255, 0.2) 8px,
+            rgba(255, 255, 255, 0.08) 8px,
+            rgba(255, 255, 255, 0.08) 16px
+        );
+        opacity: 0.5;
+        transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 10;
+
+        &:hover {
+            opacity: 1;
+            width: 10px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.4) 0,
+                rgba(0, 212, 255, 0.4) 8px,
+                rgba(0, 212, 255, 0.15) 8px,
+                rgba(0, 212, 255, 0.15) 16px
+            );
+        }
+    }
+
+    &.is-resizing {
+        cursor: ew-resize;
+        user-select: none;
+
+        &::after {
+            opacity: 1;
+            width: 12px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.6) 0,
+                rgba(0, 212, 255, 0.6) 8px,
+                rgba(0, 212, 255, 0.25) 8px,
+                rgba(0, 212, 255, 0.25) 16px
+            );
+        }
+    }
+}
+
+.editor--full .editor__inspector {
+    border-left: 1px solid #222;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0; // Padding handled by child
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; // Allow flex child to shrink
+
+    &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        cursor: ew-resize;
+        background: repeating-linear-gradient(
+            0deg,
+            rgba(0, 212, 255, 0.2) 0,
+            rgba(0, 212, 255, 0.2) 8px,
+            rgba(255, 255, 255, 0.08) 8px,
+            rgba(255, 255, 255, 0.08) 16px
+        );
+        opacity: 0.5;
+        transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: 10;
+
+        &:hover {
+            opacity: 1;
+            width: 10px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.4) 0,
+                rgba(0, 212, 255, 0.4) 8px,
+                rgba(0, 212, 255, 0.15) 8px,
+                rgba(0, 212, 255, 0.15) 16px
+            );
+        }
+    }
+
+    &.is-resizing {
+        cursor: ew-resize;
+        user-select: none;
+
+        &::before {
+            opacity: 1;
+            width: 12px;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 212, 255, 0.6) 0,
+                rgba(0, 212, 255, 0.6) 8px,
+                rgba(0, 212, 255, 0.25) 8px,
+                rgba(0, 212, 255, 0.25) 16px
+            );
+        }
+    }
+}
+
+.editor--full .editor__timeline {
+    border-top: 1px solid #222;
+    max-height: 250px;
+    overflow: hidden;
+    background: #181818;
+    position: relative;
+}
+
+.editor--full .editor__timeline::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    cursor: ns-resize;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(0, 212, 255, 0.2) 0,
+        rgba(0, 212, 255, 0.2) 10px,
+        rgba(255, 255, 255, 0.08) 10px,
+        rgba(255, 255, 255, 0.08) 20px
+    );
+    opacity: 0.5;
+    transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10;
+    pointer-events: auto;
+}
+
+.editor--full .editor__timeline:hover::before {
+    opacity: 1;
+    height: 12px;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(0, 212, 255, 0.4) 0,
+        rgba(0, 212, 255, 0.4) 10px,
+        rgba(0, 212, 255, 0.15) 10px,
+        rgba(0, 212, 255, 0.15) 20px
+    );
+}
+
+.editor--full .editor__timeline.is-resizing::before {
+    opacity: 1;
+    height: 14px;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(0, 212, 255, 0.6) 0,
+        rgba(0, 212, 255, 0.6) 10px,
+        rgba(0, 212, 255, 0.25) 10px,
+        rgba(0, 212, 255, 0.25) 20px
+    );
+}
+
+.editor--full .editor__timeline.is-resizing {
+    cursor: ns-resize;
+}

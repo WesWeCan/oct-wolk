@@ -1,0 +1,56 @@
+.inspector {
+  // Model uploads
+  .model-uploads {
+    margin-top: 16px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 6px;
+
+    .upload-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+
+      button {
+        padding: 6px 10px;
+        font-size: 11px;
+        flex: 1;
+        min-width: 100px;
+      }
+    }
+
+    .no-model {
+      padding: 12px;
+      text-align: center;
+      color: #888;
+      font-style: italic;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 4px;
+    }
+
+    .error {
+      padding: 10px 12px;
+      background: rgba(255, 0, 0, 0.1);
+      border: 1px solid rgba(255, 0, 0, 0.3);
+      border-radius: 6px;
+      color: #ff6b6b;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .current-assets {
+      padding: 10px 12px;
+      background: rgba(20, 20, 25, 0.5);
+      border-radius: 6px;
+      font-size: 11px;
+      color: #aaa;
+      font-family: 'SF Mono', 'Monaco', monospace;
+      line-height: 1.6;
+      margin-top: 12px;
+      word-break: break-all;
+    }
+  }
+}

@@ -1,0 +1,438 @@
+// ===== Lyric track lane (content area inside .lane) =====
+
+.lyric-track-lane {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    background: #1a1a1a;
+    overflow: hidden;
+
+    &.muted {
+        opacity: 0.4;
+    }
+
+    &.locked {
+        cursor: not-allowed;
+        background-image: repeating-linear-gradient(
+            -45deg,
+            rgba(255, 255, 255, 0.03) 0px,
+            rgba(255, 255, 255, 0.03) 8px,
+            rgba(255, 255, 255, 0.01) 8px,
+            rgba(255, 255, 255, 0.01) 16px
+        );
+
+        &::after {
+            content: 'LOCKED';
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 9px;
+            letter-spacing: 0.08em;
+            color: rgba(255, 255, 255, 0.45);
+            pointer-events: none;
+        }
+    }
+
+    &__items {
+        position: absolute;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+    }
+}
+
+.lyric-item {
+    position: absolute;
+    user-select: none;
+    top: 2px;
+    bottom: 2px;
+    border: 1px solid;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    padding: 0;
+    overflow: hidden;
+    cursor: grab;
+    transition: box-shadow 80ms;
+    box-sizing: border-box;
+    min-width: 0;
+
+    &.selected {
+        box-shadow: 0 0 0 2px #fff;
+        z-index: 3;
+    }
+
+    &__text {
+        font-size: 10px;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+        padding: 0 6px;
+    }
+
+    &__handles {
+        .h {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            cursor: ew-resize;
+            z-index: 2;
+            background: transparent;
+            transition: background 120ms;
+
+            &.left {
+                left: 0;
+                border-radius: 3px 0 0 3px;
+            }
+
+            &.right {
+                right: 0;
+                border-radius: 0 3px 3px 0;
+            }
+        }
+    }
+
+    &:hover .lyric-item__handles .h,
+    &.selected .lyric-item__handles .h {
+        background: rgba(255, 255, 255, 0.25);
+    }
+}
+
+.lane-mini-blocks {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.lane-mini-block {
+    position: absolute;
+    top: 6px;
+    height: 16px;
+    border-radius: 2px;
+    opacity: 0.7;
+    min-width: 2px;
+}
+
+// ===== Track list panel =====
+
+.track-list-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex-shrink: 0;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+
+    &__header {
+        display: flex;
+        align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px solid #333;
+        margin-bottom: 6px;
+    }
+
+    &__title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #888;
+        font-weight: 600;
+    }
+
+    &__generators {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 4px;
+
+        button {
+            flex: 1;
+            padding: 4px 6px;
+            font-size: 11px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            color: #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+
+            &:hover:not(:disabled) {
+                background: #333;
+                color: #fff;
+            }
+
+            &:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
+            }
+        }
+    }
+
+    &__hint {
+        font-size: 10px;
+        color: #666;
+        font-style: italic;
+        margin: 0 0 6px;
+    }
+
+    &__list {
+        flex: 1;
+        min-height: 0;
+        max-height: min(220px, 35vh);
+        overflow-y: auto;
+    }
+}
+
+.track-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 0;
+    border-bottom: 1px solid #222;
+
+    &.muted { opacity: 0.5; }
+    &.active {
+        background: rgba(42, 106, 240, 0.15);
+        border-radius: 3px;
+    }
+
+    &__color {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    &__name {
+        flex: 1;
+        font-size: 12px;
+        color: #ddd;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        span {
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+    }
+
+    &__controls {
+        display: flex;
+        gap: 2px;
+        flex-shrink: 0;
+    }
+}
+
+.track-locked-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+}
+
+.motion-track-lane {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #181818;
+    overflow: hidden;
+
+    &.disabled {
+        opacity: 0.5;
+    }
+
+    &.locked {
+        cursor: not-allowed;
+        background-image: repeating-linear-gradient(
+            -45deg,
+            rgba(255, 255, 255, 0.03) 0px,
+            rgba(255, 255, 255, 0.03) 8px,
+            rgba(255, 255, 255, 0.01) 8px,
+            rgba(255, 255, 255, 0.01) 16px
+        );
+    }
+
+    &__block {
+        position: absolute;
+        top: 4px;
+        bottom: 4px;
+        border: 1px solid;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        padding: 0 6px;
+        min-width: 4px;
+        overflow: hidden;
+    }
+
+    &__block.selected {
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+    }
+
+    &__block.dragging {
+        cursor: grabbing;
+    }
+
+    &__text {
+        font-size: 11px;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    &__handle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        background: rgba(255, 255, 255, 0.15);
+        cursor: ew-resize;
+    }
+
+    &__handle.left { left: 0; }
+    &__handle.right { right: 0; }
+}
+
+// ===== Property keyframe lane =====
+
+.property-keyframe-lane {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 22px;
+    background: transparent;
+    overflow: hidden;
+    cursor: crosshair;
+
+    &.selected {
+        background: rgba(255, 255, 255, 0.015);
+    }
+
+    &.locked {
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    &__label {
+        display: none;
+    }
+
+    &__range {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.045);
+        pointer-events: none;
+    }
+}
+
+.kf-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    z-index: 2;
+
+    svg {
+        width: 8px;
+        height: 8px;
+    }
+
+    svg path {
+        fill: #00d4ff;
+        stroke: #007a94;
+        stroke-width: 0.8;
+    }
+
+    &.step svg path {
+        fill: #ffb74d;
+        stroke: #a06b20;
+    }
+
+    &.at-playhead svg path {
+        fill: #fff;
+        stroke: #aaa;
+    }
+
+    &:hover svg path {
+        stroke-width: 1.5;
+        filter: brightness(1.3);
+    }
+
+    &:active {
+        cursor: grabbing;
+    }
+}
+
+.kf-connection {
+    position: absolute;
+    top: 50%;
+    height: 1px;
+    transform: translateY(-50%);
+    background: rgba(0, 212, 255, 0.25);
+    pointer-events: none;
+    z-index: 1;
+
+    &.step {
+        background: none;
+        height: 0;
+        border-top: 1px dashed rgba(255, 183, 77, 0.25);
+    }
+}
+
+.kf-context-menu {
+    position: fixed;
+    z-index: 10000;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 4px 0;
+    min-width: 140px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+    &__item {
+        display: block;
+        width: 100%;
+        padding: 5px 12px;
+        font-size: 11px;
+        color: #ccc;
+        background: none;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+
+        &:hover { background: rgba(0, 212, 255, 0.1); color: #fff; }
+        &.active { color: #00d4ff; }
+        &.danger { color: #e57373; }
+        &.danger:hover { background: rgba(229, 115, 115, 0.15); }
+    }
+
+    &__divider {
+        height: 1px;
+        background: #333;
+        margin: 4px 0;
+    }
+}
+
+.kf-inline-toggle {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 9px;
+    color: #555;
+    cursor: pointer;
+
+    span { white-space: nowrap; }
+}

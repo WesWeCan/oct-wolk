@@ -1,0 +1,127 @@
+.editor {
+    width: 100%;
+    box-sizing: border-box;
+    --stacked-preview-height: 420px;
+    --stacked-timeline-height: 340px;
+}
+
+.editor--full {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) var(--timeline-height, 280px);
+    grid-template-columns: var(--sidebar-width, 280px) minmax(0, 1fr) var(--inspector-width, 320px);
+    grid-template-areas:
+        'toolbar toolbar toolbar'
+        'sidebar preview inspector'
+        'timeline timeline timeline';
+    height: calc(100dvh - var(--app-header-height, 48px));
+    max-width: 100vw;
+    overflow: hidden; // Prevent editor from scrolling
+}
+
+.editor--stacked {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--app-header-height, 48px));
+    overflow: visible;
+    gap: 12px;
+    padding-bottom: 16px;
+}
+
+.editor__toolbar {
+    grid-area: toolbar;
+    padding: 8px 12px;
+    border-bottom: 1px solid #222;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between; // Space between left and right sections
+
+    .toolbar__left {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .toolbar__right {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-left: auto;
+    }
+}
+
+.editor__sidebar,
+.editor__preview,
+.editor__inspector,
+.editor__timeline {
+    min-height: 0;
+}
+
+.editor__sidebar {
+    grid-area: sidebar;
+}
+
+.editor__preview {
+    grid-area: preview;
+}
+
+.editor__inspector {
+    grid-area: inspector;
+}
+
+.editor__timeline {
+    grid-area: timeline;
+}
+
+.editor--stacked .editor__toolbar { order: 0; }
+.editor--stacked .editor__preview { order: 1; }
+.editor--stacked .editor__sidebar { order: 2; }
+.editor--stacked .editor__inspector { order: 3; }
+.editor--stacked .editor__timeline { order: 4; }
+
+.editor--stacked .editor__preview:not(.is-collapsed) {
+    height: var(--stacked-preview-height, 420px);
+}
+
+.editor--stacked .editor__timeline:not(.is-collapsed) {
+    height: var(--stacked-timeline-height, 340px);
+}
+
+.editor--stacked .editor__sidebar,
+.editor--stacked .editor__preview,
+.editor--stacked .editor__inspector,
+.editor--stacked .editor__timeline {
+    position: relative;
+    overflow: visible;
+    padding: 0;
+    border: none;
+}
+
+// Responsive breakpoints for smaller screens
+@media (max-width: 1400px) {
+    .editor--full {
+        // Reduce default sidebar and inspector widths on medium screens
+        grid-template-columns: var(--sidebar-width, 240px) minmax(0, 1fr) var(--inspector-width, 280px);
+    }
+}
+
+@media (max-width: 600px) {
+    .editor__toolbar {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 6px 8px;
+
+        button {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+    }
+
+    .editor--stacked .editor__preview:not(.is-collapsed) {
+        height: min(52dvh, var(--stacked-preview-height, 420px));
+    }
+
+    .editor--stacked .editor__timeline:not(.is-collapsed) {
+        min-height: 200px;
+    }
+}

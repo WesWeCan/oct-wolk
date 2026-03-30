@@ -1,0 +1,117 @@
+// Inspector main layout and sections (matching timeline aesthetic)
+.inspector {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  padding-right: 8px;
+
+  h3 {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #00d4ff;
+    margin: 0 0 20px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+  }
+
+  // Details/Summary sections (matching timeline controls)
+  details {
+    margin-bottom: 16px;
+    background: rgba(20, 20, 25, 0.6);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    border-radius: 6px;
+    overflow: visible; // Allow content to flow naturally
+    transition: all 200ms;
+
+    &:hover {
+      border-color: rgba(0, 212, 255, 0.3);
+      background: rgba(20, 20, 25, 0.8);
+    }
+
+    summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+      transition: all 200ms;
+      background: rgba(255, 255, 255, 0.02);
+
+      &::-webkit-details-marker {
+        display: none;
+      }
+
+      &::after {
+        content: '';
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-top: 6px solid currentColor;
+        transition: transform 200ms;
+        color: #666;
+      }
+
+      &:hover {
+        background: rgba(0, 212, 255, 0.08);
+        color: #00d4ff;
+
+        &::after {
+          color: #00d4ff;
+        }
+      }
+    }
+
+    &:not([open]) summary::after {
+      transform: rotate(-90deg);
+    }
+
+    > div {
+      padding: 14px;
+      overflow: visible; // Don't clip content
+    }
+  }
+
+  // Section titles
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #00d4ff;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+  }
+
+  // Animatable properties
+  .animatable-properties {
+    margin-top: 16px;
+  }
+
+  // Generic info displays
+  > div {
+    &:not([class]) {
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #ccc;
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 6px;
+      font-family: 'SF Mono', 'Monaco', monospace;
+    }
+  }
+}

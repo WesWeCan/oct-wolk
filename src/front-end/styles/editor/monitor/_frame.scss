@@ -1,0 +1,60 @@
+// Monitor section styles
+.editor__preview {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 0;
+  background: #1a1a20; // Lighter background for whole area
+
+  .monitor-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    gap: 12px;
+  }
+
+  // Header with title and export controls
+  .monitor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-shrink: 0;
+
+    .monitor-title-section {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+
+      .monitor-title {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #00d4ff;
+        text-transform: uppercase;
+      }
+
+      .monitor-frame {
+        font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
+        font-size: 12px;
+        color: #aaa;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+    }
+
+    .monitor-export-controls {
+      display: flex;
+      gap: 8px;
+
+      button {
+        font-size: 12px;
+        padding: 6px 12px;
+      }
+    }
+  }
+}

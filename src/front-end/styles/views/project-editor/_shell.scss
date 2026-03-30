@@ -1,0 +1,327 @@
+// Full editor behaves like a workstation shell; stacked mode returns to page scrolling.
+body:has(.project-editor.editor--full) {
+    overflow: hidden;
+}
+
+// ProjectEditor-specific overrides on top of editor.scss + timeline.scss + monitor.scss
+// The base .editor grid, resize handles, timeline lane/playhead styles, and monitor
+// styles are all inherited — no need to duplicate them here.
+
+.project-editor {
+    .editor-panel__content {
+        min-width: 0;
+
+        > * {
+            min-width: 0;
+        }
+    }
+
+    .editor__timeline {
+        max-height: none;
+        overflow: auto;
+    }
+
+    .toolbar-back {
+        background: none;
+        border: 1px solid #444;
+        color: #ccc;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+
+        &:hover {
+            background: #333;
+            color: #fff;
+        }
+    }
+
+    .toolbar-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #eee;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 240px;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid transparent;
+
+        &:hover {
+            border-color: #444;
+            background: rgba(255, 255, 255, 0.04);
+        }
+    }
+
+    .toolbar-title-input {
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        background: #222;
+        border: 1px solid #2a6af0;
+        padding: 2px 6px;
+        border-radius: 3px;
+        outline: none;
+        max-width: 240px;
+    }
+
+    .toolbar-mode-toggle {
+        display: flex;
+        border: 1px solid #444;
+        border-radius: 4px;
+        overflow: hidden;
+
+        button {
+            background: transparent;
+            border: none;
+            color: #999;
+            padding: 4px 14px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 150ms;
+
+            &.active {
+                background: #2a6af0;
+                color: #fff;
+            }
+
+            &:hover:not(.active) {
+                background: #333;
+                color: #ddd;
+            }
+        }
+    }
+
+    .toolbar-time {
+        font-size: 12px;
+        color: #888;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .toolbar-toggle {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid #444;
+        color: #999;
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 150ms;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        &.active {
+            background: rgba(0, 212, 255, 0.15);
+            border-color: rgba(0, 212, 255, 0.5);
+            color: #00d4ff;
+        }
+
+        &.gizmo-toggle {
+            font-size: 16px;
+            padding: 2px 6px;
+            line-height: 1;
+        }
+    }
+
+    .timeline-marquee {
+        position: absolute;
+        background: rgba(0, 212, 255, 0.12);
+        border: 1px dashed rgba(0, 212, 255, 0.6);
+        pointer-events: none;
+        z-index: 60;
+        border-radius: 2px;
+    }
+
+    .toolbar-mode-indicator {
+        font-size: 10px;
+        color: rgba(0, 212, 255, 0.8);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 2px 6px;
+        background: rgba(0, 212, 255, 0.1);
+        border-radius: 3px;
+    }
+
+    &.editor--full {
+        .editor__sidebar .editor-panel__content,
+        .editor__preview .editor-panel__content,
+        .editor__inspector .editor-panel__content,
+        .editor__timeline .editor-panel__content {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .editor__preview .editor-panel__content {
+            overflow: hidden;
+        }
+
+        .editor__sidebar .editor-panel__content {
+            flex-direction: column;
+        }
+
+        .editor__inspector .editor-panel__content {
+            flex-direction: column;
+            align-items: stretch;
+        }
+    }
+
+    &.editor--stacked {
+        .editor-panel {
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            border-radius: 8px;
+            background: rgba(20, 20, 25, 0.7);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+
+            &.is-collapsed {
+                .editor-panel__content,
+                .editor-panel__resize-handle {
+                    display: none !important;
+                }
+            }
+        }
+
+        .editor__toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            background: rgba(16, 16, 22, 0.96);
+            backdrop-filter: blur(12px);
+        }
+
+        .editor__sidebar,
+        .editor__preview,
+        .editor__inspector,
+        .editor__timeline {
+            background: rgba(20, 20, 25, 0.7);
+        }
+
+        .editor__sidebar,
+        .editor__inspector {
+            height: auto;
+        }
+
+        .editor__preview,
+        .editor__timeline {
+            min-height: 220px;
+        }
+
+        .editor__preview.is-collapsed,
+        .editor__timeline.is-collapsed {
+            min-height: 0;
+            height: auto;
+        }
+
+        .editor__timeline {
+            overflow: hidden;
+        }
+
+        .editor-panel__toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            border: 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.02);
+            color: inherit;
+            text-align: left;
+            cursor: pointer;
+
+            &::before {
+                content: '';
+                width: 0;
+                height: 0;
+                border-top: 4px solid transparent;
+                border-bottom: 4px solid transparent;
+                border-left: 6px solid currentColor;
+                color: #8ea7c0;
+                flex-shrink: 0;
+                transition: transform 150ms ease;
+            }
+
+            &:hover {
+                background: rgba(0, 212, 255, 0.06);
+            }
+        }
+
+        .editor-panel:not(.is-collapsed) .editor-panel__toggle::before {
+            transform: rotate(90deg);
+        }
+
+        .editor-panel__toggle-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #d5dde7;
+            font-weight: 700;
+        }
+
+        .editor-panel__toggle-meta {
+            margin-left: auto;
+            min-width: 0;
+            font-size: 10px;
+            color: #8a93a7;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .editor-panel__content {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            padding: 12px;
+        }
+
+        .editor__preview .editor-panel__content,
+        .editor__timeline .editor-panel__content {
+            height: 100%;
+            padding: 0;
+        }
+
+        .editor__inspector .editor-panel__content {
+            padding: 0;
+        }
+
+        .editor__timeline .timeline-root {
+            height: 100%;
+        }
+
+        .editor-panel__resize-handle {
+            height: 12px;
+            cursor: ns-resize;
+            background: repeating-linear-gradient(
+                90deg,
+                rgba(0, 212, 255, 0.25) 0,
+                rgba(0, 212, 255, 0.25) 10px,
+                rgba(255, 255, 255, 0.08) 10px,
+                rgba(255, 255, 255, 0.08) 20px
+            );
+            opacity: 0.75;
+            transition: opacity 150ms ease, height 150ms ease;
+
+            &:hover {
+                opacity: 1;
+                height: 14px;
+            }
+        }
+
+        .editor__preview.is-resizing,
+        .editor__timeline.is-resizing {
+            user-select: none;
+
+            .editor-panel__resize-handle {
+                opacity: 1;
+                height: 14px;
+            }
+        }
+    }
+}
