@@ -8,22 +8,68 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import path from 'node:path';
 
+const isMac = process.platform === 'darwin';
 const entitlements = path.resolve(process.cwd(), 'entitlements.mac.plist');
+const keychainProfile =
+  process.env.APPLE_KEYCHAIN_PROFILE ?? process.env.NOTARYTOOL_KEYCHAIN_PROFILE ?? 'notarytool-password';
 
-/** Set to 1 to sign (and optionally notarize) the macOS app during `yarn make`. Requires Xcode + Developer ID cert in keychain. */
-const signMac = process.platform === 'darwin' && process.env.ELECTRON_FORGE_SIGN_MAC === '1';
+/**
+ * macOS release builds should sign by default.
+ * Set `ELECTRON_FORGE_SIGN_MAC=0` for an unsigned local package.
+ */
+const signMac = isMac && process.env.ELECTRON_FORGE_SIGN_MAC !== '0';
 
-const osxNotarize =
-  signMac &&
-  process.env.APPLE_ID &&
-  process.env.APPLE_APP_SPECIFIC_PASSWORD &&
-  process.env.APPLE_TEAM_ID
+/**
+ * Prefer notarytool keychain credentials for local release builds, but also
+ * support API key and app-specific password auth for CI.
+ * Set `ELECTRON_FORGE_NOTARIZE=0` to skip notarization.
+ */
+const notarizeMac = signMac && process.env.ELECTRON_FORGE_NOTARIZE !== '0';
+
+const getOsxNotarize = () => {
+  if (!notarizeMac) {
+    return undefined;
+  }
+
+  if (process.env.APPLE_API_KEY && process.env.APPLE_API_KEY_ID && process.env.APPLE_API_ISSUER) {
+    return {
+      appleApiKey: process.env.APPLE_API_KEY,
+      appleApiKeyId: process.env.APPLE_API_KEY_ID,
+      appleApiIssuer: process.env.APPLE_API_ISSUER,
+    };
+  }
+
+  const appleIdPassword = process.env.APPLE_APP_SPECIFIC_PASSWORD ?? process.env.APPLE_PASSWORD;
+
+  if (process.env.APPLE_ID && appleIdPassword && process.env.APPLE_TEAM_ID) {
+    return {
+      appleId: process.env.APPLE_ID,
+      appleIdPassword,
+      teamId: process.env.APPLE_TEAM_ID,
+    };
+  }
+
+  return process.env.APPLE_KEYCHAIN
     ? {
-        appleId: process.env.APPLE_ID,
-        appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
-        teamId: process.env.APPLE_TEAM_ID,
+        keychain: process.env.APPLE_KEYCHAIN,
+        keychainProfile,
       }
-    : undefined;
+    : {
+        keychainProfile,
+      };
+};
+
+const osxNotarize = getOsxNotarize();
+
+// Forge's shared config types lag behind the runtime @electron/osx-sign options.
+const osxSign = signMac
+  ? ({
+      hardenedRuntime: true,
+      entitlements,
+      entitlementsInherit: entitlements,
+      ...(process.env.APPLE_SIGN_IDENTITY ? { identity: process.env.APPLE_SIGN_IDENTITY } : {}),
+    } as NonNullable<ForgeConfig['packagerConfig']>['osxSign'])
+  : undefined;
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -52,19 +98,15 @@ const config: ForgeConfig = {
         },
       ],
     },
-    ...(signMac
+    ...(osxSign
       ? {
-          osxSign: {
-            hardenedRuntime: true,
-            entitlements: entitlements,
-            entitlementsInherit: entitlements,
-          },
+          osxSign,
           ...(osxNotarize ? { osxNotarize } : {}),
         }
       : {}),
   },
   rebuildConfig: {},
-  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
+  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin', 'win32']), new MakerRpm({}), new MakerDeb({})],
   plugins: [
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.

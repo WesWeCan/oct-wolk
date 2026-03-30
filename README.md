@@ -31,6 +31,77 @@ W.O.L.K. (Words On Live Kanvas) is an desktop app for building lyric-driven moti
 - Yarn
 - `ffmpeg` for MP4 export support
 
+## FFmpeg For MP4 Export
+
+W.O.L.K. always supports WebM export. MP4 export requires a separately installed
+`ffmpeg` executable that the app can find on your system.
+
+This project does not currently bundle the standalone `ffmpeg` CLI used for MP4
+encoding. Some packaged Electron builds may still contain files such as
+`ffmpeg.dll`, but those are Chromium/Electron runtime media libraries and are not
+the same as a user-invokable `ffmpeg` binary.
+
+Install `ffmpeg` using one of the following:
+
+### macOS
+
+```bash
+brew install ffmpeg
+ffmpeg -version
+```
+
+### Windows
+
+Option 1:
+
+```bash
+winget install ffmpeg
+ffmpeg -version
+```
+
+Option 2:
+
+```bash
+choco install ffmpeg
+ffmpeg -version
+```
+
+Option 3:
+
+```bash
+scoop install ffmpeg
+ffmpeg -version
+```
+
+Option 4:
+
+Download a build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), extract it,
+and add its `bin` folder to your `PATH`.
+
+### Linux
+
+Ubuntu / Debian:
+
+```bash
+sudo apt update
+sudo apt install ffmpeg
+ffmpeg -version
+```
+
+Fedora / RHEL / CentOS:
+
+```bash
+sudo dnf install ffmpeg
+ffmpeg -version
+```
+
+Arch:
+
+```bash
+sudo pacman -S ffmpeg
+ffmpeg -version
+```
+
 ## Install
 
 ```bash
@@ -58,14 +129,67 @@ yarn package
 yarn make
 ```
 
-For signed macOS builds:
+On macOS, `yarn make` now signs and notarizes release builds by default.
+It expects:
+
+- a `Developer ID Application` certificate in your keychain
+- Xcode command line tools
+- notarization credentials available through one of the Forge-supported methods
+
+The default local notarization path uses your stored `notarytool` keychain profile:
 
 ```bash
-ELECTRON_FORGE_SIGN_MAC=1 yarn make
+xcrun notarytool store-credentials "notarytool-password" \
+  --apple-id "you@example.com" \
+  --team-id "YOURTEAMID" \
+  --password "app-specific-password"
 ```
 
-The signing and notarization behavior is controlled by environment variables in
-`forge.config.ts`.
+Then build the release:
+
+```bash
+yarn make:mac
+```
+
+For Windows builds from macOS, use the zip maker only:
+
+```bash
+yarn make:win
+```
+
+That cross-build path produces both Windows `.zip` artifacts in sequence:
+
+- `win32/arm64`
+- `win32/x64`
+
+It avoids depending on the Windows Squirrel installer toolchain on macOS. If you
+want the native Windows installer output, run `yarn make --platform=win32` on a
+Windows machine.
+
+To build both Windows zips and then the signed macOS release:
+
+```bash
+yarn make:all
+```
+
+Alternative notarization inputs supported by `forge.config.ts`:
+
+- `APPLE_KEYCHAIN_PROFILE` or `NOTARYTOOL_KEYCHAIN_PROFILE`
+- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` or `APPLE_PASSWORD`, and `APPLE_TEAM_ID`
+- `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`
+
+Optional overrides:
+
+- `APPLE_SIGN_IDENTITY` to force a specific signing identity
+- `APPLE_KEYCHAIN` to point at a non-default keychain
+- `ELECTRON_FORGE_SIGN_MAC=0` to skip signing for a local unsigned package
+- `ELECTRON_FORGE_NOTARIZE=0` to sign without notarizing
+
+Verify your signing identities before packaging:
+
+```bash
+security find-identity -p codesigning -v
+```
 
 ## Project Workflow
 
@@ -109,7 +233,7 @@ shared plugin contracts in `src/front-end/motion-blocks/core/`.
 ## Video Export
 
 - WebM export is always available
-- MP4 export uses `ffmpeg`
+- MP4 export uses a separately installed `ffmpeg` executable
 - Export settings live on the project document and include:
   - FPS
   - Render width and height
