@@ -6,6 +6,9 @@ export function createMockElectronAPI() {
     save: vi.fn().mockImplementation((project: any) => Promise.resolve(project)),
     load: vi.fn().mockResolvedValue(null),
     list: vi.fn().mockResolvedValue([]),
+    exportWolk: vi.fn().mockResolvedValue({ canceled: false, filePath: '/tmp/test.wolk' }),
+    importWolk: vi.fn().mockResolvedValue({ canceled: false, project: { id: 'imported-id', song: { title: 'Imported', audioSrc: '' } } }),
+    importWolkBytes: vi.fn().mockResolvedValue({ id: 'imported-id', song: { title: 'Imported', audioSrc: '' } }),
     uploadCover: vi.fn().mockResolvedValue({}),
     uploadAudio: vi.fn().mockResolvedValue({}),
     uploadAsset: vi.fn().mockResolvedValue({ url: '', fileName: '' }),
@@ -15,6 +18,7 @@ export function createMockElectronAPI() {
 
   return {
     getRandomNumber: vi.fn().mockResolvedValue(42),
+    setMenuContext: vi.fn().mockResolvedValue({ ok: true }),
     openStorageFolder: vi.fn().mockResolvedValue(undefined),
     projects,
     songs: projects,
@@ -33,15 +37,22 @@ export function createMockElectronAPI() {
     fonts: {
       list: vi.fn().mockResolvedValue([]),
     },
+    motionPresets: {
+      list: vi.fn().mockResolvedValue([]),
+      load: vi.fn().mockResolvedValue(null),
+      save: vi.fn().mockResolvedValue(null),
+      delete: vi.fn().mockResolvedValue(true),
+      exportOne: vi.fn().mockResolvedValue({ canceled: false, filePath: '/tmp/test.wolkdpreset', exportedCount: 1 }),
+      importOne: vi.fn().mockResolvedValue({ canceled: false, imported: [] }),
+      exportBundle: vi.fn().mockResolvedValue({ canceled: false, filePath: '/tmp/test.wolkpresets', exportedCount: 0 }),
+      importBundle: vi.fn().mockResolvedValue({ canceled: false, imported: [] }),
+    },
     export: {
       saveWebM: vi.fn().mockResolvedValue({ filePath: '/tmp/test.webm' }),
       ffmpegAvailable: vi.fn().mockResolvedValue(true),
       getFfmpegInstructions: vi.fn().mockResolvedValue({ platform: 'darwin', instructions: '' }),
       encodeMp4FromWebM: vi.fn().mockResolvedValue({ filePath: '/tmp/test.mp4' }),
       copyFontsForExport: vi.fn().mockResolvedValue({ copied: [] }),
-      packageWolk: vi.fn().mockResolvedValue({ filePath: '/tmp/test.wolk' }),
-      importWolk: vi.fn().mockResolvedValue({ songId: 'imported-id' }),
-      importWolkBytes: vi.fn().mockResolvedValue({ songId: 'imported-id' }),
       openFolder: vi.fn().mockResolvedValue({ success: true }),
       cleanupFrames: vi.fn().mockResolvedValue({ success: true }),
       createFrameExport: vi.fn().mockResolvedValue({ rootDir: '/tmp', framesDir: '/tmp/frames' }),
@@ -50,6 +61,8 @@ export function createMockElectronAPI() {
       assembleVideo: vi.fn().mockResolvedValue({ success: true }),
       assembleAlphaVideo: vi.fn().mockResolvedValue({ success: true }),
     },
+    onAppMenuAction: vi.fn(() => vi.fn()),
+    onMenuCommand: vi.fn(() => vi.fn()),
     on: vi.fn(),
     removeAllListeners: vi.fn(),
   };

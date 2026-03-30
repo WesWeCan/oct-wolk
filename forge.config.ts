@@ -12,6 +12,16 @@ const config: ForgeConfig = {
     asar: true,
     extraResource: ['./assets'],
     icon: './src/build-resources/icons/icon', // Electron Forge will add .icns/.ico/.png automatically
+    extendInfo: {
+      CFBundleDocumentTypes: [
+        {
+          CFBundleTypeName: 'WOLK Project',
+          CFBundleTypeRole: 'Editor',
+          LSHandlerRank: 'Default',
+          CFBundleTypeExtensions: ['wolk'],
+        },
+      ],
+    },
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],

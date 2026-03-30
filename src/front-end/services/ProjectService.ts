@@ -1,4 +1,5 @@
 import type { WolkProject } from '@/types/project_types';
+import type { ProjectArchiveDialogResult } from '@/types/archive_types';
 
 export const ProjectService = {
     async create(initial?: { title?: string; audioSrc?: string; coverSrc?: string }): Promise<WolkProject> {
@@ -20,6 +21,18 @@ export const ProjectService = {
     async list(): Promise<WolkProject[]> {
         const list = await window.electronAPI.projects.list();
         return (Array.isArray(list) ? list : []) as WolkProject[];
+    },
+
+    async exportWolk(projectId: string): Promise<ProjectArchiveDialogResult> {
+        return await window.electronAPI.projects.exportWolk(projectId);
+    },
+
+    async importWolk(): Promise<ProjectArchiveDialogResult> {
+        return await window.electronAPI.projects.importWolk();
+    },
+
+    async importWolkBytes(fileName: string, fileData: ArrayBuffer): Promise<WolkProject> {
+        return await window.electronAPI.projects.importWolkBytes(fileName, fileData);
     },
 
     async delete(projectId: string): Promise<boolean> {

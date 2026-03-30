@@ -179,7 +179,9 @@ Built applications will be in the `out` directory.
    - Use the word pool to control which words display
 
 6. **Export**
-   - Click "Export .wolk" to save your project
+   - Use `Export .wolk` to save a portable project archive
+   - Use `Import .wolk` to bring a project archive into local storage
+   - Use `Export Presets` / `Import Preset` for motion preset archives
    - Use video export for WebM/MP4 output
    - Check that ffmpeg is installed for MP4 support
 
@@ -232,6 +234,16 @@ oct-wolk/
 
 ## Export Formats
 
+### .wolk
+- Zip archive with a `.wolk` extension
+- Contains `manifest.json`, `project/project.json`, and `project/files/...`
+- Designed for full project portability, including project-local assets such as audio, fonts, and uploaded files
+
+### .wolkdpreset / .wolkpresets
+- Zip archives with custom extensions
+- `.wolkdpreset` stores a single motion preset
+- `.wolkpresets` stores a multi-preset bundle grouped by block type
+
 ### WebM
 - **Always available** (uses browser MediaRecorder API)
 - VP9 video codec with Opus audio
@@ -245,6 +257,8 @@ oct-wolk/
 - Better compatibility with video players and editing software
 
 The application will automatically detect if ffmpeg is available and enable MP4 export accordingly.
+
+Packaged macOS and Windows builds can also receive `.wolk` files from the OS and import them directly into the project library.
 
 ## Font Management
 
@@ -265,12 +279,12 @@ W.O.L.K. stores project data locally in your application data directory:
 
 The structure includes:
 - `docStorage/songs/`: Each song/project has its own folder containing:
-  - `song.json`: Metadata and word bank
-  - `timeline.json`: Timeline configuration
-  - `scenes/`: Individual scene configurations
-  - `assets/`: Uploaded files (audio, images, models)
-  - `analysis/`: Audio analysis cache
+  - `project.json`: Project metadata, tracks, and render settings
+  - `audio.*` / `cover.*`: Imported media files when present
+  - `fonts/`: Project-local fonts copied into the project
+  - `assets/`: Uploaded files (images, models, other project assets)
 - `docStorage/exports/`: Video exports (accessible via "Open Folder" button after export)
+- `docStorage/presets/`: Saved motion presets grouped by block type
 
 ## Troubleshooting
 
