@@ -83,7 +83,70 @@ ensureMotionBlockPluginsRegistered();
 const project = ref<WolkProject | null>(null);
 const loading = ref(true);
 const mode = ref<'lyric' | 'motion'>('lyric');
+type EditorLayoutMode = 'full' | 'stacked';
+type EditorPanelKey = 'preview' | 'sidebar' | 'inspector' | 'timeline';
+const STACKED_LAYOUT_BREAKPOINT = 900;
+const STACKED_PANEL_DEFAULTS: Record<EditorPanelKey, boolean> = {
+    preview: true,
+    sidebar: true,
+    inspector: true,
+    timeline: true,
+};
+const PANEL_STORAGE_KEYS = {
+    stackedPanels: 'pe-stacked-panels',
+    fullSidebarWidth: 'pe-full-sidebar-width',
+    fullInspectorWidth: 'pe-full-inspector-width',
+    fullTimelineHeight: 'pe-full-timeline-height',
+    stackedPreviewHeight: 'pe-stacked-preview-height',
+    stackedTimelineHeight: 'pe-stacked-timeline-height',
+} as const;
+const editorRootRef = ref<HTMLElement | null>(null);
+const layoutMode = ref<EditorLayoutMode>('full');
+const stackedPanels = ref<Record<EditorPanelKey, boolean>>({ ...STACKED_PANEL_DEFAULTS });
 const fps = ref(60);
+
+const restoreStackedPanels = () => {
+    try {
+        const raw = localStorage.getItem(PANEL_STORAGE_KEYS.stackedPanels);
+        if (!raw) {
+            stackedPanels.value = { ...STACKED_PANEL_DEFAULTS };
+            return;
+        }
+        const parsed = JSON.parse(raw) as Partial<Record<EditorPanelKey, boolean>>;
+        stackedPanels.value = {
+            ...STACKED_PANEL_DEFAULTS,
+            ...parsed,
+        };
+    } catch {
+        stackedPanels.value = { ...STACKED_PANEL_DEFAULTS };
+    }
+};
+
+const persistStackedPanels = () => {
+    localStorage.setItem(PANEL_STORAGE_KEYS.stackedPanels, JSON.stringify(stackedPanels.value));
+};
+
+const syncLayoutMode = () => {
+    const nextMode: EditorLayoutMode = window.innerWidth <= STACKED_LAYOUT_BREAKPOINT ? 'stacked' : 'full';
+    const changed = layoutMode.value !== nextMode;
+    layoutMode.value = nextMode;
+    if (changed) {
+        nextTick(() => {
+            markDirty();
+        });
+    }
+};
+
+const toggleStackedPanel = (panel: EditorPanelKey) => {
+    if (layoutMode.value !== 'stacked') return;
+    stackedPanels.value = {
+        ...stackedPanels.value,
+        [panel]: !stackedPanels.value[panel],
+    };
+    persistStackedPanels();
+};
+
+const isPanelExpanded = (panel: EditorPanelKey) => layoutMode.value === 'full' || stackedPanels.value[panel];
 
 // Editable title
 const editingTitle = ref(false);
@@ -1851,9 +1914,24 @@ const startResize = (key: string, e: PointerEvent) => {
 
 let timelineWidthObserver: ResizeObserver | null = null;
 
+const applyPersistedPanelSizes = (editorEl: HTMLElement) => {
+    const savedSW = localStorage.getItem(PANEL_STORAGE_KEYS.fullSidebarWidth);
+    const savedIW = localStorage.getItem(PANEL_STORAGE_KEYS.fullInspectorWidth);
+    const savedTH = localStorage.getItem(PANEL_STORAGE_KEYS.fullTimelineHeight);
+    const savedPreviewH = localStorage.getItem(PANEL_STORAGE_KEYS.stackedPreviewHeight);
+    const savedStackedTimelineH = localStorage.getItem(PANEL_STORAGE_KEYS.stackedTimelineHeight);
+
+    if (savedSW) editorEl.style.setProperty('--sidebar-width', `${savedSW}px`);
+    if (savedIW) editorEl.style.setProperty('--inspector-width', `${savedIW}px`);
+    if (savedTH) editorEl.style.setProperty('--timeline-height', `${savedTH}px`);
+    if (savedPreviewH) editorEl.style.setProperty('--stacked-preview-height', `${savedPreviewH}px`);
+    if (savedStackedTimelineH) editorEl.style.setProperty('--stacked-timeline-height', `${savedStackedTimelineH}px`);
+};
+
 const setupResizeHandles = () => {
-    const editorEl = document.querySelector('.project-editor') as HTMLElement;
+    const editorEl = editorRootRef.value;
     if (!editorEl) return;
+    applyPersistedPanelSizes(editorEl);
 
     // Measure the right column width for snap threshold
     const rightCol = editorEl.querySelector('.editor__timeline .grid > div:last-child') as HTMLElement;
@@ -1867,15 +1945,11 @@ const setupResizeHandles = () => {
         timelineWidthObserver.observe(rightCol);
     }
 
-    const savedSW = localStorage.getItem('pe-sidebar-width');
-    const savedIW = localStorage.getItem('pe-inspector-width');
-    if (savedSW) editorEl.style.setProperty('--sidebar-width', savedSW + 'px');
-    if (savedIW) editorEl.style.setProperty('--inspector-width', savedIW + 'px');
-
     // Sidebar resize
     const sidebar = editorEl.querySelector('.editor__sidebar') as HTMLElement;
     if (sidebar) {
         sidebar.addEventListener('pointerdown', (e: PointerEvent) => {
+            if (layoutMode.value !== 'full') return;
             const rect = sidebar.getBoundingClientRect();
             if (e.clientX < rect.right - 6) return;
             sidebar.classList.add('is-resizing');
@@ -1890,7 +1964,7 @@ const setupResizeHandles = () => {
                 window.removeEventListener('pointerup', onUp);
                 window.removeEventListener('pointercancel', onUp);
                 sidebar.classList.remove('is-resizing');
-                localStorage.setItem('pe-sidebar-width', sidebar.offsetWidth.toString());
+                localStorage.setItem(PANEL_STORAGE_KEYS.fullSidebarWidth, sidebar.offsetWidth.toString());
             };
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp);
@@ -1902,6 +1976,7 @@ const setupResizeHandles = () => {
     const inspector = editorEl.querySelector('.editor__inspector') as HTMLElement;
     if (inspector) {
         inspector.addEventListener('pointerdown', (e: PointerEvent) => {
+            if (layoutMode.value !== 'full') return;
             const rect = inspector.getBoundingClientRect();
             if (e.clientX > rect.left + 6) return;
             inspector.classList.add('is-resizing');
@@ -1916,7 +1991,7 @@ const setupResizeHandles = () => {
                 window.removeEventListener('pointerup', onUp);
                 window.removeEventListener('pointercancel', onUp);
                 inspector.classList.remove('is-resizing');
-                localStorage.setItem('pe-inspector-width', inspector.offsetWidth.toString());
+                localStorage.setItem(PANEL_STORAGE_KEYS.fullInspectorWidth, inspector.offsetWidth.toString());
             };
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp);
@@ -1928,10 +2003,8 @@ const setupResizeHandles = () => {
     // so the grid row itself changes size (not just max-height on the item).
     const timelineHost = editorEl.querySelector('.editor__timeline') as HTMLElement;
     if (timelineHost) {
-        const savedTH = localStorage.getItem('pe-timeline-height');
-        if (savedTH) editorEl.style.setProperty('--timeline-height', savedTH + 'px');
-
         timelineHost.addEventListener('pointerdown', (e: PointerEvent) => {
+            if (layoutMode.value !== 'full') return;
             const rect = timelineHost.getBoundingClientRect();
             if (e.clientY > rect.top + 12) return;
             timelineHost.classList.add('is-resizing');
@@ -1946,7 +2019,61 @@ const setupResizeHandles = () => {
                 window.removeEventListener('pointerup', onUp);
                 window.removeEventListener('pointercancel', onUp);
                 timelineHost.classList.remove('is-resizing');
-                localStorage.setItem('pe-timeline-height', timelineHost.offsetHeight.toString());
+                localStorage.setItem(PANEL_STORAGE_KEYS.fullTimelineHeight, timelineHost.offsetHeight.toString());
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+            window.addEventListener('pointercancel', onUp);
+        });
+    }
+
+    const previewResizeHandle = editorEl.querySelector('[data-panel-resize="preview"]') as HTMLElement | null;
+    const stackedTimelineResizeHandle = editorEl.querySelector('[data-panel-resize="timeline"]') as HTMLElement | null;
+    const previewHost = editorEl.querySelector('.editor__preview') as HTMLElement | null;
+
+    if (previewResizeHandle && previewHost) {
+        previewResizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+            if (layoutMode.value !== 'stacked' || !isPanelExpanded('preview')) return;
+            e.preventDefault();
+            previewHost.classList.add('is-resizing');
+            const startH = previewHost.offsetHeight;
+            const startY = e.clientY;
+            const onMove = (ev: PointerEvent) => {
+                const maxH = Math.max(320, window.innerHeight - 180);
+                const newH = Math.max(220, Math.min(maxH, startH + (ev.clientY - startY)));
+                editorEl.style.setProperty('--stacked-preview-height', `${newH}px`);
+            };
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                window.removeEventListener('pointercancel', onUp);
+                previewHost.classList.remove('is-resizing');
+                localStorage.setItem(PANEL_STORAGE_KEYS.stackedPreviewHeight, previewHost.offsetHeight.toString());
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+            window.addEventListener('pointercancel', onUp);
+        });
+    }
+
+    if (stackedTimelineResizeHandle && timelineHost) {
+        stackedTimelineResizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+            if (layoutMode.value !== 'stacked' || !isPanelExpanded('timeline')) return;
+            e.preventDefault();
+            timelineHost.classList.add('is-resizing');
+            const startH = timelineHost.offsetHeight;
+            const startY = e.clientY;
+            const onMove = (ev: PointerEvent) => {
+                const maxH = Math.max(300, window.innerHeight - 140);
+                const newH = Math.max(200, Math.min(maxH, startH + (ev.clientY - startY)));
+                editorEl.style.setProperty('--stacked-timeline-height', `${newH}px`);
+            };
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                window.removeEventListener('pointercancel', onUp);
+                timelineHost.classList.remove('is-resizing');
+                localStorage.setItem(PANEL_STORAGE_KEYS.stackedTimelineHeight, timelineHost.offsetHeight.toString());
             };
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp);
@@ -2109,8 +2236,11 @@ const onKeyUp = (e: KeyboardEvent) => {
 };
 
 onMounted(() => {
+    restoreStackedPanels();
+    syncLayoutMode();
     loadProject();
     videoExport.checkFfmpegAvailable();
+    window.addEventListener('resize', syncLayoutMode);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 });
@@ -2119,6 +2249,7 @@ onUnmounted(() => {
     stopRafLoop();
     if (saveTimer) clearTimeout(saveTimer);
     if (uiNoticeTimer) clearTimeout(uiNoticeTimer);
+    window.removeEventListener('resize', syncLayoutMode);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     timelineWidthObserver?.disconnect();
@@ -2132,7 +2263,15 @@ onUnmounted(() => {
     <div v-if="loading" class="editor-loading">
         <p>Loading project...</p>
     </div>
-    <div v-else-if="project" class="editor project-editor">
+    <div
+        v-else-if="project"
+        ref="editorRootRef"
+        class="editor project-editor"
+        :class="{
+            'editor--full': layoutMode === 'full',
+            'editor--stacked': layoutMode === 'stacked',
+        }"
+    >
         <!-- Toolbar -->
         <div class="editor__toolbar">
             <div class="toolbar__left">
@@ -2181,43 +2320,64 @@ onUnmounted(() => {
         <div v-if="uiNotice" class="project-notice">{{ uiNotice }}</div>
 
         <!-- Sidebar -->
-        <div class="editor__sidebar">
-            <template v-if="mode === 'lyric'">
-                <SongMediaPanel
-                    :project-id="project.id"
-                    :song="project.song"
-                    @project-updated="onSongProjectUpdated"
-                />
-                <TrackListPanel
-                    :tracks="project.lyricTracks"
-                    :raw-lyrics="rawLyrics"
-                    :audio-duration-ms="audioDurationMs"
-                    :selected-verse-track-id="selectedVerseTrackId"
-                    :selected-line-track-id="selectedLineTrackId"
-                    @add-track="onAddTrack"
-                    @generate-lines="onGenerateLines"
-                    @generate-words="onGenerateWords"
-                    @delete-track="onDeleteTrack"
-                />
-                <RawLyricsPanel v-model:rawLyrics="rawLyrics" />
-            </template>
-            <template v-else>
-                <MotionTrackListPanel
-                    :lyric-tracks="project.lyricTracks"
-                    :motion-tracks="project.motionTracks"
-                    :selected-track-id="selectedMotionTrackId"
-                    :plugins="availableMotionPlugins"
-                    @add-track="onAddMotionTrack"
-                    @delete-track="onDeleteMotionTrack"
-                    @select-track="onSelectMotionTrack"
-                    @update-track="onUpdateMotionTrack"
-                />
-            </template>
+        <div class="editor__sidebar editor-panel" :class="{ 'is-collapsed': layoutMode === 'stacked' && !isPanelExpanded('sidebar') }">
+            <button
+                v-show="layoutMode === 'stacked'"
+                type="button"
+                class="editor-panel__toggle"
+                @click="toggleStackedPanel('sidebar')"
+            >
+                <span class="editor-panel__toggle-title">Sidebar</span>
+                <span class="editor-panel__toggle-meta">{{ mode === 'lyric' ? 'Media, tracks, and lyrics' : 'Motion tracks and sources' }}</span>
+            </button>
+            <div v-show="isPanelExpanded('sidebar')" class="editor-panel__content editor-panel__content--sidebar">
+                <template v-if="mode === 'lyric'">
+                    <SongMediaPanel
+                        :project-id="project.id"
+                        :song="project.song"
+                        @project-updated="onSongProjectUpdated"
+                    />
+                    <TrackListPanel
+                        :tracks="project.lyricTracks"
+                        :raw-lyrics="rawLyrics"
+                        :audio-duration-ms="audioDurationMs"
+                        :selected-verse-track-id="selectedVerseTrackId"
+                        :selected-line-track-id="selectedLineTrackId"
+                        @add-track="onAddTrack"
+                        @generate-lines="onGenerateLines"
+                        @generate-words="onGenerateWords"
+                        @delete-track="onDeleteTrack"
+                    />
+                    <RawLyricsPanel v-model:rawLyrics="rawLyrics" />
+                </template>
+                <template v-else>
+                    <MotionTrackListPanel
+                        :lyric-tracks="project.lyricTracks"
+                        :motion-tracks="project.motionTracks"
+                        :selected-track-id="selectedMotionTrackId"
+                        :plugins="availableMotionPlugins"
+                        @add-track="onAddMotionTrack"
+                        @delete-track="onDeleteMotionTrack"
+                        @select-track="onSelectMotionTrack"
+                        @update-track="onUpdateMotionTrack"
+                    />
+                </template>
+            </div>
         </div>
 
         <!-- Monitor / Preview -->
-        <div class="editor__preview">
-            <div class="monitor-container">
+        <div class="editor__preview editor-panel" :class="{ 'is-collapsed': layoutMode === 'stacked' && !isPanelExpanded('preview') }">
+            <button
+                v-show="layoutMode === 'stacked'"
+                type="button"
+                class="editor-panel__toggle"
+                @click="toggleStackedPanel('preview')"
+            >
+                <span class="editor-panel__toggle-title">Preview</span>
+                <span class="editor-panel__toggle-meta">{{ project.settings.renderWidth }} x {{ project.settings.renderHeight }} at {{ project.settings.fps }} FPS</span>
+            </button>
+            <div v-show="isPanelExpanded('preview')" class="editor-panel__content editor-panel__content--preview">
+                <div class="monitor-container">
                 <div class="monitor-header">
                     <div class="monitor-title-section">
                         <h3 class="monitor-title">MONITOR</h3>
@@ -2315,80 +2475,108 @@ onUnmounted(() => {
                     </div>
                 </div>
             </div>
+            </div>
+            <div
+                v-show="layoutMode === 'stacked' && isPanelExpanded('preview')"
+                class="editor-panel__resize-handle"
+                data-panel-resize="preview"
+                aria-hidden="true"
+            ></div>
         </div>
 
         <!-- Inspector -->
-        <div class="editor__inspector">
-            <template v-if="mode === 'motion'">
-                <MotionInspectorHost
-                    v-if="selectedMotionTrack"
-                    :motion-track="selectedMotionTrack"
-                    :lyric-tracks="project.lyricTracks"
-                    :playhead-ms="playheadMs"
-                    :fps="fps"
-                    :project-font="project.font"
-                    :render-width="targetWidth"
-                    :render-height="targetHeight"
-                    :renderer-bounds="selectedMotionTrackId ? motionRenderer.getRendererBounds(selectedMotionTrackId) : null"
-                    :scene3d="normalizedScene3D"
-                    @update-track="onUpdateMotionTrack"
-                    @seek-to-ms="onSeekToMs"
-                    @update-scene3d="onUpdateScene3D"
-                />
-                <BackgroundInspector
-                    :background-image="project.backgroundImage"
-                    :background-color="project.backgroundColor"
-                    :background-visible="project.backgroundVisible !== false"
-                    :background-image-visible="project.backgroundImageVisible !== false"
-                    :background-opacity="project.backgroundColorOpacity ?? 1"
-                    :background-use-gradient="!!project.backgroundUseGradient"
-                    :background-gradient-color="project.backgroundGradientColor || '#222222'"
-                    :background-gradient-angle="project.backgroundGradientAngle ?? 90"
-                    :background-image-fit="project.backgroundImageFit || 'cover'"
-                    :background-image-offset-x="project.backgroundImageX ?? 0"
-                    :background-image-offset-y="project.backgroundImageY ?? 0"
-                    :background-image-scale="project.backgroundImageScale ?? 1"
-                    :background-image-opacity="project.backgroundImageOpacity ?? 1"
-                    @set-background-color="onSetBackgroundColor"
-                    @set-background-visible="onSetBackgroundVisibility"
-                    @set-background-image-visible="onSetBackgroundImageVisibility"
-                    @set-background-opacity="onSetBackgroundOpacity"
-                    @set-background-use-gradient="onSetBackgroundUseGradient"
-                    @set-background-gradient-color="onSetBackgroundGradientColor"
-                    @set-background-gradient-angle="onSetBackgroundGradientAngle"
-                    @set-background-fit="onSetBackgroundFit"
-                    @set-background-image-offset-x="onSetBackgroundImageOffsetX"
-                    @set-background-image-offset-y="onSetBackgroundImageOffsetY"
-                    @set-background-image-scale="onSetBackgroundImageScale"
-                    @set-background-image-opacity="onSetBackgroundImageOpacity"
-                    @upload-background-image="onUploadBackgroundImage"
-                    @clear-background-image="onClearBackgroundImage"
-                    @reset-background-image-controls="onResetBackgroundImageControls"
-                    @reset-background="onResetBackground"
-                />
-            </template>
-            <template v-else>
-                <ProjectInspector
-                    :project="project"
-                    :mode="mode"
-                    :tracks="project.lyricTracks"
-                    :selected-item-id="selectedItemId"
-                    :playhead-ms="playheadMs"
-                    :overlay-opts="overlayOpts"
-                    @update-project="onUpdateProject"
-                    @update-item="onUpdateItem"
-                    @delete-item="onDeleteItem"
-                    @split-item="onSplitItem"
-                    @merge-with-next="onMergeWithNext"
-                    @add-item-at-location="onAddItemAtLocation"
-                    @update:overlay-opts="(v: any) => overlayOpts = v"
-                />
-            </template>
+        <div class="editor__inspector editor-panel" :class="{ 'is-collapsed': layoutMode === 'stacked' && !isPanelExpanded('inspector') }">
+            <button
+                v-show="layoutMode === 'stacked'"
+                type="button"
+                class="editor-panel__toggle"
+                @click="toggleStackedPanel('inspector')"
+            >
+                <span class="editor-panel__toggle-title">Inspector</span>
+                <span class="editor-panel__toggle-meta">{{ mode === 'motion' ? 'Motion, scene, and background controls' : 'Project and lyric controls' }}</span>
+            </button>
+            <div v-show="isPanelExpanded('inspector')" class="editor-panel__content editor-panel__content--inspector">
+                <template v-if="mode === 'motion'">
+                    <MotionInspectorHost
+                        v-if="selectedMotionTrack"
+                        :motion-track="selectedMotionTrack"
+                        :lyric-tracks="project.lyricTracks"
+                        :playhead-ms="playheadMs"
+                        :fps="fps"
+                        :project-font="project.font"
+                        :render-width="targetWidth"
+                        :render-height="targetHeight"
+                        :renderer-bounds="selectedMotionTrackId ? motionRenderer.getRendererBounds(selectedMotionTrackId) : null"
+                        :scene3d="normalizedScene3D"
+                        @update-track="onUpdateMotionTrack"
+                        @seek-to-ms="onSeekToMs"
+                        @update-scene3d="onUpdateScene3D"
+                    />
+                    <BackgroundInspector
+                        :background-image="project.backgroundImage"
+                        :background-color="project.backgroundColor"
+                        :background-visible="project.backgroundVisible !== false"
+                        :background-image-visible="project.backgroundImageVisible !== false"
+                        :background-opacity="project.backgroundColorOpacity ?? 1"
+                        :background-use-gradient="!!project.backgroundUseGradient"
+                        :background-gradient-color="project.backgroundGradientColor || '#222222'"
+                        :background-gradient-angle="project.backgroundGradientAngle ?? 90"
+                        :background-image-fit="project.backgroundImageFit || 'cover'"
+                        :background-image-offset-x="project.backgroundImageX ?? 0"
+                        :background-image-offset-y="project.backgroundImageY ?? 0"
+                        :background-image-scale="project.backgroundImageScale ?? 1"
+                        :background-image-opacity="project.backgroundImageOpacity ?? 1"
+                        @set-background-color="onSetBackgroundColor"
+                        @set-background-visible="onSetBackgroundVisibility"
+                        @set-background-image-visible="onSetBackgroundImageVisibility"
+                        @set-background-opacity="onSetBackgroundOpacity"
+                        @set-background-use-gradient="onSetBackgroundUseGradient"
+                        @set-background-gradient-color="onSetBackgroundGradientColor"
+                        @set-background-gradient-angle="onSetBackgroundGradientAngle"
+                        @set-background-fit="onSetBackgroundFit"
+                        @set-background-image-offset-x="onSetBackgroundImageOffsetX"
+                        @set-background-image-offset-y="onSetBackgroundImageOffsetY"
+                        @set-background-image-scale="onSetBackgroundImageScale"
+                        @set-background-image-opacity="onSetBackgroundImageOpacity"
+                        @upload-background-image="onUploadBackgroundImage"
+                        @clear-background-image="onClearBackgroundImage"
+                        @reset-background-image-controls="onResetBackgroundImageControls"
+                        @reset-background="onResetBackground"
+                    />
+                </template>
+                <template v-else>
+                    <ProjectInspector
+                        :project="project"
+                        :mode="mode"
+                        :tracks="project.lyricTracks"
+                        :selected-item-id="selectedItemId"
+                        :playhead-ms="playheadMs"
+                        :overlay-opts="overlayOpts"
+                        @update-project="onUpdateProject"
+                        @update-item="onUpdateItem"
+                        @delete-item="onDeleteItem"
+                        @split-item="onSplitItem"
+                        @merge-with-next="onMergeWithNext"
+                        @add-item-at-location="onAddItemAtLocation"
+                        @update:overlay-opts="(v: any) => overlayOpts = v"
+                    />
+                </template>
+            </div>
         </div>
 
         <!-- Timeline -->
-        <div class="editor__timeline">
-            <div class="timeline-root" :style="{ '--playhead-x': playheadX } as any">
+        <div class="editor__timeline editor-panel" :class="{ 'is-collapsed': layoutMode === 'stacked' && !isPanelExpanded('timeline') }">
+            <button
+                v-show="layoutMode === 'stacked'"
+                type="button"
+                class="editor-panel__toggle"
+                @click="toggleStackedPanel('timeline')"
+            >
+                <span class="editor-panel__toggle-title">Timeline</span>
+                <span class="editor-panel__toggle-meta">{{ mode === 'motion' ? 'Motion tracks and keyframes' : 'Lyrics, waveform, and analysis' }}</span>
+            </button>
+            <div v-show="isPanelExpanded('timeline')" class="editor-panel__content editor-panel__content--timeline">
+                <div class="timeline-root" :style="{ '--playhead-x': playheadX } as any">
                 <div class="timeline">
                     <div class="grid" style="grid-template-columns: 220px 1fr">
                         <!-- Left column: labels -->
@@ -2775,6 +2963,13 @@ onUnmounted(() => {
                     </div>
                 </div>
             </div>
+            </div>
+            <div
+                v-show="layoutMode === 'stacked' && isPanelExpanded('timeline')"
+                class="editor-panel__resize-handle"
+                data-panel-resize="timeline"
+                aria-hidden="true"
+            ></div>
         </div>
     </div>
     <ExportModal

@@ -1,6 +1,5 @@
-// Prevent body scrollbar when project editor is open — the app header + editor grid
-// exceeds 100vh because editor.scss uses calc(100vh - 48px) but the header is ~61px.
-body:has(.project-editor) {
+// Full editor behaves like a workstation shell; stacked mode returns to page scrolling.
+body:has(.project-editor.editor--full) {
     overflow: hidden;
 }
 
@@ -9,7 +8,13 @@ body:has(.project-editor) {
 // styles are all inherited — no need to duplicate them here.
 
 .project-editor {
-    grid-template-rows: auto minmax(0, 1fr) var(--timeline-height, 280px);
+    .editor-panel__content {
+        min-width: 0;
+
+        > * {
+            min-width: 0;
+        }
+    }
 
     .editor__timeline {
         max-height: none;
@@ -130,6 +135,180 @@ body:has(.project-editor) {
         padding: 2px 6px;
         background: rgba(0, 212, 255, 0.1);
         border-radius: 3px;
+    }
+
+    &.editor--full {
+        .editor__sidebar .editor-panel__content,
+        .editor__preview .editor-panel__content,
+        .editor__inspector .editor-panel__content,
+        .editor__timeline .editor-panel__content {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .editor__preview .editor-panel__content {
+            overflow: hidden;
+        }
+
+        .editor__sidebar .editor-panel__content {
+            flex-direction: column;
+        }
+    }
+
+    &.editor--stacked {
+        .editor-panel {
+            border: 1px solid rgba(0, 212, 255, 0.15);
+            border-radius: 8px;
+            background: rgba(20, 20, 25, 0.7);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+
+            &.is-collapsed {
+                .editor-panel__content,
+                .editor-panel__resize-handle {
+                    display: none !important;
+                }
+            }
+        }
+
+        .editor__toolbar {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            background: rgba(16, 16, 22, 0.96);
+            backdrop-filter: blur(12px);
+        }
+
+        .editor__sidebar,
+        .editor__preview,
+        .editor__inspector,
+        .editor__timeline {
+            background: rgba(20, 20, 25, 0.7);
+        }
+
+        .editor__sidebar,
+        .editor__inspector {
+            height: auto;
+        }
+
+        .editor__preview,
+        .editor__timeline {
+            min-height: 220px;
+        }
+
+        .editor__preview.is-collapsed,
+        .editor__timeline.is-collapsed {
+            min-height: 0;
+            height: auto;
+        }
+
+        .editor__timeline {
+            overflow: hidden;
+        }
+
+        .editor-panel__toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            border: 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.02);
+            color: inherit;
+            text-align: left;
+            cursor: pointer;
+
+            &::before {
+                content: '';
+                width: 0;
+                height: 0;
+                border-top: 4px solid transparent;
+                border-bottom: 4px solid transparent;
+                border-left: 6px solid currentColor;
+                color: #8ea7c0;
+                flex-shrink: 0;
+                transition: transform 150ms ease;
+            }
+
+            &:hover {
+                background: rgba(0, 212, 255, 0.06);
+            }
+        }
+
+        .editor-panel:not(.is-collapsed) .editor-panel__toggle::before {
+            transform: rotate(90deg);
+        }
+
+        .editor-panel__toggle-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #d5dde7;
+            font-weight: 700;
+        }
+
+        .editor-panel__toggle-meta {
+            margin-left: auto;
+            min-width: 0;
+            font-size: 10px;
+            color: #8a93a7;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .editor-panel__content {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            padding: 12px;
+        }
+
+        .editor__preview .editor-panel__content,
+        .editor__timeline .editor-panel__content {
+            height: 100%;
+            padding: 0;
+        }
+
+        .editor__inspector .editor-panel__content {
+            padding: 0;
+        }
+
+        .editor__timeline .timeline-root {
+            height: 100%;
+        }
+
+        .editor-panel__resize-handle {
+            height: 12px;
+            cursor: ns-resize;
+            background: repeating-linear-gradient(
+                90deg,
+                rgba(0, 212, 255, 0.25) 0,
+                rgba(0, 212, 255, 0.25) 10px,
+                rgba(255, 255, 255, 0.08) 10px,
+                rgba(255, 255, 255, 0.08) 20px
+            );
+            opacity: 0.75;
+            transition: opacity 150ms ease, height 150ms ease;
+
+            &:hover {
+                opacity: 1;
+                height: 14px;
+            }
+        }
+
+        .editor__preview.is-resizing,
+        .editor__timeline.is-resizing {
+            user-select: none;
+
+            .editor-panel__resize-handle {
+                opacity: 1;
+                height: 14px;
+            }
+        }
     }
 }
 
@@ -442,6 +621,8 @@ body:has(.project-editor) {
 }
 
 .song-media-panel {
+    flex-shrink: 0;
+
     &__header {
         display: flex;
         align-items: center;
@@ -844,6 +1025,10 @@ body:has(.project-editor) {
 // ===== Track list panel =====
 
 .track-list-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex-shrink: 0;
     border-bottom: 1px solid #333;
     padding-bottom: 8px;
     margin-bottom: 8px;
@@ -899,7 +1084,9 @@ body:has(.project-editor) {
     }
 
     &__list {
-        max-height: 200px;
+        flex: 1;
+        min-height: 0;
+        max-height: min(220px, 35vh);
         overflow-y: auto;
     }
 }
