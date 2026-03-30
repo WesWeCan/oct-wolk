@@ -239,7 +239,7 @@ describe('primitive3d inspector', () => {
             },
         });
 
-        expect(wrapper.text()).toContain('does not have any extra geometry controls yet');
+        expect(wrapper.text()).toContain('does not have extra geometry controls yet');
     });
 
     it('switches to local lighting controls', async () => {

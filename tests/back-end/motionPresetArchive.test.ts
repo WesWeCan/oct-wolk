@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
 
+const documentsRoot = '/tmp/test-wolk-presets-documents';
+const userDataRoot = '/tmp/test-wolk-presets-userData';
+
 vi.mock('electron', () => ({
   app: {
-    getPath: vi.fn(() => '/tmp/test-wolk-presets-userData'),
+    getPath: vi.fn((name: string) => name === 'documents' ? documentsRoot : userDataRoot),
     getVersion: vi.fn(() => '3.0.0'),
   },
   shell: { openPath: vi.fn() },
@@ -22,7 +25,9 @@ import {
 
 describe('motion preset archive import/export', () => {
   beforeEach(() => {
-    fs.rmSync('/tmp/test-wolk-presets-userData', { recursive: true, force: true });
+    fs.rmSync(documentsRoot, { recursive: true, force: true });
+    fs.rmSync(userDataRoot, { recursive: true, force: true });
+    fs.rmSync('/tmp/test-wolk-preset-archives', { recursive: true, force: true });
   });
 
   it('imports a single preset archive and generates a new id on collision', async () => {
@@ -33,8 +38,8 @@ describe('motion preset archive import/export', () => {
       payload: { startMs: 0, endMs: 1000 },
     });
 
-    const archivePath = '/tmp/test-wolk-presets-userData/hero.wolkdpreset';
-    fs.mkdirSync('/tmp/test-wolk-presets-userData', { recursive: true });
+    const archivePath = '/tmp/test-wolk-preset-archives/hero.wolkdpreset';
+    fs.mkdirSync('/tmp/test-wolk-preset-archives', { recursive: true });
     await exportMotionPresetArchive('subtitle', saved.id, archivePath);
 
     const imported = await importMotionPresetArchiveFromPath(archivePath);
@@ -59,8 +64,8 @@ describe('motion preset archive import/export', () => {
       payload: { startMs: 50, endMs: 1500, params: { layout: 'spiral' } },
     });
 
-    const archivePath = '/tmp/test-wolk-presets-userData/all.wolkpresets';
-    fs.mkdirSync('/tmp/test-wolk-presets-userData', { recursive: true });
+    const archivePath = '/tmp/test-wolk-preset-archives/all.wolkpresets';
+    fs.mkdirSync('/tmp/test-wolk-preset-archives', { recursive: true });
     const exportedCount = await exportMotionPresetBundleArchive(archivePath);
 
     expect(exportedCount).toBe(2);

@@ -86,6 +86,7 @@ import {
     RENDERER_MENU_COMMAND_EVENT,
     type ProjectEditorCommandId,
 } from '@/shared/projectEditorCommands';
+import { buildAppTitle } from '@/shared/branding';
 
 const props = defineProps<{ projectId: string }>();
 const router = useRouter();
@@ -1556,7 +1557,7 @@ const onUpdateProject = (updated: WolkProject) => {
     pushUndo();
     project.value = updated;
     fps.value = updated.settings.fps || 60;
-    document.title = `${updated.song.title || 'Untitled'} - W.O.L.K.`;
+    document.title = buildAppTitle(updated.song.title || 'Untitled');
     scheduleSave();
 };
 
@@ -1856,7 +1857,7 @@ const loadProject = async () => {
         }
         project.value.scene3d = normalizeScene3DSettings(project.value.scene3d);
         fps.value = project.value.settings.fps || 60;
-        document.title = `${project.value.song.title || 'Untitled'} - W.O.L.K.`;
+        document.title = buildAppTitle(project.value.song.title || 'Untitled');
         undoRedo.clear();
         undoRedo.pushSnapshot(project.value, true);
         const removedOnLoad = cleanOrphanedOverrides(project.value).removedCount;

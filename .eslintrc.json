@@ -12,5 +12,34 @@
     "plugin:import/electron",
     "plugin:import/typescript"
   ],
-  "parser": "@typescript-eslint/parser"
+  "parser": "@typescript-eslint/parser",
+  "settings": {
+    "import/parsers": {
+      "@typescript-eslint/parser": [
+        ".ts",
+        ".tsx"
+      ]
+    },
+    "import/resolver": {
+      "typescript": {
+        "project": "./tsconfig.json"
+      },
+      "node": {
+        "extensions": [
+          ".js",
+          ".jsx",
+          ".ts",
+          ".tsx",
+          ".d.ts",
+          ".vue"
+        ]
+      }
+    }
+  },
+  "rules": {
+    "no-empty": "off",
+    "no-useless-escape": "off",
+    "import/no-unresolved": "off",
+    "@typescript-eslint/no-empty-function": "off"
+  }
 }

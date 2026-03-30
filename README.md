@@ -1,354 +1,205 @@
-# W.O.L.K. - Words On Live Kanvas
+# W.O.L.K.
 
-**An open-source platform for artists to create animated visual word canvases with music.**
+W.O.L.K. (Words On Live Kanvas) is an desktop app for building lyric-driven motion graphics, timing them against audio, and exporting finished videos.
 
-W.O.L.K. is an Electron-based desktop application that transforms lyrics and words into dynamic, animated visual scenes synchronized with audio. Create stunning word-based visuals using multiple scene types, timeline-based animation, and export to video.
+## What It Does
 
-## Features
+- Creates local projects with audio, cover art, uploaded assets, and embedded project data
+- Edits raw lyrics and derived lyric tracks inside a timeline workflow
+- Authors motion blocks with reusable presets
+- Supports the built-in motion block types:
+  - `subtitle`
+  - `cloud`
+  - `primitive3d`
+- Exports projects as portable `.wolk` archives
+- Imports and exports motion presets as `.wolkdpreset` and `.wolkpresets`
+- Exports video as WebM, and MP4 when `ffmpeg` is available
 
-- 🎨 **Multiple Scene Types**
-  - WordCloud: Dynamic word clouds with multiple layout modes (spiral, ring, grid)
-  - WordSphere: 3D rotating sphere with words
-  - Single Word: Focused single-word display
-  - 3D Model: Import and animate 3D models (.obj) with word labels
-  - Portrait Mask: Fill portrait images with animated words
+## Tech Stack
 
-- 🎵 **Audio Analysis**
-  - Automatic beat detection
-  - Spectral analysis (low/mid/high frequency bands)
-  - Energy envelope tracking
-  - Visual synchronization with music
+- Electron
+- Vue 3
+- TypeScript
+- Vite
+- Three.js
+- TipTap
+- Meyda
 
-- ⏱️ **Timeline Editor**
-  - Multi-scene timeline management
-  - Keyframe-based animation system
-  - Property animation (colors, scale, opacity, etc.)
-  - Word pool management with keyframes
-  - Visual timeline with beat markers
+## Requirements
 
-- 🎬 **Video Export**
-  - WebM export (always available)
-  - MP4 export (requires ffmpeg)
-  - Customizable resolution and bitrate
-  - Audio track inclusion
+- Node.js 18+
+- Yarn
+- `ffmpeg` for MP4 export support
 
-- 📝 **Word Management**
-  - Lyric analyzer with TipTap editor
-  - Word bank organization
-  - Hierarchical word groups
-  - Dynamic word pool selection per frame
-
-- 🔤 **Font System**
-  - System font scanning and import
-  - Project-embedded fonts
-  - Font style and weight management
-  - Custom fallback chains
-
-## Prerequisites
-
-- **Node.js** 18+ (with npm/yarn)
-- **Yarn** package manager (recommended)
-- **ffmpeg** (optional, for MP4 export)
-
-## Installation
-
-### 1. Clone the Repository
+## Install
 
 ```bash
 git clone https://github.com/WesWeCan/oct-wolk.git
 cd oct-wolk
-```
-
-### 2. Install Dependencies
-
-```bash
 yarn install
 ```
 
-### 3. Install ffmpeg (Optional - for MP4 Export)
-
-ffmpeg is **optional** but highly recommended for MP4 video export. Without it, the application will only export WebM format.
-
-#### macOS
-
-Using Homebrew:
-```bash
-brew install ffmpeg
-```
-
-#### Windows
-
-**Option 1: Using winget (Windows 10+)**
-```bash
-winget install ffmpeg
-```
-
-**Option 2: Using Chocolatey**
-```bash
-choco install ffmpeg
-```
-
-**Option 3: Using Scoop**
-```bash
-scoop install ffmpeg
-```
-
-**Option 4: Manual Installation**
-1. Download from [https://www.gyan.dev/ffmpeg/builds/](https://www.gyan.dev/ffmpeg/builds/)
-2. Extract the archive
-3. Add the `bin` folder to your system PATH
-
-#### Linux
-
-**Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install ffmpeg
-```
-
-**Fedora/RHEL/CentOS:**
-```bash
-sudo dnf install ffmpeg
-```
-
-**Arch Linux:**
-```bash
-sudo pacman -S ffmpeg
-```
-
-**Verify Installation:**
-```bash
-ffmpeg -version
-```
-
-## Development
-
-### Running in Development Mode
-
-Start the application in development mode with hot-reload:
+## Run In Development
 
 ```bash
 yarn start
 ```
 
-This will launch the Electron app with the development server running.
+## Run Tests
 
-### Building the Application
+```bash
+yarn test
+```
 
-Create a production build:
+## Package Builds
 
 ```bash
 yarn package
-```
-
-Create distributable packages for your platform:
-
-```bash
 yarn make
 ```
 
-Built applications will be in the `out` directory.
+For signed macOS builds:
 
-## Usage
-
-### Quick Start
-
-1. **Create a New Song Project**
-   - Launch W.O.L.K.
-   - Click "Editor" → "Create New Song"
-   - Or go to "Song Bank" to manage word collections
-
-2. **Import Audio**
-   - Click "Song Data" in the editor
-   - Upload an audio file (MP3, WAV, etc.)
-   - Wait for automatic audio analysis
-
-3. **Add Words**
-   - Go to "Lyric Analyzer" to paste lyrics
-   - Words will be automatically extracted
-   - Organize words into groups if desired
-
-4. **Create Scenes**
-   - Click "+ Add Scene" in the scene list
-   - Choose a scene type (WordCloud, WordSphere, etc.)
-   - Configure scene parameters in the Inspector
-
-5. **Animate**
-   - Use the timeline to position scenes
-   - Add keyframes for animated properties
-   - Use the word pool to control which words display
-
-6. **Export**
-   - Use `Export .wolk` to save a portable project archive
-   - Use `Import .wolk` to bring a project archive into local storage
-   - Use `Export Presets` / `Import Preset` for motion preset archives
-   - Use video export for WebM/MP4 output
-   - Check that ffmpeg is installed for MP4 support
-
-### Scene Types
-
-- **WordCloud**: Creates dynamic word clouds with configurable layouts (spiral, ring, grid), colors, and animations
-- **WordSphere**: 3D rotating sphere with words placed on its surface
-- **Single Word**: Displays one word at a time, centered and animated
-- **3D Model**: Import .obj 3D models with optional textures, add word labels that connect to the model
-- **Portrait Mask**: Upload a portrait image and fill it with words that conform to the image shape
-
-### Keyboard Shortcuts
-
-- **Space**: Play/Pause
-- **Cmd/Ctrl + Wheel**: Zoom timeline
-- **Drag**: Move scenes and keyframes
-- **Shift + Drag**: Select multiple keyframes
-
-## Project Structure
-
-```
-oct-wolk/
-├── src/
-│   ├── back-end/           # Electron main process
-│   │   ├── internal-processes/
-│   │   │   ├── song-storage.ts       # Song/project management
-│   │   │   ├── timeline-storage.ts   # Timeline data storage
-│   │   │   ├── analysis-storage.ts   # Audio analysis cache
-│   │   │   └── fonts.ts              # Font system
-│   │   └── services/
-│   │       └── FileService/          # File management utilities
-│   ├── front-end/          # Vue 3 renderer process
-│   │   ├── components/     # Vue components
-│   │   ├── composables/    # Vue composition functions
-│   │   ├── services/       # Frontend services
-│   │   ├── styles/         # SCSS styles
-│   │   ├── utils/          # Utility functions
-│   │   ├── views/          # Page views
-│   │   └── workers/        # Web Workers for rendering
-│   │       ├── engine/     # Scene engine
-│   │       └── scenes/     # Scene implementations
-│   ├── types/              # TypeScript type definitions
-│   ├── main.ts             # Electron main entry
-│   ├── preload.ts          # Preload script (IPC bridge)
-│   └── renderer.ts         # Vue app entry
-├── forge.config.ts         # Electron Forge configuration
-├── vite.*.config.ts        # Vite build configurations
-└── package.json
+```bash
+ELECTRON_FORGE_SIGN_MAC=1 yarn make
 ```
 
-## Export Formats
+The signing and notarization behavior is controlled by environment variables in
+`forge.config.ts`.
 
-### .wolk
-- Zip archive with a `.wolk` extension
-- Contains `manifest.json`, `project/project.json`, and `project/files/...`
-- Designed for full project portability, including project-local assets such as audio, fonts, and uploaded files
+## Project Workflow
 
-### .wolkdpreset / .wolkpresets
-- Zip archives with custom extensions
-- `.wolkdpreset` stores a single motion preset
-- `.wolkpresets` stores a multi-preset bundle grouped by block type
+1. Create a project from the home screen.
+2. Import audio, cover art, and other project assets.
+3. Paste or edit lyrics in the project editor.
+4. Generate and refine lyric tracks.
+5. Add motion tracks using the available motion block plugins.
+6. Adjust styling, timing, presets, and export settings.
+7. Export the result to WebM or MP4.
 
-### WebM
-- **Always available** (uses browser MediaRecorder API)
-- VP9 video codec with Opus audio
-- Excellent quality and compression
-- Native web browser support
+## Motion Architecture
 
-### MP4
-- **Requires ffmpeg installation**
-- Automatic conversion from WebM
-- H.264 video codec
-- Better compatibility with video players and editing software
+The renderer uses a motion-block registry instead of the older scene system.
 
-The application will automatically detect if ffmpeg is available and enable MP4 export accordingly.
+- `subtitle` handles timed text composition and animation
+- `cloud` builds word-cloud style motion from word tracks
+- `primitive3d` renders simple 3D primitives or imported models with word
+  sprites
 
-Packaged macOS and Windows builds can also receive `.wolk` files from the OS and import them directly into the project library.
+New block types register through `src/front-end/motion-blocks/index.ts` and the
+shared plugin contracts in `src/front-end/motion-blocks/core/`.
 
-## Font Management
+## Archive Formats
 
-W.O.L.K. supports two font systems:
+### `.wolk`
 
-1. **System Fonts**: Browse and import fonts from your system
-2. **Project Fonts**: Embed fonts directly into your project for portability
+- Portable project archive
+- Contains a manifest, `project.json`, and copied project files
+- Intended for moving full projects between machines
 
-Fonts are automatically loaded into the render worker for consistent rendering across all scene types.
+### `.wolkdpreset`
 
-## Data Storage
+- Single motion preset archive
+- Stores one preset for one motion block type
 
-W.O.L.K. stores project data locally in your application data directory:
+### `.wolkpresets`
 
-- **macOS**: `~/Library/Application Support/Words On Live Kanvas - Open Culture Tech/wolk/`
-- **Windows**: `%APPDATA%/Words On Live Kanvas - Open Culture Tech/wolk/`
-- **Linux**: `~/.config/Words On Live Kanvas - Open Culture Tech/wolk/`
+- Bundle archive for multiple motion presets
 
-The structure includes:
-- `docStorage/songs/`: Each song/project has its own folder containing:
-  - `project.json`: Project metadata, tracks, and render settings
-  - `audio.*` / `cover.*`: Imported media files when present
-  - `fonts/`: Project-local fonts copied into the project
-  - `assets/`: Uploaded files (images, models, other project assets)
-- `docStorage/exports/`: Video exports (accessible via "Open Folder" button after export)
-- `docStorage/presets/`: Saved motion presets grouped by block type
+## Video Export
 
-## Troubleshooting
+- WebM export is always available
+- MP4 export uses `ffmpeg`
+- Export settings live on the project document and include:
+  - FPS
+  - Render width and height
+  - Duration
+  - Bitrate
+  - Audio inclusion
+  - Raw frame retention
+  - Optional alpha MOV assembly
 
-### ffmpeg not found
-If you see "ffmpeg not found" warnings:
-1. Install ffmpeg for your platform (see Installation section)
-2. Restart the application
-3. The app will automatically detect ffmpeg
+## Local Storage
 
-### Video export fails
-- Ensure you have sufficient disk space
-- Check that audio is loaded properly
-- Try reducing resolution or bitrate
-- Check console for specific error messages
+W.O.L.K. stores its internal data in your Documents folder under `WOLK/`.
 
-### Fonts not appearing
-- Ensure fonts are installed on your system
-- Try embedding the font into your project
-- Restart the application after installing new fonts
+Current builds migrate existing data from older storage locations on startup
+when needed, including the prior Electron Application Support location and the
+older `~/Documents/__oct_files/wolk/` location.
 
-### Audio analysis taking too long
-- Audio analysis runs in the background
-- Larger files take longer to analyze
-- Results are cached for future use
-- Check the analysis status in the editor
+Typical locations:
 
-## License
+- macOS: `~/Documents/WOLK/`
+- Windows: `%USERPROFILE%\\Documents\\WOLK\\`
+- Linux: `~/Documents/WOLK/`
 
-This project is licensed under **CC-BY-4.0** (Creative Commons Attribution 4.0 International).
+Important folders:
 
-You are free to:
-- Share: Copy and redistribute the material
-- Adapt: Remix, transform, and build upon the material
+- `songs/`
+- `exports/`
+- `presets/`
 
-Under the following terms:
-- Attribution: You must give appropriate credit
+## Repository Layout
 
-See [LICENSE](LICENSE) file for full details.
+```text
+src/
+  back-end/
+    application-menu.ts
+    internal-processes/
+  front-end/
+    components/
+    composables/
+    motion-blocks/
+    services/
+    styles/
+    views/
+  shared/
+  types/
+  main.ts
+  preload.ts
+  renderer.ts
+tests/
+forge.config.ts
+vitest.config.ts
+```
 
-## Credits
+## Open Source Release Notes
 
-**Created by**: WesWeCan  
-**GitHub**: [@WesWeCan](https://github.com/WesWeCan)
+- Code is licensed under Apache-2.0. See `LICENSE`.
+- Project notices live in `NOTICE`.
+- Major third-party acknowledgements live in `ACKNOWLEDGEMENTS.md`.
+- Security reporting guidance lives in `SECURITY.md`.
+- Contribution guidance lives in `CONTRIBUTING.md`.
 
-### Technologies Used
+## Forking And Rebranding
 
-- **Electron** - Desktop application framework
-- **Vue 3** - Reactive UI framework
-- **TypeScript** - Type-safe JavaScript
-- **Three.js** - 3D graphics and rendering
-- **Vite** - Build tool and dev server
-- **TipTap** - Rich text editor
-- **Meyda** - Audio feature extraction
+The codebase is intentionally permissive so you can fork it and build on top of
+it.
+
+Runtime-visible branding is centralized in `src/shared/branding.ts`, and is intended for Open Culture Tech but a full rebrand still requires manual updates in a few packaging files:
+
+- `package.json`
+- `forge.config.ts`
+- app icons and build resources
+
+
+## Manual Verification
+
+Automated tests cover a good part of the codebase, but this is still an Electron app with media, fonts, file imports, and export flows. Before publishing a release, manually verify:
+
+- opening the app and creating a project
+- importing audio and assets
+- editing lyrics and motion tracks
+- exporting WebM
+- exporting MP4 with `ffmpeg` installed
+- importing and exporting `.wolk` archives
+- importing and exporting motion presets
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+See `CONTRIBUTING.md`.
 
-## Support
+## Security
 
-For questions, issues, or feature requests, please open an issue on GitHub:
-[https://github.com/WesWeCan/oct-wolk/issues](https://github.com/WesWeCan/oct-wolk/issues)
-
----
-
-**Happy Creating! 🎨🎵**
+See `SECURITY.md`.
 

@@ -20,6 +20,7 @@ const openStorageFolder = async () => {
 const busyMenuAction = ref<string | null>(null);
 let removeMenuCommandListener: (() => void) | null = null;
 let removeAppMenuActionListener: (() => void) | null = null;
+let removeProjectsImportedListener: (() => void) | null = null;
 
 const isEditableElement = (element: Element | null): boolean => {
     if (!element) return false;
@@ -139,7 +140,7 @@ onMounted(async () => {
         void handleAppMenuAction(action);
     });
 
-    window.electronAPI.on('projects:imported', (payload: { projectId?: string }) => {
+    removeProjectsImportedListener = window.electronAPI.onProjectsImported((payload) => {
         if (!payload?.projectId) return;
         router.push({ name: 'ProjectEditor', params: { projectId: payload.projectId } });
     });
@@ -154,7 +155,8 @@ onUnmounted(() => {
     removeMenuCommandListener = null;
     removeAppMenuActionListener?.();
     removeAppMenuActionListener = null;
-    window.electronAPI.removeAllListeners('projects:imported');
+    removeProjectsImportedListener?.();
+    removeProjectsImportedListener = null;
 });
 </script>
 

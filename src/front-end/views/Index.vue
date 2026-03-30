@@ -2,6 +2,7 @@
 import { onMounted } from 'vue';
 import CreativeTechnologistLogo from '@/front-end/components/CreativeTechnologistLogo.vue';
 import HomeProjectListSection from '@/front-end/components/HomeProjectListSection.vue';
+import { BRANDING, buildAppTitle } from '@/shared/branding';
 
 const openExternal = async (url: string): Promise<void> => {
     if (window.electronAPI?.openExternalUrl) {
@@ -19,7 +20,7 @@ const onExternalKeydown = (event: KeyboardEvent, url: string): void => {
 };
 
 onMounted(() => {
-    document.title = 'W.O.L.K. - Words On Live Kanvas';
+    document.title = buildAppTitle();
 });
 </script>
 
@@ -29,25 +30,25 @@ onMounted(() => {
     <div class="home-layout">
         <section class="home-brand">
             <div class="home-brand__hero">
-                <p class="home-brand__eyebrow">Words On Live Kanvas</p>
-                <h1 class="main-title">W.O.L.K.</h1>
-                <h2 class="subtitle">Animated lyric engine</h2>
+                <p class="home-brand__eyebrow">{{ BRANDING.appName }}</p>
+                <h1 class="main-title">{{ BRANDING.shortName }}</h1>
+                <h2 class="subtitle">{{ BRANDING.tagline }}</h2>
             </div>
 
             <footer class="footer">
                 <div class="credits-section">
                     <span class="label">Concept and Development by:</span>
                     <ul class="developers" role="list">
-                        <li class="dev-item dev-item--clickable" role="link" tabindex="0" aria-label="Visit Cablai website" @click="openExternal('https://www.cablai.com/')" @keydown="onExternalKeydown($event, 'https://www.cablai.com/')">
+                        <li class="dev-item dev-item--clickable" role="link" tabindex="0" aria-label="Visit Cablai website" @click="openExternal(BRANDING.collaborators.cablaiUrl)" @keydown="onExternalKeydown($event, BRANDING.collaborators.cablaiUrl)">
                             <img src="../../back-end/logos/cablai.png" alt="Cablai" class="logo-cablai" />
                         </li>
-                        <li class="dev-item dev-item--clickable" role="link" tabindex="0" aria-label="Visit RBDJAN website" @click="openExternal('https://rbdjan.nl/')" @keydown="onExternalKeydown($event, 'https://rbdjan.nl/')">
+                        <li class="dev-item dev-item--clickable" role="link" tabindex="0" aria-label="Visit RBDJAN website" @click="openExternal(BRANDING.collaborators.rbdjanUrl)" @keydown="onExternalKeydown($event, BRANDING.collaborators.rbdjanUrl)">
                             <span class="rbjan-text">RBJAN</span>
                         </li>
-                        <li class="dev-item dev-item--clickable" role="link" tabindex="0" aria-label="Visit VJ Bikkel page" @click="openExternal('https://bikkelamsterdam.nl/blog/vj/')" @keydown="onExternalKeydown($event, 'https://bikkelamsterdam.nl/blog/vj/')">
+                        <li class="dev-item dev-item--clickable" role="link" tabindex="0" aria-label="Visit VJ Bikkel page" @click="openExternal(BRANDING.collaborators.vjBikkelUrl)" @keydown="onExternalKeydown($event, BRANDING.collaborators.vjBikkelUrl)">
                             <img src="../../back-end/logos/vj_bikkel.png" alt="VJ BIKKEL" class="logo-bikkel" />
                         </li>
-                        <li class="dev-item logo-wesley dev-item--clickable" role="link" tabindex="0" aria-label="Visit Context Undefined website" @click="openExternal('https://contextundefined.nl')" @keydown="onExternalKeydown($event, 'https://contextundefined.nl')">
+                        <li class="dev-item logo-wesley dev-item--clickable" role="link" tabindex="0" aria-label="Visit Context Undefined website" @click="openExternal(BRANDING.collaborators.contextUndefinedUrl)" @keydown="onExternalKeydown($event, BRANDING.collaborators.contextUndefinedUrl)">
                             <CreativeTechnologistLogo />
                         </li>
                     </ul>
@@ -55,9 +56,9 @@ onMounted(() => {
 
                 <div class="org-section">
                     <span>Part of </span>
-                    <a href="https://www.openculturetech.com/" target="_blank" rel="noopener noreferrer" class="oct-link">Open Culture Tech 2.0</a>
+                    <a :href="BRANDING.initiative.url" target="_blank" rel="noopener noreferrer" class="oct-link">{{ BRANDING.initiative.name }}</a>
                     <span> by </span>
-                    <span class="oct-link oct-link--clickable" role="link" tabindex="0" @click="openExternal('https://www.thunderboomrecords.com/')" @keydown="onExternalKeydown($event, 'https://www.thunderboomrecords.com/')">Thunderboom Records</span>
+                    <span class="oct-link oct-link--clickable" role="link" tabindex="0" @click="openExternal(BRANDING.initiative.partnerUrl)" @keydown="onExternalKeydown($event, BRANDING.initiative.partnerUrl)">{{ BRANDING.initiative.partnerName }}</span>
                 </div>
             </footer>
         </section>

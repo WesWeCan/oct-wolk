@@ -8,7 +8,6 @@ import { MENU_COMMAND_CHANNEL, type ProjectEditorCommandId } from './shared/proj
 declare global {
     interface Window {
         electronAPI: {
-            getRandomNumber: () => Promise<number>;
             setMenuContext: (context: { hasProjectRoute: boolean }) => Promise<{ ok: boolean }>;
             openStorageFolder: () => Promise<string>;
             openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
@@ -65,8 +64,7 @@ declare global {
             };
             onAppMenuAction: (callback: (action: AppMenuAction) => void) => () => void;
             onMenuCommand: (callback: (commandId: ProjectEditorCommandId) => void) => () => void;
-            on: (channel: string, callback: (...args: any[]) => void) => void;
-            removeAllListeners: (channel: string) => void;
+            onProjectsImported: (callback: (payload: { projectId?: string }) => void) => () => void;
         };
     }
 }
@@ -74,7 +72,6 @@ declare global {
 ipcRenderer.send('renderer-ready');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-    getRandomNumber: () => ipcRenderer.invoke('getRandomNumber'),
     setMenuContext: (context: { hasProjectRoute: boolean }) => ipcRenderer.invoke('menu:set-context', context),
     openStorageFolder: () => ipcRenderer.invoke('open-storage-folder'),
     openExternalUrl: (url: string) => ipcRenderer.invoke('open-external-url', url),
@@ -134,10 +131,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.removeListener(MENU_COMMAND_CHANNEL, listener);
         };
     },
-    on(channel: string, callback: (...args: any[]) => void) {
-        ipcRenderer.on(channel, (_event, ...args) => callback(...args));
-    },
-    removeAllListeners(channel: string) {
-        ipcRenderer.removeAllListeners(channel);
+    onProjectsImported(callback: (payload: { projectId?: string }) => void) {
+        const listener = (_event: Electron.IpcRendererEvent, payload: { projectId?: string }) => callback(payload);
+        ipcRenderer.on('projects:imported', listener);
+
+        return () => {
+            ipcRenderer.removeListener('projects:imported', listener);
+        };
     },
 });

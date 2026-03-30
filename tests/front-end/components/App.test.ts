@@ -11,9 +11,10 @@ describe('App', () => {
 
   it('navigates to an imported project when the main process emits the import event', async () => {
     const electronAPI = installMockElectronAPI();
-    const listeners: Record<string, (...args: any[]) => void> = {};
-    vi.mocked(electronAPI.on).mockImplementation((channel: string, callback: (...args: any[]) => void) => {
-      listeners[channel] = callback;
+    let importedListener: ((payload: { projectId?: string }) => void) | null = null;
+    vi.mocked(electronAPI.onProjectsImported).mockImplementation((callback: (payload: { projectId?: string }) => void) => {
+      importedListener = callback;
+      return vi.fn();
     });
 
     const router = createRouter({
@@ -39,7 +40,7 @@ describe('App', () => {
 
     await flushPromises();
 
-    listeners['projects:imported']?.({ projectId: 'imported-42' });
+    importedListener?.({ projectId: 'imported-42' });
     await flushPromises();
 
     expect(router.currentRoute.value.name).toBe('ProjectEditor');

@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
+const documentsRoot = '/tmp/test-wolk-documents';
+const userDataRoot = '/tmp/test-wolk-userData';
+
 vi.mock('electron', () => ({
   app: {
-    getPath: vi.fn(() => '/tmp/test-wolk-userData'),
+    getPath: vi.fn((name: string) => name === 'documents' ? documentsRoot : userDataRoot),
   },
   shell: { openPath: vi.fn() },
 }));
@@ -16,11 +19,12 @@ import {
     saveMotionPreset,
 } from '@/back-end/internal-processes/motion-preset-storage';
 
-const presetsRoot = '/tmp/test-wolk-userData/wolk/docStorage/presets';
+const presetsRoot = path.join(documentsRoot, 'WOLK', 'presets');
 
 describe('motion preset storage', () => {
     beforeEach(() => {
-        fs.rmSync('/tmp/test-wolk-userData', { recursive: true, force: true });
+        fs.rmSync(documentsRoot, { recursive: true, force: true });
+        fs.rmSync(userDataRoot, { recursive: true, force: true });
     });
 
     it('saves, lists, loads, and deletes subtitle presets', () => {

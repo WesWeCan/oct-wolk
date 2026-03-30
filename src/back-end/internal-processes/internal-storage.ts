@@ -3,9 +3,161 @@ import path from 'path';
 import fs from 'fs';
 import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
 
+const STORAGE_SUBFOLDERS = [
+    DOCUMENT_STORAGE_FOLDER.SONGS,
+    DOCUMENT_STORAGE_FOLDER.EXPORTS,
+    DOCUMENT_STORAGE_FOLDER.PRESETS,
+] as const;
+
+const getUserDataStoragePath = () => {
+    return path.join(app.getPath('userData'), 'wolk');
+}
+
+const getLegacyDocumentsStoragePath = () => {
+    return path.join(app.getPath('documents'), '__oct_files', 'wolk');
+}
+
+const directoryHasEntries = (directoryPath: string) => {
+    return fs.existsSync(directoryPath) && fs.readdirSync(directoryPath).length > 0;
+}
+
+const storageHasUserData = (storagePath: string) => {
+    if (!fs.existsSync(storagePath)) {
+        return false;
+    }
+
+    const entries = fs.readdirSync(storagePath, { withFileTypes: true });
+
+    for (const entry of entries) {
+        const entryPath = path.join(storagePath, entry.name);
+
+        if (!entry.isDirectory()) {
+            return true;
+        }
+
+        if (entry.name === 'docStorage') {
+            for (const subfolder of STORAGE_SUBFOLDERS) {
+                if (directoryHasEntries(path.join(entryPath, subfolder))) {
+                    return true;
+                }
+            }
+            continue;
+        }
+
+        if (STORAGE_SUBFOLDERS.includes(entry.name as DOCUMENT_STORAGE_FOLDER)) {
+            if (directoryHasEntries(entryPath)) {
+                return true;
+            }
+            continue;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+const copyRecursive = (sourcePath: string, destinationPath: string) => {
+    if (!fs.existsSync(sourcePath)) return;
+
+    const stats = fs.statSync(sourcePath);
+    if (stats.isDirectory()) {
+        fs.mkdirSync(destinationPath, { recursive: true });
+        const entries = fs.readdirSync(sourcePath, { withFileTypes: true });
+        for (const entry of entries) {
+            copyRecursive(
+                path.join(sourcePath, entry.name),
+                path.join(destinationPath, entry.name),
+            );
+        }
+        return;
+    }
+
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.copyFileSync(sourcePath, destinationPath);
+}
+
+const moveStorageContents = (sourceBasePath: string, destinationBasePath: string) => {
+    fs.mkdirSync(destinationBasePath, { recursive: true });
+
+    for (const subfolder of STORAGE_SUBFOLDERS) {
+        const legacySubfolderPath = path.join(sourceBasePath, 'docStorage', subfolder);
+        const flatSubfolderPath = path.join(sourceBasePath, subfolder);
+
+        if (directoryHasEntries(legacySubfolderPath)) {
+            copyRecursive(legacySubfolderPath, path.join(destinationBasePath, subfolder));
+        }
+
+        if (directoryHasEntries(flatSubfolderPath)) {
+            copyRecursive(flatSubfolderPath, path.join(destinationBasePath, subfolder));
+        }
+    }
+
+    const entries = fs.readdirSync(sourceBasePath, { withFileTypes: true });
+    for (const entry of entries) {
+        if (entry.name === 'docStorage') {
+            continue;
+        }
+
+        if (STORAGE_SUBFOLDERS.includes(entry.name as DOCUMENT_STORAGE_FOLDER)) {
+            continue;
+        }
+
+        copyRecursive(
+            path.join(sourceBasePath, entry.name),
+            path.join(destinationBasePath, entry.name),
+        );
+    }
+
+    fs.rmSync(sourceBasePath, { recursive: true, force: true });
+}
+
+const migrateStorageIfNeeded = async () => {
+    const destinationBasePath = getInternalStoragePath();
+    if (storageHasUserData(destinationBasePath)) {
+        console.log('Documents storage already has data, skipping migration');
+        return;
+    }
+
+    const migrationSources = [
+        {
+            label: 'Application Support storage',
+            sourcePath: getUserDataStoragePath(),
+        },
+        {
+            label: 'legacy Documents storage',
+            sourcePath: getLegacyDocumentsStoragePath(),
+        },
+    ];
+
+    for (const { label, sourcePath } of migrationSources) {
+        if (path.resolve(sourcePath) === path.resolve(destinationBasePath)) {
+            continue;
+        }
+
+        if (!storageHasUserData(sourcePath)) {
+            continue;
+        }
+
+        try {
+            console.log(`Migrating data from ${label}...`);
+            console.log('Old path:', sourcePath);
+            console.log('New path:', destinationBasePath);
+            moveStorageContents(sourcePath, destinationBasePath);
+            console.log('Migration completed successfully');
+            return;
+        } catch (error) {
+            console.error(`Migration from ${label} failed:`, error);
+            console.log('Continuing with storage initialization at new location');
+            return;
+        }
+    }
+
+    console.log('No old storage to migrate');
+}
 
 export const getInternalStoragePath = () => {
-    return path.join(app.getPath('userData'), 'wolk');
+    return path.join(app.getPath('documents'), 'WOLK');
 }
 
 export const getInternalStorageFilePath = (fileName: string) => {
@@ -21,63 +173,8 @@ export const openInternalStorageFolder = () => {
     shell.openPath(getInternalStoragePath());
 }
 
-const migrateFromOldLocation = async () => {
-    // Old location: ~/Documents/__oct_files/wolk
-    const oldBasePath = path.join(app.getPath('documents'), '__oct_files', 'wolk');
-    const newBasePath = getInternalStoragePath();
-
-    // If old location doesn't exist or new location already has data, skip migration
-    if (!fs.existsSync(oldBasePath)) {
-        console.log('No old storage to migrate');
-        return;
-    }
-
-    const newDocStoragePath = path.join(newBasePath, 'docStorage');
-    if (fs.existsSync(newDocStoragePath) && fs.readdirSync(newDocStoragePath).length > 0) {
-        console.log('New storage already has data, skipping migration');
-        return;
-    }
-
-    try {
-        console.log('Migrating data from Documents to userData...');
-        console.log('Old path:', oldBasePath);
-        console.log('New path:', newBasePath);
-
-        // Ensure new base path exists
-        fs.mkdirSync(newBasePath, { recursive: true });
-
-        // Copy entire directory tree
-        const copyRecursive = (src: string, dest: string) => {
-            if (!fs.existsSync(src)) return;
-            
-            const stats = fs.statSync(src);
-            if (stats.isDirectory()) {
-                fs.mkdirSync(dest, { recursive: true });
-                const entries = fs.readdirSync(src, { withFileTypes: true });
-                for (const entry of entries) {
-                    copyRecursive(
-                        path.join(src, entry.name),
-                        path.join(dest, entry.name)
-                    );
-                }
-            } else {
-                fs.copyFileSync(src, dest);
-            }
-        };
-
-        copyRecursive(oldBasePath, newBasePath);
-        console.log('Migration completed successfully');
-        console.log('Old data remains at:', oldBasePath);
-        console.log('You can safely delete it after verifying the app works correctly');
-    } catch (error) {
-        console.error('Migration failed:', error);
-        console.log('Continuing with fresh storage at new location');
-    }
-};
-
 export const initStorage = async () => {
-    // Migrate from old Documents location if needed
-    await migrateFromOldLocation();
+    await migrateStorageIfNeeded();
 
     const storagePath = getInternalStoragePath();
     const songsPath = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.SONGS);
@@ -106,7 +203,7 @@ export const initStorage = async () => {
 }
 
 export const getDocStoragePath = (subfolder: DOCUMENT_STORAGE_FOLDER) => {
-    return path.join(getInternalStoragePath(), 'docStorage', subfolder);
+    return path.join(getInternalStoragePath(), subfolder);
 }
 
 export const saveFileToDocStorage = async (fileData: ArrayBuffer, fileName: string, subfolder: DOCUMENT_STORAGE_FOLDER): Promise<string> => {

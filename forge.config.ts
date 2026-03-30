@@ -6,10 +6,29 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import path from 'node:path';
+
+const entitlements = path.resolve(process.cwd(), 'entitlements.mac.plist');
+
+/** Set to 1 to sign (and optionally notarize) the macOS app during `yarn make`. Requires Xcode + Developer ID cert in keychain. */
+const signMac = process.platform === 'darwin' && process.env.ELECTRON_FORGE_SIGN_MAC === '1';
+
+const osxNotarize =
+  signMac &&
+  process.env.APPLE_ID &&
+  process.env.APPLE_APP_SPECIFIC_PASSWORD &&
+  process.env.APPLE_TEAM_ID
+    ? {
+        appleId: process.env.APPLE_ID,
+        appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD,
+        teamId: process.env.APPLE_TEAM_ID,
+      }
+    : undefined;
 
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    appBundleId: 'com.weswecan.oct-wolk',
     extraResource: ['./assets'],
     icon: './src/build-resources/icons/icon', // Electron Forge will add .icns/.ico/.png automatically
     extendInfo: {
@@ -19,9 +38,30 @@ const config: ForgeConfig = {
           CFBundleTypeRole: 'Editor',
           LSHandlerRank: 'Default',
           CFBundleTypeExtensions: ['wolk'],
+          LSItemContentTypes: ['com.weswecan.oct-wolk.project'],
+        },
+      ],
+      UTExportedTypeDeclarations: [
+        {
+          UTTypeIdentifier: 'com.weswecan.oct-wolk.project',
+          UTTypeDescription: 'WOLK Project',
+          UTTypeConformsTo: ['public.data', 'public.content'],
+          UTTypeTagSpecification: {
+            'public.filename-extension': ['wolk'],
+          },
         },
       ],
     },
+    ...(signMac
+      ? {
+          osxSign: {
+            hardenedRuntime: true,
+            entitlements: entitlements,
+            entitlementsInherit: entitlements,
+          },
+          ...(osxNotarize ? { osxNotarize } : {}),
+        }
+      : {}),
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],

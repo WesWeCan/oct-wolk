@@ -1,0 +1,14 @@
+---
+description: Core repository standards for W.O.L.K.
+alwaysApply: true
+---
+
+# W.O.L.K. Core Standards
+
+- Use `yarn`, not `npm`.
+- Do not add CI, workflows, or automation scaffolding unless explicitly requested.
+- Keep runtime-visible branding centralized in `src/shared/branding.ts` when touching app names, links, or public-facing labels.
+- Prefer typed preload APIs over generic IPC escape hatches. Do not expose catch-all channel listeners from `preload.ts`.
+- Do not add startup permission prompts unless the feature genuinely requires them and the app flow makes that clear.
+- After substantive changes, run `yarn test`.
+- If a change affects release-facing behavior, keep `README.md`, legal files, and release docs aligned with the code.

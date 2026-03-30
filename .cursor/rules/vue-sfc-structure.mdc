@@ -1,0 +1,13 @@
+---
+description: Vue SFC structure and frontend conventions
+globs: src/front-end/**/*.vue
+alwaysApply: false
+---
+
+# Vue Frontend Conventions
+
+- Use `<script setup lang="ts">` at the top of the file.
+- Put the `<template>` section after the script block.
+- Keep styling in the shared `src/front-end/styles/` tree instead of local SFC style blocks unless there is a strong reason not to.
+- Match existing editor and motion-inspector patterns before inventing new component structures.
+- If a new frontend feature needs HTTP requests, prefer Axios over `fetch` and add it intentionally.

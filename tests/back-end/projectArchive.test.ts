@@ -3,9 +3,12 @@ import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+const documentsRoot = '/tmp/test-wolk-project-documents';
+const userDataRoot = '/tmp/test-wolk-project-userData';
+
 vi.mock('electron', () => ({
   app: {
-    getPath: vi.fn(() => '/tmp/test-wolk-project-userData'),
+    getPath: vi.fn((name: string) => name === 'documents' ? documentsRoot : userDataRoot),
     getVersion: vi.fn(() => '3.0.0'),
   },
   shell: { openPath: vi.fn() },
@@ -29,7 +32,9 @@ const createMaliciousArchive = async (archivePath: string): Promise<void> => {
 
 describe('project archive import/export', () => {
   beforeEach(() => {
-    fs.rmSync('/tmp/test-wolk-project-userData', { recursive: true, force: true });
+    fs.rmSync(documentsRoot, { recursive: true, force: true });
+    fs.rmSync(userDataRoot, { recursive: true, force: true });
+    fs.rmSync('/tmp/test-wolk-project-archives', { recursive: true, force: true });
   });
 
   it('exports and re-imports a project archive while remapping wolk asset urls', async () => {
@@ -49,7 +54,7 @@ describe('project archive import/export', () => {
       },
     });
 
-    const archivePath = '/tmp/test-wolk-project-userData/exported-project.wolk';
+    const archivePath = '/tmp/test-wolk-project-archives/exported-project.wolk';
     await exportProjectArchive(saved.id, archivePath);
 
     const imported = await importProjectArchiveFromPath(archivePath);
@@ -66,7 +71,7 @@ describe('project archive import/export', () => {
   });
 
   it('rejects archives with zip-slip entries', async () => {
-    const archivePath = '/tmp/test-wolk-project-userData/malicious-project.wolk';
+    const archivePath = '/tmp/test-wolk-project-archives/malicious-project.wolk';
     fs.mkdirSync(path.dirname(archivePath), { recursive: true });
     await createMaliciousArchive(archivePath);
 

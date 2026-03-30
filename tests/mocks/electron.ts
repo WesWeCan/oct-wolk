@@ -17,23 +17,10 @@ export function createMockElectronAPI() {
   };
 
   return {
-    getRandomNumber: vi.fn().mockResolvedValue(42),
     setMenuContext: vi.fn().mockResolvedValue({ ok: true }),
     openStorageFolder: vi.fn().mockResolvedValue(undefined),
+    openExternalUrl: vi.fn().mockResolvedValue({ success: true }),
     projects,
-    songs: projects,
-    timeline: {
-      createOrLoad: vi.fn().mockResolvedValue({ settings: { fps: 60, renderWidth: 1920, renderHeight: 1080, seed: 'test' }, scenes: [] }),
-      save: vi.fn().mockImplementation((_id: string, tl: any) => Promise.resolve(tl)),
-      listScenes: vi.fn().mockResolvedValue([]),
-      saveScene: vi.fn().mockImplementation((_id: string, s: any) => Promise.resolve(s)),
-      loadScene: vi.fn().mockResolvedValue(null),
-      reset: vi.fn().mockResolvedValue({ ok: true, doc: { settings: {}, scenes: [] } }),
-    },
-    analysis: {
-      loadCache: vi.fn().mockResolvedValue(null),
-      saveCache: vi.fn().mockResolvedValue({ ok: true }),
-    },
     fonts: {
       list: vi.fn().mockResolvedValue([]),
     },
@@ -63,8 +50,7 @@ export function createMockElectronAPI() {
     },
     onAppMenuAction: vi.fn(() => vi.fn()),
     onMenuCommand: vi.fn(() => vi.fn()),
-    on: vi.fn(),
-    removeAllListeners: vi.fn(),
+    onProjectsImported: vi.fn(() => vi.fn()),
   };
 }
 

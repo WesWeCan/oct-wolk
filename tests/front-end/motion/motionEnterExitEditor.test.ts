@@ -13,7 +13,7 @@ describe('MotionEnterExitEditor', () => {
             },
         });
 
-        const buttons = wrapper.findAll('button').filter((button) => button.text() === 'All Off');
+        const buttons = wrapper.findAll('button').filter((button) => button.text() === 'Enter All Off');
         await buttons[0].trigger('click');
 
         const emitted = wrapper.emitted('update-enter-exit');

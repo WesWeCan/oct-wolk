@@ -182,7 +182,7 @@ describe('cloud inspector', () => {
         const cursorButtons = cursorField!.findAll('.segmented-control button');
         expect(cursorButtons).toHaveLength(2);
         expect(cursorButtons[0].classes()).toContain('active');
-        expect(revealEditor.text()).toContain('Typewriter usually looks best with Motion Off or very subtle motion');
+        expect(revealEditor.text()).toContain('Typewriter usually works best with very subtle motion or an `All Off` motion preset.');
     });
 
     it('reflects saved reveal window values in typewriter controls', () => {

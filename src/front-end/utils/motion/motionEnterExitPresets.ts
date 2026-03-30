@@ -33,13 +33,7 @@ export const createMotionVisualOffEnterExit = (value: MotionEnterExit): MotionEn
 };
 
 export const createMotionAllOffEnterExit = (value: MotionEnterExit): MotionEnterExit => {
-    const next = createMotionVisualOffEnterExit(value);
-    return {
-        ...next,
-        fraction: 0,
-        minFrames: 0,
-        maxFrames: 0,
-    };
+    return createMotionVisualOffEnterExit(value);
 };
 
 export const motionEnterExitEquals = (left: MotionEnterExit, right: MotionEnterExit): boolean => {

@@ -1,9 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import type { AppMenuAction, RecentProjectMenuEntry } from '../shared/appMenuActions';
 import { PROJECT_EDITOR_MENU_COMMANDS, type ProjectEditorCommandId } from '../shared/projectEditorCommands';
-
-const GITHUB_URL = 'https://github.com/WesWeCan/oct-wolk';
-const RELEASES_URL = 'https://github.com/WesWeCan/oct-wolk/releases';
+import { BRANDING } from '@/shared/branding';
 
 export interface BuildApplicationMenuOptions {
     applicationName: string;
@@ -174,13 +172,13 @@ export const buildApplicationMenuTemplate = ({
             {
                 label: 'GitHub Repository',
                 click: () => {
-                    void openExternalUrl(GITHUB_URL);
+                    void openExternalUrl(BRANDING.repositoryUrl);
                 },
             },
             {
                 label: 'Releases',
                 click: () => {
-                    void openExternalUrl(RELEASES_URL);
+                    void openExternalUrl(BRANDING.releasesUrl);
                 },
             },
         ],

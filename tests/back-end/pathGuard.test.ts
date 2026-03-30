@@ -3,7 +3,7 @@ import path from 'path';
 
 vi.mock('electron', () => ({
   app: {
-    getPath: vi.fn(() => '/tmp/test-wolk-userData'),
+    getPath: vi.fn((name: string) => name === 'documents' ? '/tmp/test-wolk-documents' : '/tmp/test-wolk-userData'),
   },
   shell: { openPath: vi.fn() },
 }));
@@ -12,10 +12,10 @@ import { isPathInsideRoot, sanitizeFileName } from '@/back-end/internal-processe
 import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
 
 describe('isPathInsideRoot', () => {
-  const root = '/tmp/wolk/docStorage/songs';
+  const root = '/tmp/WOLK/songs';
 
   it('returns true for path directly inside root', () => {
-    expect(isPathInsideRoot('/tmp/wolk/docStorage/songs/abc/audio.mp3', root)).toBe(true);
+    expect(isPathInsideRoot('/tmp/WOLK/songs/abc/audio.mp3', root)).toBe(true);
   });
 
   it('returns true for root itself', () => {
@@ -27,11 +27,11 @@ describe('isPathInsideRoot', () => {
   });
 
   it('returns false for traversal attack', () => {
-    expect(isPathInsideRoot('/tmp/wolk/docStorage/songs/../../etc/passwd', root)).toBe(false);
+    expect(isPathInsideRoot('/tmp/WOLK/songs/../../etc/passwd', root)).toBe(false);
   });
 
   it('returns false for sibling directory', () => {
-    expect(isPathInsideRoot('/tmp/wolk/docStorage/exports/file.txt', root)).toBe(false);
+    expect(isPathInsideRoot('/tmp/WOLK/exports/file.txt', root)).toBe(false);
   });
 });
 

@@ -90,5 +90,7 @@ typings/
 
 # Electron-Forge
 out/
+dist/
 
-docs/
+# Yarn-only workspace
+package-lock.json

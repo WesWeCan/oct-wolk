@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, Menu, net, protocol, systemPreferences } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, net, protocol } from 'electron';
 import { spawnSync } from 'node:child_process';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import started from 'electron-squirrel-startup';
-import { getInternalStoragePath, initStorage } from './back-end/internal-processes/internal-storage';
+import { getDocStoragePath, initStorage } from './back-end/internal-processes/internal-storage';
 import { listProjects } from './back-end/internal-processes/project-storage';
 import { registerInternalProcesses } from './back-end/internal-processes/internal-processes';
 import { buildApplicationMenuTemplate } from './back-end/application-menu';
@@ -13,6 +13,7 @@ import { APP_MENU_ACTION_CHANNEL, type AppMenuAction } from './shared/appMenuAct
 import { MENU_COMMAND_CHANNEL, type ProjectEditorCommandId } from './shared/projectEditorCommands';
 import { importProjectArchiveFromPath } from './back-end/internal-processes/project-archive';
 import { WOLK_PROJECT_EXTENSION } from '@/types/archive_types';
+import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
 
 if (started) {
   app.quit();
@@ -129,6 +130,8 @@ const createWindow = () => {
     width: 1800,
     height: 1000,
     webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
@@ -147,16 +150,6 @@ const createWindow = () => {
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
   }
-};
-
-const askPermissions = async () => {
-  systemPreferences.askForMediaAccess('microphone').then(result => {
-    console.log('askForMediaAccess', result);
-  });
-
-  systemPreferences.askForMediaAccess('camera').then(result => {
-    console.log('askForMediaAccess', result);
-  });
 };
 
 const registerWindowsFileAssociation = () => {
@@ -203,7 +196,7 @@ protocol.registerSchemesAsPrivileged([
 const setProtocols = async () => {
   protocol.handle('wolk', async (request) => {
     const fileName = decodeURIComponent(request.url.slice('wolk://'.length));
-    const songsRoot = path.join(getInternalStoragePath(), 'docStorage', 'songs');
+    const songsRoot = getDocStoragePath(DOCUMENT_STORAGE_FOLDER.SONGS);
     const fullPath = path.resolve(path.join(songsRoot, fileName));
     const resolvedRoot = path.resolve(songsRoot);
 
@@ -294,7 +287,6 @@ app.on('open-file', (event, filePath) => {
 });
 
 app.whenReady().then(async () => {
-  askPermissions();
   setProtocols();
 
   await initStorage();
