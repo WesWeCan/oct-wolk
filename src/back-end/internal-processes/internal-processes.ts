@@ -1,4 +1,4 @@
-import { dialog, ipcMain, shell } from 'electron';
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 
 import { getInternalStoragePath, isPathInsideRoot } from './internal-storage';
 import { listSystemFonts } from './fonts';
@@ -24,9 +24,10 @@ import {
     WOLK_PRESET_EXTENSION,
     WOLK_PROJECT_EXTENSION,
 } from '@/types/archive_types';
+import type { NativeEditCommandId, ProjectEditorMenuContext } from '@/shared/projectEditorCommands';
 
 export interface RegisterInternalProcessesOptions {
-    onMenuContextChanged?: (context: { hasProjectRoute: boolean }) => void;
+    onMenuContextChanged?: (context: Partial<ProjectEditorMenuContext>) => void;
     onProjectsChanged?: () => void;
 }
 
@@ -35,11 +36,35 @@ export const registerInternalProcesses = async (options: RegisterInternalProcess
         return shell.openPath(getInternalStoragePath());
     });
 
-    ipcMain.handle('menu:set-context', (_event, context: { hasProjectRoute?: boolean }) => {
-        options.onMenuContextChanged?.({
-            hasProjectRoute: !!context?.hasProjectRoute,
-        });
+    ipcMain.handle('menu:set-context', (_event, context: Partial<ProjectEditorMenuContext>) => {
+        options.onMenuContextChanged?.(context || {});
         return { ok: true };
+    });
+
+    ipcMain.handle('edit:perform-native-command', (_event, command: NativeEditCommandId) => {
+        const target = BrowserWindow.getFocusedWindow();
+        if (!target || target.isDestroyed()) return { ok: false };
+
+        switch (command) {
+            case 'undo':
+                target.webContents.undo();
+                return { ok: true };
+            case 'redo':
+                target.webContents.redo();
+                return { ok: true };
+            case 'cut':
+                target.webContents.cut();
+                return { ok: true };
+            case 'copy':
+                target.webContents.copy();
+                return { ok: true };
+            case 'paste':
+                target.webContents.paste();
+                return { ok: true };
+            case 'delete':
+                target.webContents.delete();
+                return { ok: true };
+        }
     });
 
     ipcMain.handle('open-external-url', async (_event, url: string) => {

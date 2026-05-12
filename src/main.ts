@@ -10,7 +10,12 @@ import { registerInternalProcesses } from './back-end/internal-processes/interna
 import { buildApplicationMenuTemplate } from './back-end/application-menu';
 import { openExternalHttpUrl } from './back-end/internal-processes/external-links';
 import { APP_MENU_ACTION_CHANNEL, type AppMenuAction } from './shared/appMenuActions';
-import { MENU_COMMAND_CHANNEL, type ProjectEditorCommandId } from './shared/projectEditorCommands';
+import {
+  DEFAULT_PROJECT_EDITOR_MENU_CONTEXT,
+  MENU_COMMAND_CHANNEL,
+  type ProjectEditorCommandId,
+  type ProjectEditorMenuContext,
+} from './shared/projectEditorCommands';
 import { importProjectArchiveFromPath } from './back-end/internal-processes/project-archive';
 import { WOLK_PROJECT_EXTENSION } from '@/types/archive_types';
 import { DOCUMENT_STORAGE_FOLDER } from '@/types/storage_types';
@@ -27,7 +32,7 @@ let mainWindow: BrowserWindow | null = null;
 let rendererReady = false;
 let appReadyForImports = false;
 let processingPendingArchives = false;
-let hasProjectRoute = false;
+let menuContext: ProjectEditorMenuContext = { ...DEFAULT_PROJECT_EDITOR_MENU_CONTEXT };
 const pendingArchivePaths: string[] = [];
 const pendingImportedProjectIds: string[] = [];
 
@@ -114,8 +119,9 @@ const setApplicationMenu = () => {
 
   const menu = Menu.buildFromTemplate(buildApplicationMenuTemplate({
     applicationName: app.name,
-    canExportProjectArchive: hasProjectRoute,
+    canExportProjectArchive: menuContext.hasProjectRoute,
     isMac: process.platform === 'darwin',
+    menuContext,
     recentProjects,
     sendAppMenuAction,
     sendProjectEditorCommand: sendProjectEditorMenuCommand,
@@ -124,6 +130,18 @@ const setApplicationMenu = () => {
 
   Menu.setApplicationMenu(menu);
 };
+
+const buildEditableContextMenu = (editFlags: Electron.ContextMenuParams['editFlags']) => Menu.buildFromTemplate([
+  { role: 'undo', enabled: editFlags.canUndo },
+  { role: 'redo', enabled: editFlags.canRedo },
+  { type: 'separator' },
+  { role: 'cut', enabled: editFlags.canCut },
+  { role: 'copy', enabled: editFlags.canCopy },
+  { role: 'paste', enabled: editFlags.canPaste },
+  { role: 'delete', enabled: editFlags.canDelete },
+  { type: 'separator' },
+  { role: 'selectAll', enabled: editFlags.canSelectAll },
+]);
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
@@ -150,6 +168,13 @@ const createWindow = () => {
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
   }
+
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    if (!params.isEditable || !mainWindow) return;
+
+    event.preventDefault();
+    buildEditableContextMenu(params.editFlags).popup({ window: mainWindow });
+  });
 };
 
 const registerWindowsFileAssociation = () => {
@@ -292,7 +317,10 @@ app.whenReady().then(async () => {
   await initStorage();
   await registerInternalProcesses({
     onMenuContextChanged: (context) => {
-      hasProjectRoute = context.hasProjectRoute;
+      menuContext = {
+        ...menuContext,
+        ...context,
+      };
       setApplicationMenu();
     },
     onProjectsChanged: setApplicationMenu,

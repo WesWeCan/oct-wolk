@@ -3,12 +3,18 @@ import type { WolkProject } from '@/types/project_types';
 import type { MotionPresetDocument, MotionPresetSaveInput, MotionPresetSummary } from '@/types/motion_preset_types';
 import type { MotionPresetArchiveDialogResult, ProjectArchiveDialogResult } from '@/types/archive_types';
 import { APP_MENU_ACTION_CHANNEL, type AppMenuAction } from './shared/appMenuActions';
-import { MENU_COMMAND_CHANNEL, type ProjectEditorCommandId } from './shared/projectEditorCommands';
+import {
+    MENU_COMMAND_CHANNEL,
+    type NativeEditCommandId,
+    type ProjectEditorCommandId,
+    type ProjectEditorMenuContext,
+} from './shared/projectEditorCommands';
 
 declare global {
     interface Window {
         electronAPI: {
-            setMenuContext: (context: { hasProjectRoute: boolean }) => Promise<{ ok: boolean }>;
+            setMenuContext: (context: Partial<ProjectEditorMenuContext>) => Promise<{ ok: boolean }>;
+            performNativeEditCommand: (command: NativeEditCommandId) => Promise<{ ok: boolean }>;
             openStorageFolder: () => Promise<string>;
             openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
             projects: {
@@ -72,7 +78,8 @@ declare global {
 ipcRenderer.send('renderer-ready');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-    setMenuContext: (context: { hasProjectRoute: boolean }) => ipcRenderer.invoke('menu:set-context', context),
+    setMenuContext: (context: Partial<ProjectEditorMenuContext>) => ipcRenderer.invoke('menu:set-context', context),
+    performNativeEditCommand: (command: NativeEditCommandId) => ipcRenderer.invoke('edit:perform-native-command', command),
     openStorageFolder: () => ipcRenderer.invoke('open-storage-folder'),
     openExternalUrl: (url: string) => ipcRenderer.invoke('open-external-url', url),
     projects: {

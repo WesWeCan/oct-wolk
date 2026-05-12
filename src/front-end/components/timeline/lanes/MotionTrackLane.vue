@@ -18,6 +18,7 @@ const emit = defineEmits<{
     (e: 'push-undo'): void;
     (e: 'pan', secDelta: number): void;
     (e: 'zoomAround', payload: { timeSec: number; factor: number }): void;
+    (e: 'contextMenuTrack', payload: { trackId: string; clientX: number; clientY: number }): void;
 }>();
 
 type DragMode = 'none' | 'move' | 'trimLeft' | 'trimRight';
@@ -48,6 +49,7 @@ const blockClass = computed(() => ({
 }));
 
 const onPointerDown = (e: PointerEvent) => {
+    if (e.button === 2) return;
     if (!props.track.enabled || props.track.locked) return;
     emit('select-track', props.track.id);
     // Use full lane width (not block width) for pixel->time conversion.
@@ -126,6 +128,13 @@ const onPointerDown = (e: PointerEvent) => {
     window.addEventListener('pointercancel', onUp);
 };
 
+const onContextMenu = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    emit('select-track', props.track.id);
+    emit('contextMenuTrack', { trackId: props.track.id, clientX: event.clientX, clientY: event.clientY });
+};
+
 useLaneInteractions(containerRef as any, {
     getViewport: () => props.viewport as any,
     onPan: (d) => emit('pan', d),
@@ -140,7 +149,13 @@ useLaneInteractions(containerRef as any, {
         class="motion-track-lane"
         :class="{ disabled: !track.enabled, locked: track.locked }"
     >
-        <div class="motion-track-lane__block" :class="blockClass" :style="blockStyle" @pointerdown.stop="onPointerDown">
+        <div
+            class="motion-track-lane__block"
+            :class="blockClass"
+            :style="blockStyle"
+            @pointerdown.stop="onPointerDown"
+            @contextmenu="onContextMenu"
+        >
             <span class="motion-track-lane__handle left" data-zone="trimLeft"></span>
             <span class="motion-track-lane__text">{{ track.name }}</span>
             <span class="motion-track-lane__handle right" data-zone="trimRight"></span>

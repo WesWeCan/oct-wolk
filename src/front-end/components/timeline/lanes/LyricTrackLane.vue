@@ -33,6 +33,7 @@ const emit = defineEmits<{
     (e: 'zoomAround', payload: { timeSec: number; factor: number }): void;
     (e: 'marqueeStart', payload: { trackId: string; clientX: number; clientY: number; pointerId: number }): void;
     (e: 'dblclickItem', itemId: string): void;
+    (e: 'contextMenuItem', payload: { itemId: string; clientX: number; clientY: number }): void;
 }>();
 
 const containerRef = ref<HTMLDivElement | null>(null);
@@ -126,6 +127,7 @@ const hitTest = (localX: number): { item: TimelineItem; zone: 'left' | 'right' |
 };
 
 const onPointerDown = (e: PointerEvent) => {
+    if (e.button === 2) return;
     if (props.track.locked) return;
     const el = containerRef.value;
     if (!el) return;
@@ -200,6 +202,12 @@ const onPointerDown = (e: PointerEvent) => {
     const sec = xToTime(clampedX, el.clientWidth);
     emit('scrub', { timeSec: Math.max(0, sec), frame: Math.floor(sec * Math.max(1, props.fps)) });
     props.setInteraction?.('scrub');
+};
+
+const onItemContextMenu = (itemId: string, event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    emit('contextMenuItem', { itemId, clientX: event.clientX, clientY: event.clientY });
 };
 
 const onPointerMove = (e: PointerEvent) => {
@@ -470,6 +478,7 @@ onUnmounted(() => {
                 :class="{ selected: isItemSelected(item.id) }"
                 :style="itemStyle(item)"
                 @dblclick.stop="emit('dblclickItem', item.id)"
+                @contextmenu="onItemContextMenu(item.id, $event)"
             >
                 <span class="lyric-item__text">{{ item.text }}</span>
                 <div class="lyric-item__handles">

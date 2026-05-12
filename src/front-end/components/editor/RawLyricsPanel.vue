@@ -11,10 +11,33 @@ const props = defineProps<{
     tracks?: LyricTrack[];
 }>();
 
+const escapeHtml = (value: string) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+const lyricsTextToHtml = (value: string) => (
+    value
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map((line) => `<p>${escapeHtml(line) || ''}</p>`)
+        .join('')
+);
+
 const editor = useEditor({
-    content: (rawLyrics.value || '').split('\n').map((line) => `<p>${line || ''}</p>`).join(''),
+    content: lyricsTextToHtml(rawLyrics.value || ''),
     onUpdate: ({ editor }) => {
         rawLyrics.value = editor.getText({ blockSeparator: '\n' });
+    },
+    editorProps: {
+        handlePaste: (_view, event) => {
+            const text = event.clipboardData?.getData('text/plain');
+            if (!text) return false;
+
+            event.preventDefault();
+            editor.value?.chain().focus().insertContent(lyricsTextToHtml(text)).run();
+            return true;
+        },
     },
     extensions: [
         StarterKit.configure({
@@ -34,7 +57,7 @@ watch(rawLyrics, (newVal) => {
     if (!instance) return;
     const current = instance.getText({ blockSeparator: '\n' });
     if ((newVal ?? '') !== current) {
-        const html = (newVal || '').split('\n').map((line) => `<p>${line || ''}</p>`).join('');
+        const html = lyricsTextToHtml(newVal || '');
         instance.commands.setContent(html, { emitUpdate: false });
     }
 });

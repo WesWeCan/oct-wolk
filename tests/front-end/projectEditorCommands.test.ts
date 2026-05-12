@@ -27,6 +27,7 @@ const createContext = (overrides: Partial<ProjectEditorCommandContext> = {}): Pr
   nudgeLyricSelection: vi.fn(),
   deleteMotionTrack: vi.fn(),
   copyMotionTrack: vi.fn(),
+  cutMotionTrack: vi.fn(),
   pasteMotionTrack: vi.fn(),
   nudgeMotionTrack: vi.fn(),
   stepPlayhead: vi.fn(),
@@ -76,7 +77,8 @@ describe('projectEditorCommands', () => {
     executeProjectEditorCommand('edit.delete', motionContext);
 
     expect(motionContext.copyMotionTrack).toHaveBeenCalledTimes(1);
-    expect(motionContext.deleteMotionTrack).toHaveBeenCalledTimes(2);
+    expect(motionContext.cutMotionTrack).toHaveBeenCalledTimes(1);
+    expect(motionContext.deleteMotionTrack).toHaveBeenCalledTimes(1);
     expect(motionContext.pasteMotionTrack).toHaveBeenCalledTimes(1);
   });
 

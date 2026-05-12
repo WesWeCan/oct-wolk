@@ -4,7 +4,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { MotionPresetService } from '@/front-end/services/MotionPresetService';
 import { ProjectService } from '@/front-end/services/ProjectService';
 import type { AppMenuAction } from '@/shared/appMenuActions';
-import { RENDERER_MENU_COMMAND_EVENT, type ProjectEditorCommandId } from '@/shared/projectEditorCommands';
+import {
+    RENDERER_MENU_COMMAND_EVENT,
+    type NativeEditCommandId,
+    type ProjectEditorCommandId,
+    type ProjectEditorMenuContext,
+} from '@/shared/projectEditorCommands';
 
 const router = useRouter();
 const route = useRoute();
@@ -15,12 +20,22 @@ const openStorageFolder = async () => {
     } catch (error) {
         console.error('Error opening storage folder:', error);
     }
-}
+};
 
 const busyMenuAction = ref<string | null>(null);
+const hasEditableFocus = ref(false);
 let removeMenuCommandListener: (() => void) | null = null;
 let removeAppMenuActionListener: (() => void) | null = null;
 let removeProjectsImportedListener: (() => void) | null = null;
+
+const editableCommands: Partial<Record<ProjectEditorCommandId, NativeEditCommandId>> = {
+    'edit.undo': 'undo',
+    'edit.redo': 'redo',
+    'edit.cut': 'cut',
+    'edit.copy': 'copy',
+    'edit.paste': 'paste',
+    'edit.delete': 'delete',
+};
 
 const isEditableElement = (element: Element | null): boolean => {
     if (!element) return false;
@@ -29,22 +44,19 @@ const isEditableElement = (element: Element | null): boolean => {
     return !!element.closest('.ProseMirror');
 };
 
-const tryExecuteEditableCommand = (commandId: ProjectEditorCommandId): boolean => {
+const tryExecuteEditableCommand = async (commandId: ProjectEditorCommandId): Promise<boolean> => {
     if (!isEditableElement(document.activeElement)) return false;
-
-    const editableCommands: Partial<Record<ProjectEditorCommandId, string>> = {
-        'edit.undo': 'undo',
-        'edit.redo': 'redo',
-        'edit.cut': 'cut',
-        'edit.copy': 'copy',
-        'edit.paste': 'paste',
-        'edit.delete': 'delete',
-    };
 
     const command = editableCommands[commandId];
     if (!command) return false;
 
-    return document.execCommand(command);
+    try {
+        await window.electronAPI.performNativeEditCommand(command);
+    } catch (error) {
+        console.error(`[menu] native edit command failed: ${command}`, error);
+    }
+
+    return true;
 };
 
 const dispatchRendererMenuCommand = (commandId: ProjectEditorCommandId) => {
@@ -57,10 +69,20 @@ const currentProjectId = (): string => (
     route.name === 'ProjectEditor' ? String(route.params.projectId || '') : ''
 );
 
-const syncMenuContext = async () => {
+const syncMenuContext = async (context: Partial<ProjectEditorMenuContext> = {}) => {
     await window.electronAPI.setMenuContext({
         hasProjectRoute: route.name === 'ProjectEditor',
+        hasEditableFocus: hasEditableFocus.value,
+        ...context,
     });
+};
+
+const updateEditableFocus = () => {
+    const next = isEditableElement(document.activeElement);
+    if (hasEditableFocus.value === next) return;
+
+    hasEditableFocus.value = next;
+    void syncMenuContext({ hasEditableFocus: next });
 };
 
 const runMenuAction = async (actionName: string, callback: () => Promise<void>) => {
@@ -130,12 +152,16 @@ onMounted(async () => {
     await syncMenuContext();
 
     removeMenuCommandListener = window.electronAPI.onMenuCommand((commandId) => {
-        if (tryExecuteEditableCommand(commandId)) {
-            return;
-        }
+        void (async () => {
+            if (await tryExecuteEditableCommand(commandId)) {
+                return;
+            }
 
-        dispatchRendererMenuCommand(commandId);
+            dispatchRendererMenuCommand(commandId);
+        })();
     });
+    window.addEventListener('focusin', updateEditableFocus);
+    window.addEventListener('focusout', updateEditableFocus);
     removeAppMenuActionListener = window.electronAPI.onAppMenuAction((action) => {
         void handleAppMenuAction(action);
     });
@@ -151,6 +177,8 @@ watch(() => route.name, () => {
 });
 
 onUnmounted(() => {
+    window.removeEventListener('focusin', updateEditableFocus);
+    window.removeEventListener('focusout', updateEditableFocus);
     removeMenuCommandListener?.();
     removeMenuCommandListener = null;
     removeAppMenuActionListener?.();

@@ -1,12 +1,18 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import type { AppMenuAction, RecentProjectMenuEntry } from '../shared/appMenuActions';
-import { PROJECT_EDITOR_MENU_COMMANDS, type ProjectEditorCommandId } from '../shared/projectEditorCommands';
+import {
+    DEFAULT_PROJECT_EDITOR_MENU_CONTEXT,
+    PROJECT_EDITOR_MENU_COMMANDS,
+    type ProjectEditorCommandId,
+    type ProjectEditorMenuContext,
+} from '../shared/projectEditorCommands';
 import { BRANDING } from '@/shared/branding';
 
 export interface BuildApplicationMenuOptions {
     applicationName: string;
     canExportProjectArchive: boolean;
     isMac: boolean;
+    menuContext?: ProjectEditorMenuContext;
     recentProjects: RecentProjectMenuEntry[];
     sendAppMenuAction: (action: AppMenuAction) => void;
     sendProjectEditorCommand: (commandId: ProjectEditorCommandId) => void;
@@ -26,23 +32,90 @@ const byId = (commandId: ProjectEditorCommandId) => {
 const createCommandItem = (
     commandId: ProjectEditorCommandId,
     sendProjectEditorCommand: (commandId: ProjectEditorCommandId) => void,
-    accelerator?: string,
+    options: {
+        accelerator?: string;
+        enabled?: boolean;
+        label?: string;
+    } = {},
 ): MenuItemConstructorOptions => {
     const definition = byId(commandId);
 
     return {
-        label: definition.label,
-        accelerator: accelerator ?? definition.accelerator,
+        label: options.label ?? definition.label,
+        accelerator: options.accelerator ?? definition.accelerator,
+        enabled: options.enabled,
         click: () => {
             sendProjectEditorCommand(commandId);
         },
     };
 };
 
+const editMenuLabel = (
+    commandId: ProjectEditorCommandId,
+    context: ProjectEditorMenuContext,
+): string | undefined => {
+    if (context.hasEditableFocus || !context.hasProjectRoute) {
+        const editableLabels: Partial<Record<ProjectEditorCommandId, string>> = {
+            'edit.cut': 'Cut',
+            'edit.copy': 'Copy',
+            'edit.paste': 'Paste',
+            'edit.delete': 'Delete',
+        };
+
+        return editableLabels[commandId];
+    }
+
+    if (context.mode === 'motion') {
+        const motionLabels: Partial<Record<ProjectEditorCommandId, string>> = {
+            'edit.cut': 'Cut Motion Track',
+            'edit.copy': 'Copy Motion Track',
+            'edit.paste': 'Paste Motion Track',
+            'edit.delete': 'Delete Motion Track',
+        };
+
+        return motionLabels[commandId];
+    }
+
+    const lyricLabels: Partial<Record<ProjectEditorCommandId, string>> = {
+        'edit.cut': 'Cut Lyric Selection',
+        'edit.copy': 'Copy Lyric Selection',
+        'edit.paste': 'Paste Lyric Selection',
+        'edit.delete': 'Delete Lyric Selection',
+    };
+
+    return lyricLabels[commandId];
+};
+
+const editMenuEnabled = (
+    commandId: ProjectEditorCommandId,
+    context: ProjectEditorMenuContext,
+): boolean => {
+    if (context.hasEditableFocus) return true;
+    if (!context.hasProjectRoute) return false;
+
+    switch (commandId) {
+        case 'edit.cut':
+        case 'edit.copy':
+        case 'edit.delete':
+            return context.mode === 'motion'
+                ? !!context.selectedMotionTrackId
+                : context.hasSelection;
+        case 'edit.paste':
+            return context.mode === 'motion'
+                ? context.hasMotionClipboard
+                : context.hasLyricClipboard;
+        case 'edit.split':
+            return context.mode === 'lyric' && context.hasSelection;
+        default:
+            return true;
+    }
+};
+
 export const buildApplicationMenuTemplate = ({
     applicationName,
     canExportProjectArchive,
     isMac,
+    menuContext = DEFAULT_PROJECT_EDITOR_MENU_CONTEXT,
     recentProjects,
     sendAppMenuAction,
     sendProjectEditorCommand,
@@ -124,12 +197,27 @@ export const buildApplicationMenuTemplate = ({
             createCommandItem('edit.undo', sendProjectEditorCommand),
             createCommandItem('edit.redo', sendProjectEditorCommand),
             { type: 'separator' },
-            createCommandItem('edit.cut', sendProjectEditorCommand),
-            createCommandItem('edit.copy', sendProjectEditorCommand),
-            createCommandItem('edit.paste', sendProjectEditorCommand),
-            createCommandItem('edit.delete', sendProjectEditorCommand, isMac ? 'Backspace' : 'Delete'),
+            createCommandItem('edit.cut', sendProjectEditorCommand, {
+                enabled: editMenuEnabled('edit.cut', menuContext),
+                label: editMenuLabel('edit.cut', menuContext),
+            }),
+            createCommandItem('edit.copy', sendProjectEditorCommand, {
+                enabled: editMenuEnabled('edit.copy', menuContext),
+                label: editMenuLabel('edit.copy', menuContext),
+            }),
+            createCommandItem('edit.paste', sendProjectEditorCommand, {
+                enabled: editMenuEnabled('edit.paste', menuContext),
+                label: editMenuLabel('edit.paste', menuContext),
+            }),
+            createCommandItem('edit.delete', sendProjectEditorCommand, {
+                accelerator: isMac ? 'Backspace' : 'Delete',
+                enabled: editMenuEnabled('edit.delete', menuContext),
+                label: editMenuLabel('edit.delete', menuContext),
+            }),
             { type: 'separator' },
-            createCommandItem('edit.split', sendProjectEditorCommand),
+            createCommandItem('edit.split', sendProjectEditorCommand, {
+                enabled: editMenuEnabled('edit.split', menuContext),
+            }),
         ],
     };
 

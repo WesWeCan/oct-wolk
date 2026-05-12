@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildApplicationMenuTemplate } from '@/back-end/application-menu';
 
+const getEditItems = (template: ReturnType<typeof buildApplicationMenuTemplate>, isMac = false) => {
+  const editMenu = template[isMac ? 2 : 1];
+  return editMenu.submenu as Exclude<typeof editMenu.submenu, undefined>;
+};
+
 describe('buildApplicationMenuTemplate', () => {
   it('builds the Windows/Linux menu with wired File actions and recent projects', () => {
     const sendAppMenuAction = vi.fn();
@@ -44,9 +49,8 @@ describe('buildApplicationMenuTemplate', () => {
       'Recent Two',
     ]);
 
-    const editMenu = template[1];
-    const editItems = editMenu.submenu as Exclude<typeof editMenu.submenu, undefined>;
-    const deleteItem = editItems.find((item) => 'label' in item && item.label === 'Delete Selection');
+    const editItems = getEditItems(template);
+    const deleteItem = editItems.find((item) => 'label' in item && item.label === 'Delete');
     expect(deleteItem && 'accelerator' in deleteItem ? deleteItem.accelerator : null).toBe('Delete');
 
     const helpMenu = template[4];
@@ -71,9 +75,8 @@ describe('buildApplicationMenuTemplate', () => {
     expect(template[0].label).toBe('WOLK');
     expect(template[1].label).toBe('File');
 
-    const editMenu = template[2];
-    const editItems = editMenu.submenu as Exclude<typeof editMenu.submenu, undefined>;
-    const deleteItem = editItems.find((item) => 'label' in item && item.label === 'Delete Selection');
+    const editItems = getEditItems(template, true);
+    const deleteItem = editItems.find((item) => 'label' in item && item.label === 'Delete');
     expect(deleteItem && 'accelerator' in deleteItem ? deleteItem.accelerator : null).toBe('Backspace');
 
     const windowMenu = template[4];
@@ -88,5 +91,88 @@ describe('buildApplicationMenuTemplate', () => {
     ]);
     const exportProjectItem = fileItems.find((item) => 'label' in item && item.label === 'Export .wolk...');
     expect(exportProjectItem && 'enabled' in exportProjectItem ? exportProjectItem.enabled : undefined).toBe(true);
+  });
+
+  it('uses standard Edit labels when text is focused', () => {
+    const template = buildApplicationMenuTemplate({
+      applicationName: 'WOLK',
+      canExportProjectArchive: true,
+      isMac: false,
+      menuContext: {
+        hasProjectRoute: true,
+        hasEditableFocus: true,
+        mode: 'lyric',
+        hasSelection: true,
+        selectedMotionTrackId: null,
+        hasLyricClipboard: true,
+        hasMotionClipboard: false,
+      },
+      recentProjects: [],
+      sendAppMenuAction: vi.fn(),
+      sendProjectEditorCommand: vi.fn(),
+      openExternalUrl: vi.fn(),
+    });
+
+    const labels = getEditItems(template).map((item) => 'label' in item ? item.label : item.type);
+    expect(labels).toContain('Cut');
+    expect(labels).toContain('Copy');
+    expect(labels).toContain('Paste');
+    expect(labels).toContain('Delete');
+  });
+
+  it('uses lyric selection labels and clipboard availability in lyric mode', () => {
+    const template = buildApplicationMenuTemplate({
+      applicationName: 'WOLK',
+      canExportProjectArchive: true,
+      isMac: false,
+      menuContext: {
+        hasProjectRoute: true,
+        hasEditableFocus: false,
+        mode: 'lyric',
+        hasSelection: false,
+        selectedMotionTrackId: null,
+        hasLyricClipboard: true,
+        hasMotionClipboard: false,
+      },
+      recentProjects: [],
+      sendAppMenuAction: vi.fn(),
+      sendProjectEditorCommand: vi.fn(),
+      openExternalUrl: vi.fn(),
+    });
+
+    const editItems = getEditItems(template);
+    const cutItem = editItems.find((item) => 'label' in item && item.label === 'Cut Lyric Selection');
+    const pasteItem = editItems.find((item) => 'label' in item && item.label === 'Paste Lyric Selection');
+
+    expect(cutItem && 'enabled' in cutItem ? cutItem.enabled : undefined).toBe(false);
+    expect(pasteItem && 'enabled' in pasteItem ? pasteItem.enabled : undefined).toBe(true);
+  });
+
+  it('uses motion track labels and clipboard availability in motion mode', () => {
+    const template = buildApplicationMenuTemplate({
+      applicationName: 'WOLK',
+      canExportProjectArchive: true,
+      isMac: false,
+      menuContext: {
+        hasProjectRoute: true,
+        hasEditableFocus: false,
+        mode: 'motion',
+        hasSelection: false,
+        selectedMotionTrackId: 'motion-track-1',
+        hasLyricClipboard: false,
+        hasMotionClipboard: false,
+      },
+      recentProjects: [],
+      sendAppMenuAction: vi.fn(),
+      sendProjectEditorCommand: vi.fn(),
+      openExternalUrl: vi.fn(),
+    });
+
+    const editItems = getEditItems(template);
+    const copyItem = editItems.find((item) => 'label' in item && item.label === 'Copy Motion Track');
+    const pasteItem = editItems.find((item) => 'label' in item && item.label === 'Paste Motion Track');
+
+    expect(copyItem && 'enabled' in copyItem ? copyItem.enabled : undefined).toBe(true);
+    expect(pasteItem && 'enabled' in pasteItem ? pasteItem.enabled : undefined).toBe(false);
   });
 });

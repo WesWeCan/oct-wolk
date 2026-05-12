@@ -18,6 +18,7 @@ export function createMockElectronAPI() {
 
   return {
     setMenuContext: vi.fn().mockResolvedValue({ ok: true }),
+    performNativeEditCommand: vi.fn().mockResolvedValue({ ok: true }),
     openStorageFolder: vi.fn().mockResolvedValue(undefined),
     openExternalUrl: vi.fn().mockResolvedValue({ success: true }),
     projects,

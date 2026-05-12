@@ -2,6 +2,28 @@ export const MENU_COMMAND_CHANNEL = 'wolk:menu-command' as const;
 export const RENDERER_MENU_COMMAND_EVENT = 'wolk:renderer-menu-command' as const;
 export const TIMELINE_NUDGE_MS = 50;
 
+export type NativeEditCommandId = 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'delete';
+
+export interface ProjectEditorMenuContext {
+    hasProjectRoute: boolean;
+    hasEditableFocus: boolean;
+    mode: 'lyric' | 'motion';
+    hasSelection: boolean;
+    selectedMotionTrackId: string | null;
+    hasLyricClipboard: boolean;
+    hasMotionClipboard: boolean;
+}
+
+export const DEFAULT_PROJECT_EDITOR_MENU_CONTEXT: ProjectEditorMenuContext = {
+    hasProjectRoute: false,
+    hasEditableFocus: false,
+    mode: 'lyric',
+    hasSelection: false,
+    selectedMotionTrackId: null,
+    hasLyricClipboard: false,
+    hasMotionClipboard: false,
+};
+
 export type ProjectEditorCommandId =
     | 'edit.undo'
     | 'edit.redo'
@@ -93,6 +115,7 @@ export interface ProjectEditorCommandContext {
     nudgeLyricSelection: (deltaMs: number) => void;
     deleteMotionTrack: () => void;
     copyMotionTrack: () => void;
+    cutMotionTrack: () => void;
     pasteMotionTrack: () => void;
     nudgeMotionTrack: (deltaMs: number) => void;
     stepPlayhead: (deltaFrames: number) => void;
@@ -120,7 +143,7 @@ export const executeProjectEditorCommand = (
             else context.copyLyricSelection();
             return;
         case 'edit.cut':
-            if (context.mode === 'motion') context.deleteMotionTrack();
+            if (context.mode === 'motion') context.cutMotionTrack();
             else context.cutLyricSelection();
             return;
         case 'edit.paste':

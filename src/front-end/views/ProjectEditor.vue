@@ -866,6 +866,13 @@ const marquee = ref<{
     currentClientY: number;
 } | null>(null);
 const lanesColumnRef = ref<HTMLElement | null>(null);
+const timelineContextMenu = ref<{
+    type: 'lyric' | 'motion';
+    itemId?: string;
+    trackId?: string;
+    x: number;
+    y: number;
+} | null>(null);
 
 const marqueeStyle = computed(() => {
     if (!marquee.value || !lanesColumnRef.value) return null;
@@ -906,6 +913,30 @@ const selectedMotionTrack = computed<MotionTrack | null>(() => {
     if (!project.value || !selectedMotionTrackId.value) return null;
     return project.value.motionTracks.find((track) => track.id === selectedMotionTrackId.value) || null;
 });
+
+const syncProjectEditorMenuContext = () => {
+    void window.electronAPI.setMenuContext({
+        hasProjectRoute: true,
+        mode: mode.value,
+        hasSelection: selection.hasSelection.value,
+        selectedMotionTrackId: selectedMotionTrackId.value,
+        hasLyricClipboard: !!lyricClipboard.value?.items.length,
+        hasMotionClipboard: !!motionClipboard.value,
+    });
+};
+
+watch(
+    () => [
+        mode.value,
+        selection.hasSelection.value,
+        selectedMotionTrackId.value,
+        !!lyricClipboard.value?.items.length,
+        !!motionClipboard.value,
+    ],
+    syncProjectEditorMenuContext,
+    { immediate: true },
+);
+
 const selectedMotionPlugin = computed(() => (
     selectedMotionTrack.value ? getMotionTrackPlugin(selectedMotionTrack.value) : null
 ));
@@ -1826,6 +1857,12 @@ const copySelectedMotionTrack = () => {
     motionClipboard.value = JSON.parse(JSON.stringify(selectedMotionTrack.value));
 };
 
+const cutSelectedMotionTrack = () => {
+    if (!selectedMotionTrack.value) return;
+    copySelectedMotionTrack();
+    deleteSelectedMotionTrack();
+};
+
 const pasteMotionTrack = () => {
     if (!project.value || !motionClipboard.value) return;
     const pasted: MotionTrack = {
@@ -2159,6 +2196,38 @@ const onDblClickItem = (itemId: string) => {
     }
 };
 
+const closeTimelineContextMenu = () => {
+    timelineContextMenu.value = null;
+};
+
+const onLyricItemContextMenu = (payload: { itemId: string; clientX: number; clientY: number }) => {
+    if (!selection.selectedIds.value.has(payload.itemId)) {
+        selection.select(payload.itemId);
+    }
+
+    timelineContextMenu.value = {
+        type: 'lyric',
+        itemId: payload.itemId,
+        x: payload.clientX,
+        y: payload.clientY,
+    };
+};
+
+const onMotionTrackContextMenu = (payload: { trackId: string; clientX: number; clientY: number }) => {
+    selectedMotionTrackId.value = payload.trackId;
+    timelineContextMenu.value = {
+        type: 'motion',
+        trackId: payload.trackId,
+        x: payload.clientX,
+        y: payload.clientY,
+    };
+};
+
+const runTimelineContextCommand = (commandId: ProjectEditorCommandId) => {
+    runProjectEditorCommand(commandId);
+    closeTimelineContextMenu();
+};
+
 const zoomToSelection = () => {
     if (!project.value) return;
     const ids = selection.selectedArray.value;
@@ -2206,6 +2275,7 @@ const runProjectEditorCommand = (commandId: ProjectEditorCommandId) => {
         },
         deleteMotionTrack: deleteSelectedMotionTrack,
         copyMotionTrack: copySelectedMotionTrack,
+        cutMotionTrack: cutSelectedMotionTrack,
         pasteMotionTrack,
         nudgeMotionTrack: nudgeSelectedMotionTrack,
         stepPlayhead: (deltaFrames: number) => {
@@ -2228,6 +2298,7 @@ const onRendererMenuCommand = (event: Event) => {
 // Keyboard shortcuts
 const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Alt') snapEngine.setAltSuppressed(true);
+    if (e.key === 'Escape') closeTimelineContextMenu();
 
     if (isEditableTarget(e.target)) return;
 
@@ -2248,6 +2319,7 @@ onMounted(() => {
     loadProject();
     videoExport.checkFfmpegAvailable();
     window.addEventListener('resize', syncLayoutMode);
+    window.addEventListener('click', closeTimelineContextMenu);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener(RENDERER_MENU_COMMAND_EVENT, onRendererMenuCommand as EventListener);
@@ -2258,6 +2330,7 @@ onUnmounted(() => {
     if (saveTimer) clearTimeout(saveTimer);
     if (uiNoticeTimer) clearTimeout(uiNoticeTimer);
     window.removeEventListener('resize', syncLayoutMode);
+    window.removeEventListener('click', closeTimelineContextMenu);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener(RENDERER_MENU_COMMAND_EVENT, onRendererMenuCommand as EventListener);
@@ -2832,6 +2905,7 @@ onUnmounted(() => {
                                     @group-move-all="onGroupMoveAll"
                                     @marquee-start="onMarqueeStart"
                                     @dblclick-item="onDblClickItem"
+                                    @context-menu-item="onLyricItemContextMenu"
                                     @push-undo="onPushUndo"
                                     @scrub="onScrub"
                                     @pan="onPan"
@@ -2861,6 +2935,7 @@ onUnmounted(() => {
                                             @select-track="onSelectMotionTrack"
                                             @update-track="onUpdateMotionTrack"
                                             @push-undo="onPushUndo"
+                                            @context-menu-track="onMotionTrackContextMenu"
                                             @pan="onPan"
                                             @zoom-around="onZoom"
                                         />
@@ -2979,6 +3054,27 @@ onUnmounted(() => {
                                     <div class="lane-resizer" @pointerdown="(e: PointerEvent) => startResize('bands', e)"></div>
                                 </div>
                             </template>
+                            <div
+                                v-if="timelineContextMenu"
+                                class="timeline-context-menu"
+                                :style="{ left: `${timelineContextMenu.x}px`, top: `${timelineContextMenu.y}px` }"
+                                @click.stop
+                            >
+                                <template v-if="timelineContextMenu.type === 'lyric'">
+                                    <button class="timeline-context-menu__item" @click="runTimelineContextCommand('edit.copy')">Copy Lyric Selection</button>
+                                    <button class="timeline-context-menu__item" @click="runTimelineContextCommand('edit.cut')">Cut Lyric Selection</button>
+                                    <button class="timeline-context-menu__item" @click="runTimelineContextCommand('edit.split')">Split At Playhead</button>
+                                    <div class="timeline-context-menu__divider"></div>
+                                    <button class="timeline-context-menu__item danger" @click="runTimelineContextCommand('edit.delete')">Delete Lyric Selection</button>
+                                </template>
+                                <template v-else>
+                                    <button class="timeline-context-menu__item" @click="runTimelineContextCommand('edit.copy')">Copy Motion Track</button>
+                                    <button class="timeline-context-menu__item" @click="runTimelineContextCommand('edit.cut')">Cut Motion Track</button>
+                                    <button class="timeline-context-menu__item" @click="runTimelineContextCommand('edit.paste')">Paste Motion Track</button>
+                                    <div class="timeline-context-menu__divider"></div>
+                                    <button class="timeline-context-menu__item danger" @click="runTimelineContextCommand('edit.delete')">Delete Motion Track</button>
+                                </template>
+                            </div>
                         </div>
                     </div>
                 </div>
