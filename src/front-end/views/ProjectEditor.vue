@@ -162,6 +162,47 @@ const toggleStackedPanel = (panel: EditorPanelKey) => {
 
 const isPanelExpanded = (panel: EditorPanelKey) => layoutMode.value === 'full' || stackedPanels.value[panel];
 
+const editingTitle = ref(false);
+const titleInput = ref('');
+const titleInputEl = ref<HTMLInputElement | null>(null);
+
+const startEditTitle = () => {
+    if (!project.value) return;
+    titleInput.value = project.value.song.title || '';
+    editingTitle.value = true;
+    nextTick(() => {
+        titleInputEl.value?.focus();
+        titleInputEl.value?.select();
+    });
+};
+
+const cancelEditTitle = () => {
+    editingTitle.value = false;
+};
+
+const commitTitle = () => {
+    if (!project.value) {
+        editingTitle.value = false;
+        return;
+    }
+
+    const trimmed = titleInput.value.trim();
+    if (trimmed && trimmed !== (project.value.song.title || '')) {
+        pushUndo();
+        project.value = {
+            ...project.value,
+            song: {
+                ...project.value.song,
+                title: trimmed,
+            },
+        };
+        document.title = buildAppTitle(trimmed);
+        scheduleSave();
+    }
+
+    editingTitle.value = false;
+};
+
 // Audio
 const audio = useAudioPlayer();
 const analysis = useAudioAnalysis(fps);
@@ -2362,7 +2403,22 @@ onUnmounted(() => {
                     <SvgIcon type="mdi" :path="mdiHomeVariantOutline" :size="16" />
                 </button>
 
-                <span class="toolbar-title">
+                <input
+                    v-if="editingTitle"
+                    ref="titleInputEl"
+                    v-model="titleInput"
+                    class="toolbar-title-input"
+                    aria-label="Project name"
+                    @keydown.enter="commitTitle"
+                    @keydown.escape="cancelEditTitle"
+                    @blur="commitTitle"
+                />
+                <span
+                    v-else
+                    class="toolbar-title"
+                    title="Click to rename"
+                    @click="startEditTitle"
+                >
                     {{ project.song.title || 'Untitled' }}
                 </span>
             </div>
